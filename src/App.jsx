@@ -819,13 +819,14 @@ function CardManager({cardDb,setCardDb,onClose}){
 }
 
 // ===========================
-// MENU SCREEN
+// MENU SCREEN (redesigned)
 // ===========================
 function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2DeckIdx,setP2DeckIdx,onStartGame}){
-  const [screen,setScreen]=useState("main"); // main|deckList|deckEdit|cardManager|deckSheet
+  const [screen,setScreen]=useState("main");
   const [editingDeckIdx,setEditingDeckIdx]=useState(null);
   const [sheetIds,setSheetIds]=useState(null);
   const [confirmDeleteDeck,setConfirmDeleteDeck]=useState(null);
+  const [hoveredBtn,setHoveredBtn]=useState(null);
 
   const openNewDeck=()=>{setEditingDeckIdx(null);setScreen("deckEdit");};
   const openEditDeck=idx=>{setEditingDeckIdx(idx);setScreen("deckEdit");};
@@ -836,264 +837,351 @@ function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2De
   };
 
   if(screen==="cardManager") return <CardManager cardDb={cardDb} setCardDb={setCardDb} onClose={()=>setScreen("main")}/>;
-  if(screen==="deckSheet") return <DeckSheetReader cardDb={cardDb} onResult={(ids,parsed)=>{setSheetIds(ids);setScreen("deckEdit");}} onCancel={()=>setScreen("deckList")}/>;
+  if(screen==="deckSheet") return <DeckSheetReader cardDb={cardDb} onResult={(ids)=>{setSheetIds(ids);setScreen("deckEdit");}} onCancel={()=>setScreen("deckList")}/>;
   if(screen==="deckEdit") return <DeckEditor cardDb={cardDb} initialIds={editingDeckIdx!==null?decks[editingDeckIdx]?.ids:sheetIds||[]} initialName={editingDeckIdx!==null?decks[editingDeckIdx]?.name:""} onSave={saveDeck} onCancel={()=>{setSheetIds(null);setScreen("deckList");}}/>;
 
   const canStart=decks.length>0&&p1DeckIdx!==null&&p2DeckIdx!==null;
 
-  return(
-    <div style={{minHeight:"100vh",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}`}</style>
+  const MenuBtn=({id,children,onClick,color="#ffe066",icon})=>{
+    const hovered=hoveredBtn===id;
+    return(
+      <button
+        onClick={onClick}
+        onMouseEnter={()=>setHoveredBtn(id)}
+        onMouseLeave={()=>setHoveredBtn(null)}
+        style={{
+          width:"100%", padding:"14px 20px",
+          background: hovered
+            ? `linear-gradient(90deg, ${color}22, ${color}11, transparent)`
+            : `linear-gradient(90deg, ${color}11, transparent)`,
+          border:"none",
+          borderLeft: `3px solid ${color}`,
+          borderTop: hovered ? `1px solid ${color}44` : "1px solid transparent",
+          borderBottom: hovered ? `1px solid ${color}44` : "1px solid transparent",
+          borderRight: "none",
+          color: hovered ? color : `${color}cc`,
+          cursor:"pointer",
+          fontSize:15,
+          fontWeight:700,
+          fontFamily:"'Rajdhani','Noto Sans JP',sans-serif",
+          letterSpacing:2,
+          textAlign:"left",
+          display:"flex",
+          alignItems:"center",
+          gap:12,
+          transition:"all 0.15s",
+          boxShadow: hovered ? `inset 0 0 20px ${color}11, 0 0 12px ${color}22` : "none",
+          transform: hovered ? "translateX(4px)" : "none",
+        }}
+      >
+        <span style={{fontSize:18,width:24,textAlign:"center"}}>{icon}</span>
+        {children}
+        <span style={{marginLeft:"auto",opacity:hovered?1:0,transition:"opacity 0.15s",fontSize:12}}>▶</span>
+      </button>
+    );
+  };
 
-      {confirmDeleteDeck!==null&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div style={{background:"#0a0a18",border:"1px solid #f8444455",borderRadius:12,padding:20,maxWidth:320,width:"100%"}}>
-            <div style={{color:"#f84",fontWeight:700,fontSize:14,marginBottom:8}}>🗑 デッキ削除</div>
-            <div style={{color:"#aaa",fontSize:12,marginBottom:16}}>「{decks[confirmDeleteDeck]?.name}」を削除しますか？</div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>{setDecks(d=>d.filter((_,i)=>i!==confirmDeleteDeck));if(p1DeckIdx===confirmDeleteDeck)setP1DeckIdx(null);if(p2DeckIdx===confirmDeleteDeck)setP2DeckIdx(null);setConfirmDeleteDeck(null);}} style={{flex:1,padding:"8px",borderRadius:6,background:"#3a0a0a",border:"1px solid #f84",color:"#f84",cursor:"pointer",fontWeight:700}}>削除</button>
-              <button onClick={()=>setConfirmDeleteDeck(null)} style={{flex:1,padding:"8px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer"}}>キャンセル</button>
-            </div>
-          </div>
+  const DeckSelectBtn=({deck,idx,selected,color,onClick})=>{
+    const hovered=hoveredBtn===`deck-${color}-${idx}`;
+    return(
+      <button
+        onClick={onClick}
+        onMouseEnter={()=>setHoveredBtn(`deck-${color}-${idx}`)}
+        onMouseLeave={()=>setHoveredBtn(null)}
+        style={{
+          padding:"10px 14px", borderRadius:4,
+          textAlign:"left",
+          background: selected ? `linear-gradient(90deg,${color}22,${color}08)` : hovered ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.3)",
+          border: selected ? `1px solid ${color}88` : `1px solid ${hovered?"#333":"#1a1a2a"}`,
+          color: selected ? color : "#666",
+          cursor:"pointer", fontSize:12,
+          fontWeight: selected ? 700 : 400,
+          display:"flex", justifyContent:"space-between", alignItems:"center",
+          transition:"all 0.12s",
+          boxShadow: selected ? `0 0 10px ${color}22` : "none",
+        }}
+      >
+        <span>{deck.name}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:10,color:"#444"}}>{deck.ids.length}枚</span>
+          {selected&&<span style={{fontSize:10,color,fontWeight:700}}>✓ 選択中</span>}
         </div>
-      )}
+      </button>
+    );
+  };
 
-      {/* Hero */}
-      <div style={{textAlign:"center",padding:"40px 20px 20px",background:"radial-gradient(ellipse at 50% 0%,#1a003a,transparent 70%)"}}>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:36,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066aa,0 0 60px #ff990044",letterSpacing:4,marginBottom:8}}>⚔ DUEL MASTERS</div>
-        <div style={{fontSize:12,color:"#444",letterSpacing:2}}>CARD GAME SIMULATOR</div>
+  return(
+    <div style={{minHeight:"100vh",background:"#020208",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel+Decorative:wght@700;900&family=Rajdhani:wght@500;600;700&display=swap');
+        *{box-sizing:border-box;}
+        ::-webkit-scrollbar{width:3px;background:#000;}
+        ::-webkit-scrollbar-thumb{background:#222;border-radius:2px;}
+        @keyframes scanline{0%{transform:translateY(-100%);}100%{transform:translateY(100vh);}}
+        @keyframes flicker{0%,100%{opacity:1;}92%{opacity:1;}93%{opacity:0.8;}94%{opacity:1;}}
+        @keyframes pulse{0%,100%{opacity:0.6;}50%{opacity:1;}}
+        @keyframes rotateBg{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
+      `}</style>
+
+      {/* Animated background */}
+      <div style={{position:"fixed",inset:0,zIndex:0,overflow:"hidden",pointerEvents:"none"}}>
+        {/* Deep space bg */}
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 30% 20%,#0a001a 0%,#020208 60%)"}}/>
+        {/* Grid lines */}
+        <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(80,40,180,0.07) 1px,transparent 1px),linear-gradient(90deg,rgba(80,40,180,0.07) 1px,transparent 1px)",backgroundSize:"40px 40px",transform:"perspective(400px) rotateX(30deg)",transformOrigin:"50% 0%"}}/>
+        {/* Glow orbs */}
+        <div style={{position:"absolute",top:"15%",left:"10%",width:300,height:300,borderRadius:"50%",background:"radial-gradient(circle,#4400aa18,transparent 70%)",animation:"pulse 4s ease-in-out infinite"}}/>
+        <div style={{position:"absolute",top:"40%",right:"5%",width:200,height:200,borderRadius:"50%",background:"radial-gradient(circle,#cc220018,transparent 70%)",animation:"pulse 3s ease-in-out infinite 1s"}}/>
+        <div style={{position:"absolute",bottom:"20%",left:"30%",width:250,height:250,borderRadius:"50%",background:"radial-gradient(circle,#004488 18,transparent 70%)",animation:"pulse 5s ease-in-out infinite 2s"}}/>
+        {/* Scanline */}
+        <div style={{position:"absolute",left:0,right:0,height:2,background:"linear-gradient(90deg,transparent,rgba(100,60,255,0.15),transparent)",animation:"scanline 8s linear infinite",pointerEvents:"none"}}/>
+        {/* Diagonal accent lines */}
+        <div style={{position:"absolute",top:0,left:"20%",width:1,height:"100%",background:"linear-gradient(180deg,transparent,rgba(80,40,180,0.15),transparent)",transform:"skewX(-20deg)"}}/>
+        <div style={{position:"absolute",top:0,right:"25%",width:1,height:"100%",background:"linear-gradient(180deg,transparent,rgba(200,40,40,0.1),transparent)",transform:"skewX(-20deg)"}}/>
       </div>
 
-      <div style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:16,maxWidth:480,margin:"0 auto",width:"100%"}}>
+      {/* Content */}
+      <div style={{position:"relative",zIndex:1,flex:1,display:"flex",flexDirection:"column",maxWidth:520,margin:"0 auto",width:"100%",padding:"0 0 24px"}}>
 
-        {/* Deck select */}
-        {screen==="main"&&(
-          <>
-            <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid #1a1a3a",borderRadius:12,padding:14}}>
-              <div style={{fontFamily:"'Cinzel',serif",color:"#ffe066",fontSize:14,fontWeight:700,marginBottom:12}}>🃏 デッキ選択</div>
-              {["p1","p2"].map(pid=>{
-                const idx=pid==="p1"?p1DeckIdx:p2DeckIdx;
-                const setIdx=pid==="p1"?setP1DeckIdx:setP2DeckIdx;
-                const color=pid==="p1"?"#4af":"#f84";
-                return(
-                  <div key={pid} style={{marginBottom:10}}>
-                    <div style={{fontSize:11,color:color,fontWeight:700,marginBottom:6}}>{pid==="p1"?"🧑 P1":"👹 P2"}</div>
-                    {decks.length===0?(
-                      <div style={{fontSize:11,color:"#333",padding:"8px 12px",background:"#080818",borderRadius:6,border:"1px solid #1a1a2a"}}>デッキがありません。先にデッキを作成してください。</div>
-                    ):(
-                      <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                        {decks.map((dk,i)=>(
-                          <button key={i} onClick={()=>setIdx(i)} style={{padding:"8px 12px",borderRadius:6,textAlign:"left",background:idx===i?`${color}18`:"#080818",border:`1px solid ${idx===i?color:"#1a1a2a"}`,color:idx===i?color:"#666",cursor:"pointer",fontSize:12,fontWeight:idx===i?700:400,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                            <span>{dk.name}</span>
-                            <span style={{fontSize:10,color:"#444"}}>{dk.ids.length}枚</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+        {/* Header / Logo area */}
+        <div style={{padding:"36px 20px 24px",textAlign:"center",position:"relative"}}>
+          {/* Top accent line */}
+          <div style={{position:"absolute",top:0,left:"10%",right:"10%",height:1,background:"linear-gradient(90deg,transparent,#6633ff88,#ff333388,transparent)"}}/>
 
-            {/* Start button */}
-            <button onClick={()=>canStart&&onStartGame(decks[p1DeckIdx].ids,decks[p2DeckIdx].ids)} style={{width:"100%",padding:"16px",borderRadius:12,fontFamily:"'Cinzel',serif",fontSize:20,fontWeight:900,background:canStart?"linear-gradient(135deg,#ffe066,#ff9900)":"#1a1a1a",border:"none",color:canStart?"#000":"#333",cursor:canStart?"pointer":"not-allowed",boxShadow:canStart?"0 0 24px #ffe06666":"none",transition:"all 0.2s"}}>
-              {canStart?"▶ ゲーム開始":"デッキを選択してください"}
-            </button>
+          {/* Sub label */}
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:11,letterSpacing:6,color:"#4433aa",marginBottom:10,fontWeight:600}}>
+            — CARD GAME SIMULATOR —
+          </div>
 
-            {/* Menu buttons */}
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <button onClick={()=>setScreen("deckList")} style={menuBtn("#ffe066")}>📋 デッキ管理</button>
-              <button onClick={()=>setScreen("cardManager")} style={menuBtn("#4af")}>🗂 カード管理</button>
-            </div>
-          </>
-        )}
+          {/* Main logo */}
+          <div style={{position:"relative",display:"inline-block",marginBottom:6}}>
+            {/* Glow behind logo */}
+            <div style={{position:"absolute",inset:-20,background:"radial-gradient(ellipse,#6600ff18,transparent 70%)",filter:"blur(10px)"}}/>
+            <div style={{
+              fontFamily:"'Cinzel Decorative',serif",
+              fontSize:32,
+              fontWeight:900,
+              color:"#fff",
+              textShadow:"0 0 20px #8844ff, 0 0 40px #6622cc88, 0 2px 0 #000",
+              letterSpacing:3,
+              lineHeight:1,
+              position:"relative",
+            }}>DUEL</div>
+            <div style={{
+              fontFamily:"'Cinzel Decorative',serif",
+              fontSize:20,
+              fontWeight:700,
+              background:"linear-gradient(90deg,#ff4444,#ff8800,#ff4444)",
+              WebkitBackgroundClip:"text",
+              WebkitTextFillColor:"transparent",
+              letterSpacing:8,
+              textShadow:"none",
+              filter:"drop-shadow(0 0 8px #ff440066)",
+              position:"relative",
+            }}>MASTERS</div>
+          </div>
 
-        {/* Deck list */}
-        {screen==="deckList"&&(
-          <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontFamily:"'Cinzel',serif",color:"#ffe066",fontSize:14,fontWeight:700}}>📋 デッキ一覧</div>
-              <button onClick={()=>setScreen("main")} style={{padding:"4px 12px",borderRadius:5,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>← 戻る</button>
-            </div>
-            <div style={{display:"flex",gap:8,marginBottom:12}}>
-              <button onClick={openNewDeck} style={{flex:1,padding:"10px",borderRadius:8,background:"rgba(68,255,136,0.12)",border:"1px solid #4f844",color:"#4f8",cursor:"pointer",fontSize:13,fontWeight:700}}>➕ 新規デッキ作成</button>
-              <button onClick={()=>setScreen("deckSheet")} style={{flex:1,padding:"10px",borderRadius:8,background:"rgba(68,170,255,0.12)",border:"1px solid #4af44",color:"#4af",cursor:"pointer",fontSize:13,fontWeight:700}}>📷 シート読み取り</button>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {decks.map((dk,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:8,border:"1px solid #1a1a2a"}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{dk.name}</div>
-                    <div style={{fontSize:10,color:"#555"}}>{dk.ids.length}枚</div>
-                  </div>
-                  <button onClick={()=>openEditDeck(i)} style={{padding:"5px 10px",borderRadius:5,background:"rgba(255,224,102,0.1)",border:"1px solid #ffe06644",color:"#ffe066",cursor:"pointer",fontSize:11}}>編集</button>
-                  <button onClick={()=>setConfirmDeleteDeck(i)} style={{padding:"5px 10px",borderRadius:5,background:"rgba(255,80,80,0.1)",border:"1px solid #f8444444",color:"#f84",cursor:"pointer",fontSize:11}}>削除</button>
+          {/* Version tag */}
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#332255",letterSpacing:3,marginTop:8}}>SIMULATOR v5.0</div>
+
+          {/* Bottom accent */}
+          <div style={{marginTop:16,height:1,background:"linear-gradient(90deg,transparent,#6633ff44,#ff333344,transparent)"}}/>
+        </div>
+
+        {/* Main content */}
+        <div style={{flex:1,overflowY:"auto",padding:"0 16px",display:"flex",flexDirection:"column",gap:20}}>
+
+          {screen==="main"&&(
+            <>
+              {/* Deck select panel */}
+              <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid #1a1a3a",borderRadius:2,overflow:"hidden"}}>
+                {/* Panel header */}
+                <div style={{padding:"8px 14px",background:"linear-gradient(90deg,#1a0a3a,#0a0818)",borderBottom:"1px solid #2a1a4a",display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:6,height:6,borderRadius:"50%",background:"#6633ff",boxShadow:"0 0 6px #6633ff"}}/>
+                  <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:13,fontWeight:600,letterSpacing:3,color:"#8866cc"}}>DECK SELECT</span>
                 </div>
-              ))}
-              {decks.length===0&&<div style={{color:"#333",fontSize:12,textAlign:"center",padding:24}}>デッキがありません</div>}
+
+                <div style={{padding:"14px"}}>
+                  {[{pid:"p1",label:"PLAYER 1",icon:"🧑",color:"#44aaff"},{pid:"p2",label:"PLAYER 2",icon:"👹",color:"#ff6644"}].map(({pid,label,icon,color})=>{
+                    const idx=pid==="p1"?p1DeckIdx:p2DeckIdx;
+                    const setIdx=pid==="p1"?setP1DeckIdx:setP2DeckIdx;
+                    return(
+                      <div key={pid} style={{marginBottom:14}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                          <div style={{width:2,height:14,background:color,boxShadow:`0 0 4px ${color}`}}/>
+                          <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:12,fontWeight:700,letterSpacing:3,color}}>{icon} {label}</span>
+                        </div>
+                        {decks.length===0?(
+                          <div style={{fontSize:11,color:"#333",padding:"10px 12px",background:"#050510",borderRadius:2,border:"1px solid #111",fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>
+                            デッキがありません
+                          </div>
+                        ):(
+                          <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                            {decks.map((dk,i)=>(
+                              <DeckSelectBtn key={i} deck={dk} idx={i} selected={idx===i} color={color} onClick={()=>setIdx(i)}/>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Start button */}
+              <button
+                onClick={()=>canStart&&onStartGame(decks[p1DeckIdx].ids,decks[p2DeckIdx].ids)}
+                onMouseEnter={()=>setHoveredBtn("start")}
+                onMouseLeave={()=>setHoveredBtn(null)}
+                style={{
+                  width:"100%", padding:"18px",
+                  background: canStart
+                    ? hoveredBtn==="start"
+                      ? "linear-gradient(135deg,#ffcc00,#ff8800,#ff4400)"
+                      : "linear-gradient(135deg,#ddaa00,#cc6600,#cc2200)"
+                    : "#0a0a14",
+                  border: canStart ? "none" : "1px solid #1a1a2a",
+                  borderRadius:2,
+                  color: canStart ? "#000" : "#222",
+                  cursor: canStart ? "pointer" : "not-allowed",
+                  fontFamily:"'Cinzel Decorative',serif",
+                  fontSize:16,
+                  fontWeight:900,
+                  letterSpacing:4,
+                  boxShadow: canStart
+                    ? hoveredBtn==="start" ? "0 0 30px #ff880066, 0 4px 20px #00000088" : "0 0 16px #cc660044"
+                    : "none",
+                  transform: hoveredBtn==="start"&&canStart ? "scale(1.01)" : "none",
+                  transition:"all 0.15s",
+                  textShadow: canStart ? "0 1px 2px rgba(0,0,0,0.5)" : "none",
+                }}
+              >
+                {canStart ? "▶  DUEL  START" : "— SELECT DECKS TO START —"}
+              </button>
+
+              {/* Nav buttons */}
+              <div style={{display:"flex",flexDirection:"column",gap:2,border:"1px solid #1a1a2a",borderRadius:2,overflow:"hidden"}}>
+                <MenuBtn id="deck" onClick={()=>setScreen("deckList")} color="#ffe066" icon="📋">デッキ管理</MenuBtn>
+                <div style={{height:1,background:"#0f0f1a"}}/>
+                <MenuBtn id="card" onClick={()=>setScreen("cardManager")} color="#44aaff" icon="🗂">カード管理</MenuBtn>
+              </div>
+            </>
+          )}
+
+          {/* Deck list */}
+          {screen==="deckList"&&(
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:2,height:16,background:"#ffe066",boxShadow:"0 0 4px #ffe066"}}/>
+                  <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:14,fontWeight:700,letterSpacing:3,color:"#ffe066"}}>DECK LIST</span>
+                </div>
+                <button onClick={()=>setScreen("main")} style={{padding:"5px 12px",borderRadius:2,background:"transparent",border:"1px solid #2a2a3a",color:"#555",cursor:"pointer",fontSize:11,fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>← BACK</button>
+              </div>
+
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                {[{label:"＋ 新規作成",color:"#44ff88",onClick:openNewDeck},{label:"📷 シート読込",color:"#44aaff",onClick:()=>setScreen("deckSheet")}].map(({label,color,onClick})=>(
+                  <button key={label} onClick={onClick} style={{flex:1,padding:"10px",borderRadius:2,background:`${color}0a`,border:`1px solid ${color}44`,color,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Rajdhani',sans-serif",letterSpacing:1,transition:"all 0.12s"}}>{label}</button>
+                ))}
+              </div>
+
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {decks.map((dk,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid #1a1a2a",borderRadius:2,borderLeft:"2px solid #ffe06633"}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#ddd",fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>{dk.name}</div>
+                      <div style={{fontSize:10,color:"#444",letterSpacing:1}}>{dk.ids.length} CARDS</div>
+                    </div>
+                    <button onClick={()=>openEditDeck(i)} style={{padding:"4px 10px",borderRadius:2,background:"rgba(255,224,102,0.08)",border:"1px solid #ffe06633",color:"#ffe066",cursor:"pointer",fontSize:11}}>編集</button>
+                    <button onClick={()=>setConfirmDeleteDeck(i)} style={{padding:"4px 10px",borderRadius:2,background:"rgba(255,80,80,0.08)",border:"1px solid #f8444433",color:"#f84",cursor:"pointer",fontSize:11}}>削除</button>
+                  </div>
+                ))}
+                {decks.length===0&&(
+                  <div style={{color:"#222",fontSize:12,textAlign:"center",padding:32,fontFamily:"'Rajdhani',sans-serif",letterSpacing:2}}>NO DECKS FOUND</div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"12px 16px 0",textAlign:"center"}}>
+          <div style={{height:1,background:"linear-gradient(90deg,transparent,#1a1a3a,transparent)",marginBottom:10}}/>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#1a1a2a",letterSpacing:3}}>DUEL MASTERS SIMULATOR — LOCAL 2P EDITION</div>
+        </div>
       </div>
-    </div>
-  );
-}
 
-function menuBtn(col){
-  return{width:"100%",padding:"13px",borderRadius:10,background:`${col}11`,border:`1px solid ${col}33`,color:col,cursor:"pointer",fontSize:14,fontWeight:700,textAlign:"left"};
-}
-
-// ===========================
-// BATTLE SCREEN
-// ===========================
-function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
-  const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb));
-  const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb));
-  const [active,setActive]=useState("p1");
-  const [drewThisTurn,setDrewThisTurn]=useState(false);
-  const [chargedThisTurn,setChargedThisTurn]=useState(false);
-  const [attackingUid,setAttackingUid]=useState(null);
-  const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
-  const [message,setMessage]=useState("P1: カードをドローしてください");
-  const [winner,setWinner]=useState(null);
-  const [handoff,setHandoff]=useState(null);
-  const [turn,setTurn]=useState(1);
-  const [effectModal,setEffectModal]=useState(null);
-  const [cutin,setCutin]=useState(null);
-
-  const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
-  const showCutIn=useCallback(data=>setCutin(data),[]);
-  const openEffectModal=useCallback(m=>setEffectModal(m),[]);
-
-  const otherPid=active==="p1"?"p2":"p1";
-  const activeState=active==="p1"?p1:p2;
-  const otherState=active==="p1"?p2:p1;
-  const setActiveState=active==="p1"?setP1:setP2;
-  const setOtherState=active==="p1"?setP2:setP1;
-
-  const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName)=>{
-    if(!effect) return;
-    const srcCard=cardDb.find(c=>c.name===sourceName);
-    showCutIn({title:"効果発動！",cardName:sourceName,civ:srcCard?.civ||"fire",icon:CIV[srcCard?.civ||"fire"]?.icon});
-    setTimeout(()=>processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal),400);
-  };
-
-  const handleDraw=()=>{
-    if(drewThisTurn)return;
-    if(activeState.deck.length===0){setWinner(otherPid==="p1"?"P1":"P2");return;}
-    const[card,...rest]=activeState.deck;
-    setActiveState(s=>({...s,hand:[...s.hand,card],deck:rest}));
-    setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
-  };
-  const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:false}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ`);};
-  const handlePlayCard=idx=>{
-    const card=activeState.hand[idx];
-    const check=canPayCost(activeState.mana,card);
-    if(!check.ok){setMessage(`✗ ${check.reason}`);return false;}
-    const newMana=tapManaForCost(activeState.mana,card);
-    const newHand=activeState.hand.filter((_,i)=>i!==idx);
-    if(card.type==="creature"){
-      const isSpeed=card.keywords?.includes("speedAttacker");
-      const newBattle=[...activeState.battle,{...card,tapped:false,summonedThisTurn:!isSpeed}];
-      setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
-      addLog(`${active}: ${card.name}(${card.power}) 召喚！`);
-      showCutIn({title:"召喚！",cardName:card.name,civ:card.civ,icon:CIV[card.civ]?.icon});
-      if(card.autoEffect) setTimeout(()=>triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name),600);
-    }else{
-      setActiveState(s=>({...s,hand:newHand,mana:newMana,grave:[...s.grave,card]}));
-      addLog(`${active}: 呪文「${card.name}」`);
-      showCutIn({title:"呪文！",cardName:card.name,civ:card.civ,icon:"📜"});
-      if(card.autoEffect) setTimeout(()=>triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,card.name),600);
-    }
-    return true;
-  };
-  const handleStartAttack=uid=>{setAttackingUid(uid);const card=activeState.battle.find(c=>c.uid===uid);addLog(`${active}: ${card?.name} 攻撃宣言`);setMessage("攻撃対象を選択");};
-  const handleAttackCreature=targetUid=>{
-    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
-    const target=otherState.battle.find(c=>c.uid===targetUid);
-    if(!attacker||!target)return;
-    setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
-    addLog(`⚔ ${attacker.name}(${attacker.power}) vs ${target.name}(${target.power})`);
-    const aWin=attacker.power>=target.power;const dWin=target.power>=attacker.power;
-    if(aWin){setOtherState(s=>({...s,battle:s.battle.filter(c=>c.uid!==targetUid),grave:[...s.grave,target]}));addLog(`✅ ${target.name} 破壊`);}
-    if(dWin){setActiveState(s=>({...s,battle:s.battle.filter(c=>c.uid!==attackingUid),grave:[...s.grave,attacker]}));addLog(`💔 ${attacker.name} 破壊`);}
-    setAttackingUid(null);
-  };
-  const handleAttackShield=shieldIdx=>{
-    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
-    if(!attacker)return;
-    const breakCount=attacker.keywords?.includes("tBreaker")?3:attacker.keywords?.includes("wBreaker")?2:1;
-    setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
-    let shields=[...otherState.shields];const broken=[];
-    for(let i=0;i<breakCount;i++){if(shields.length===0)break;broken.push(shields[0]);shields=shields.slice(1);}
-    const isBolmetheus=attacker.name.includes("ボルメテウス");
-    const sTriggers=broken.filter(c=>c.keywords?.includes("sTrigger"));
-    const normal=broken.filter(c=>!c.keywords?.includes("sTrigger"));
-    if(isBolmetheus){setOtherState(s=>({...s,shields,grave:[...s.grave,...broken]}));addLog(`☠ ボルメテウス効果`);}
-    else{
-      setOtherState(s=>({...s,shields,hand:[...s.hand,...normal,...sTriggers]}));
-      sTriggers.forEach(c=>{addLog(`🛡 S・トリガー「${c.name}」`);showCutIn({title:"S・トリガー発動！",cardName:c.name,civ:c.civ,icon:"🛡"});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
-    }
-    addLog(`🔥 ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
-    if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
-    setAttackingUid(null);
-  };
-  const handleEndTurn=()=>{
-    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
-    setAttackingUid(null);const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
-    addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
-    setHandoff({from:active.toUpperCase(),to:next.toUpperCase()});
-    setActive(next);setTurn(newTurn);setDrewThisTurn(false);setChargedThisTurn(false);
-  };
-
-  return(
-    <div style={{minHeight:"100vh",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}::-webkit-scrollbar{width:4px;background:#111;}::-webkit-scrollbar-thumb{background:#333;border-radius:4px;}`}</style>
-      {cutin&&<CutIn cutin={cutin} onDone={()=>setCutin(null)}/>}
-      {winner&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:700}}>
-          <div style={{fontSize:72}}>🏆</div>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:48,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066",marginTop:12}}>{winner} WIN!</div>
-          <div style={{display:"flex",gap:12,marginTop:32}}>
-            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(false);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: ドローしてください");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
-            <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
+      {/* Delete confirm modal */}
+      {confirmDeleteDeck!==null&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:"#08080f",border:"1px solid #f8444444",borderRadius:4,padding:24,maxWidth:320,width:"100%"}}>
+            <div style={{color:"#f84",fontWeight:700,fontSize:14,marginBottom:8,fontFamily:"'Rajdhani',sans-serif",letterSpacing:2}}>DELETE DECK</div>
+            <div style={{color:"#888",fontSize:12,marginBottom:20}}>「{decks[confirmDeleteDeck]?.name}」を削除しますか？</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{setDecks(d=>d.filter((_,i)=>i!==confirmDeleteDeck));if(p1DeckIdx===confirmDeleteDeck)setP1DeckIdx(null);if(p2DeckIdx===confirmDeleteDeck)setP2DeckIdx(null);setConfirmDeleteDeck(null);}} style={{flex:1,padding:"9px",borderRadius:2,background:"#1a0505",border:"1px solid #f84",color:"#f84",cursor:"pointer",fontWeight:700,fontSize:12}}>削除する</button>
+              <button onClick={()=>setConfirmDeleteDeck(null)} style={{flex:1,padding:"9px",borderRadius:2,background:"#0a0a14",border:"1px solid #222",color:"#555",cursor:"pointer",fontSize:12}}>キャンセル</button>
+            </div>
           </div>
         </div>
       )}
-      {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
-      {effectModal&&<EffectModal modal={effectModal} p1State={p1} setP1={setP1} p2State={p2} setP2={setP2} onClose={()=>setEffectModal(null)} addLog={addLog}/>}
-      <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>
-        <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span></div>
-        <button onClick={onBackToMenu} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>← メニュー</button>
-      </div>
-      <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>💬 {message}</div>
-      <div style={{flex:1,overflowY:"auto",padding:"8px 10px",display:"flex",flexDirection:"column",gap:8}}>
-        <PlayerBoard pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={active==="p2"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog}/>
-        <Log entries={logs}/>
-        <PlayerBoard pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={active==="p1"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog}/>
-      </div>
     </div>
   );
 }
 
 // ===========================
-// ROOT
+// ROOT (with localStorage)
 // ===========================
 export default function App(){
-  const [cardDb,setCardDb]=useState(INITIAL_CARD_DB);
-  const [decks,setDecks]=useState([
-    {name:"サンプルデッキA",ids:defaultDeckIds(INITIAL_CARD_DB)},
-    {name:"サンプルデッキB",ids:defaultDeckIds(INITIAL_CARD_DB)},
-  ]);
-  const [p1DeckIdx,setP1DeckIdx]=useState(0);
-  const [p2DeckIdx,setP2DeckIdx]=useState(1);
-  const [gameState,setGameState]=useState(null); // null=menu, {p1Ids,p2Ids}=battle
+  // Load from localStorage or use defaults
+  const [cardDb, setCardDb] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dm_cardDb");
+      return saved ? JSON.parse(saved) : INITIAL_CARD_DB;
+    } catch { return INITIAL_CARD_DB; }
+  });
 
-  if(gameState){
+  const [decks, setDecks] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dm_decks");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      { name:"サンプルデッキA", ids:defaultDeckIds(INITIAL_CARD_DB) },
+      { name:"サンプルデッキB", ids:defaultDeckIds(INITIAL_CARD_DB) },
+    ];
+  });
+
+  const [p1DeckIdx, setP1DeckIdx] = useState(() => {
+    try { const s=localStorage.getItem("dm_p1DeckIdx"); return s!==null?Number(s):0; } catch { return 0; }
+  });
+
+  const [p2DeckIdx, setP2DeckIdx] = useState(() => {
+    try { const s=localStorage.getItem("dm_p2DeckIdx"); return s!==null?Number(s):1; } catch { return 1; }
+  });
+
+  const [gameState, setGameState] = useState(null);
+
+  // Persist to localStorage on every change
+  useEffect(() => {
+    try { localStorage.setItem("dm_cardDb", JSON.stringify(cardDb)); } catch {}
+  }, [cardDb]);
+
+  useEffect(() => {
+    try { localStorage.setItem("dm_decks", JSON.stringify(decks)); } catch {}
+  }, [decks]);
+
+  useEffect(() => {
+    try { localStorage.setItem("dm_p1DeckIdx", String(p1DeckIdx)); } catch {}
+  }, [p1DeckIdx]);
+
+  useEffect(() => {
+    try { localStorage.setItem("dm_p2DeckIdx", String(p2DeckIdx)); } catch {}
+  }, [p2DeckIdx]);
+
+  if (gameState) {
     return <BattleScreen p1DeckIds={gameState.p1Ids} p2DeckIds={gameState.p2Ids} cardDb={cardDb} onBackToMenu={()=>setGameState(null)}/>;
   }
-  return(
+  return (
     <MenuScreen
       cardDb={cardDb} setCardDb={setCardDb}
       decks={decks} setDecks={setDecks}
