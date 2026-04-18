@@ -3,36 +3,42 @@ import { useState, useCallback, useRef, useEffect } from "react";
 // ===========================
 // INITIAL CARD DATABASE
 // ===========================
+// civ は単色なら文字列、多色なら配列 e.g. ["fire","nature"]
 const INITIAL_CARD_DB = [
-  { id:1,  name:"ボルメテウス・ホワイト・ドラゴン", cost:8,  power:11000, type:"creature", civ:"fire",     keywords:["speedAttacker","wBreaker"],  effect:"スピードアタッカー。W・ブレイカー。シールドブレイク時、そのシールドは墓地へ。", autoEffect:null },
-  { id:2,  name:"アクアン",                         cost:5,  power:3000,  type:"creature", civ:"water",    keywords:["drawOnPlay"],                effect:"バトルゾーンに出たとき、カードを5枚引き、3枚捨てる。", autoEffect:{ trigger:"play", type:"draw", amount:5, thenDiscard:3 } },
-  { id:3,  name:"クリスタル・パラディン",           cost:6,  power:6000,  type:"creature", civ:"water",    keywords:["blocker","wBreaker"],         effect:"ブロッカー。W・ブレイカー。", autoEffect:null },
-  { id:5,  name:"ロスト・ソウル",                   cost:7,  power:0,     type:"spell",    civ:"darkness", keywords:[],                             effect:"相手の手札を全て見て、2枚選んで捨てさせる。", autoEffect:{ trigger:"cast", type:"handDestroy", amount:2, target:"opponent" } },
-  { id:6,  name:"ガントラ・マックス",               cost:3,  power:3000,  type:"creature", civ:"fire",     keywords:["speedAttacker"],              effect:"スピードアタッカー。", autoEffect:null },
-  { id:7,  name:"光輪の精霊ピカリエ",               cost:3,  power:3500,  type:"creature", civ:"light",    keywords:["blocker","cantAttack"],       effect:"ブロッカー。このクリーチャーは攻撃できない。", autoEffect:null },
-  { id:8,  name:"ナチュラル・トラップ",             cost:5,  power:0,     type:"spell",    civ:"nature",   keywords:["sTrigger"],                   effect:"S・トリガー。相手クリーチャー1体をマナゾーンに置く。", autoEffect:{ trigger:"cast", type:"sendToMana", target:"opponent", amount:1 } },
-  { id:9,  name:"アクア・エージェント",             cost:2,  power:2000,  type:"creature", civ:"water",    keywords:[],                             effect:"バトルゾーンに出たとき、カードを1枚引く。", autoEffect:{ trigger:"play", type:"draw", amount:1 } },
-  { id:10, name:"デーモン・ハンド",                 cost:6,  power:0,     type:"spell",    civ:"darkness", keywords:["sTrigger"],                   effect:"S・トリガー。相手クリーチャー1体を破壊する。", autoEffect:{ trigger:"cast", type:"destroy", target:"opponent", amount:1 } },
-  { id:11, name:"リーフ・ストーム",                 cost:2,  power:0,     type:"spell",    civ:"nature",   keywords:[],                             effect:"自分のマナゾーンのカード1枚を手札に加える。", autoEffect:{ trigger:"cast", type:"manaReturn", target:"self", amount:1 } },
-  { id:12, name:"紅蓮の戦士ガルベリアス",           cost:5,  power:5000,  type:"creature", civ:"fire",     keywords:["speedAttacker","wBreaker"],   effect:"スピードアタッカー。W・ブレイカー。", autoEffect:null },
-  { id:13, name:"エメラルド・グラスパー",           cost:3,  power:4000,  type:"creature", civ:"nature",   keywords:[],                             effect:"バトルゾーンに出たとき、自分のマナゾーンのカードを1枚手札に加えてもよい。", autoEffect:{ trigger:"play", type:"manaReturn", target:"self", amount:1, optional:true } },
-  { id:14, name:"霊騎コルテオ",                     cost:4,  power:3000,  type:"creature", civ:"light",    keywords:["blocker"],                    effect:"ブロッカー。", autoEffect:null },
-  { id:15, name:"斬隠テンサイ・ジャニット",         cost:3,  power:1000,  type:"creature", civ:"darkness", keywords:[],                             effect:"このクリーチャーが攻撃するとき、相手はカードを1枚捨てる。[攻撃時例外処理]", autoEffect:null },
-  { id:16, name:"アクア・ハルカス",                 cost:2,  power:1000,  type:"creature", civ:"water",    keywords:[],                             effect:"バトルゾーンに出たとき、カードを1枚引く。", autoEffect:{ trigger:"play", type:"draw", amount:1 } },
-  { id:17, name:"サイバー・ブレイン",               cost:5,  power:0,     type:"spell",    civ:"water",    keywords:["sTrigger"],                   effect:"S・トリガー。カードを3枚引く。", autoEffect:{ trigger:"cast", type:"draw", amount:3 } },
-  { id:18, name:"クリスタル・メモリー",             cost:4,  power:0,     type:"spell",    civ:"water",    keywords:[],                             effect:"自分の山札を見て、カードを1枚手札に加える。シャッフルする。", autoEffect:{ trigger:"cast", type:"deckSearch", amount:1 } },
-  { id:19, name:"魂と記憶の盾",                     cost:5,  power:0,     type:"spell",    civ:"light",    keywords:[],                             effect:"相手のクリーチャー1体を持ち主の手札に戻す。", autoEffect:{ trigger:"cast", type:"bounce", target:"opponent", amount:1 } },
-  { id:20, name:"スパイラル・ゲート",               cost:4,  power:0,     type:"spell",    civ:"water",    keywords:["sTrigger"],                   effect:"S・トリガー。相手のクリーチャー1体を持ち主の手札に戻す。", autoEffect:{ trigger:"cast", type:"bounce", target:"opponent", amount:1 } },
-  { id:21, name:"地獄スクラッパー",                 cost:5,  power:0,     type:"spell",    civ:"fire",     keywords:["sTrigger"],                   effect:"S・トリガー。パワー3000以下の相手クリーチャーを全て破壊する。", autoEffect:{ trigger:"cast", type:"destroyUnder", target:"opponent", threshold:3000 } },
-  { id:22, name:"フェアリー・ライフ",               cost:2,  power:0,     type:"spell",    civ:"nature",   keywords:["sTrigger"],                   effect:"S・トリガー。自分の山札の上から1枚をマナゾーンに置く。", autoEffect:{ trigger:"cast", type:"deckToMana", amount:1 } },
-  { id:23, name:"ホーリー・スパーク",               cost:4,  power:0,     type:"spell",    civ:"light",    keywords:["sTrigger"],                   effect:"S・トリガー。相手のクリーチャーをすべてタップする。", autoEffect:{ trigger:"cast", type:"tapAll", target:"opponent" } },
-  { id:24, name:"クリムゾン・チャージャー",         cost:3,  power:0,     type:"spell",    civ:"fire",     keywords:[],                             effect:"自分の山札の上から3枚を墓地に置く。その中のクリーチャー1体をBZに出せる。[例外処理]", autoEffect:null },
-  { id:25, name:"ボルバルザーク・エクス",           cost:7,  power:6000,  type:"creature", civ:"fire",     keywords:["speedAttacker","wBreaker"],   effect:"スピードアタッカー。W・ブレイカー。このクリーチャーがバトルゾーンに出たとき、相手のマナゾーンのカードを1枚選んで墓地に置く。[例外処理]", autoEffect:null },
-  { id:26, name:"界王類邪龍目ギョウ",               cost:8,  power:13000, type:"creature", civ:"darkness", keywords:["tBreaker"],                   effect:"T・ブレイカー。相手がクリーチャーを召喚するとき、そのクリーチャーのコストを2多くする。[例外処理]", autoEffect:null },
-  { id:27, name:"聖霊王アルカディアス",             cost:7,  power:9000,  type:"creature", civ:"light",    keywords:["wBreaker"],                   effect:"W・ブレイカー。相手は闇のカードを使えない。[例外処理]", autoEffect:null },
-  { id:28, name:"魔龍バベルギヌス",                 cost:7,  power:6000,  type:"creature", civ:"darkness", keywords:[],                             effect:"このクリーチャーがバトルゾーンに出たとき、相手のクリーチャー1体と自分のクリーチャー1体を破壊する。[例外処理]", autoEffect:null },
-  { id:29, name:"ヘブンズ・ゲート",                cost:6,  power:0,     type:"spell",    civ:"light",    keywords:["sTrigger"],                   effect:"S・トリガー。ブロッカーを2体まで、自分の手札からバトルゾーンに出す。[例外処理]", autoEffect:null },
-  { id:30, name:"母なる大地",                       cost:4,  power:0,     type:"spell",    civ:"nature",   keywords:["sTrigger"],                   effect:"S・トリガー。バトルゾーンにある自分のクリーチャー1体をマナゾーンに置き、自分のマナゾーンからクリーチャーを1体出す。[例外処理]", autoEffect:null },
+  { id:1,  name:"ボルメテウス・ホワイト・ドラゴン", race:"アーマード・ドラゴン",       cost:7,  power:7000,  type:"creature", civ:"fire",              keywords:["wBreaker"],                  effect:"W・ブレイカー\nこのクリーチャーがシールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く。（S・トリガーは使えない）", autoEffect:null },
+  { id:2,  name:"アクアン",                         race:"サイバーロード",             cost:4,  power:3000,  type:"creature", civ:"water",             keywords:[],                             effect:"このクリーチャーがバトルゾーンに出た時、自分の山札の上から5枚をすべてのプレイヤーに見せる。その中の光または闇のカードをすべて手札に加え、残りを墓地に置く。", autoEffect:{ trigger:"play", type:"draw", amount:5, thenDiscard:0 } },
+  { id:3,  name:"クリスタル・パラディン",           race:"リキッド・ピープル",         cost:6,  power:6000,  type:"creature", civ:"water",             keywords:["blocker","wBreaker"],         effect:"ブロッカー\nW・ブレイカー\n相手のクリーチャーが攻撃する時、可能であればこのクリーチャーを攻撃しなければならない。", autoEffect:null },
+  { id:5,  name:"ロスト・ソウル",                   race:null,                         cost:7,  power:0,     type:"spell",    civ:"darkness",          keywords:[],                             effect:"相手の手札をすべて見る。その中から2枚選び、捨てさせる。", autoEffect:{ trigger:"cast", type:"handDestroy", amount:2, target:"opponent" } },
+  { id:6,  name:"ガントラ・マックス",               race:"ドラゴノイド",               cost:3,  power:3000,  type:"creature", civ:"fire",              keywords:["speedAttacker"],              effect:"スピードアタッカー（このクリーチャーは召喚酔いしない）", autoEffect:null },
+  { id:7,  name:"光輪の精霊ピカリエ",               race:"エンジェル・コマンド",       cost:3,  power:3500,  type:"creature", civ:"light",             keywords:["blocker","cantAttack"],       effect:"ブロッカー（相手クリーチャーが攻撃する時、このクリーチャーは盾の前に立ちはだかることができる）\nこのクリーチャーは攻撃することができない。", autoEffect:null },
+  { id:8,  name:"ナチュラル・トラップ",             race:null,                         cost:5,  power:0,     type:"spell",    civ:"nature",            keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーを1体選び、持ち主のマナゾーンに置く。", autoEffect:{ trigger:"cast", type:"sendToMana", target:"opponent", amount:1 } },
+  { id:9,  name:"アクア・エージェント",             race:"リキッド・ピープル",         cost:3,  power:2000,  type:"creature", civ:"water",             keywords:[],                             effect:"このクリーチャーがバトルゾーンに出た時、カードを1枚引いてもよい。", autoEffect:{ trigger:"play", type:"draw", amount:1 } },
+  { id:10, name:"デーモン・ハンド",                 race:null,                         cost:6,  power:0,     type:"spell",    civ:"darkness",          keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーを1体破壊する。", autoEffect:{ trigger:"cast", type:"destroy", target:"opponent", amount:1 } },
+  { id:11, name:"リーフ・ストーム",                 race:null,                         cost:3,  power:0,     type:"spell",    civ:"nature",            keywords:[],                             effect:"自分のマナゾーンにあるカードを1枚、手札に戻す。", autoEffect:{ trigger:"cast", type:"manaReturn", target:"self", amount:1 } },
+  { id:12, name:"紅蓮の戦士ガルベリアス",           race:"ドラゴノイド",               cost:5,  power:5000,  type:"creature", civ:"fire",              keywords:["speedAttacker","wBreaker"],   effect:"スピードアタッカー（このクリーチャーは召喚酔いしない）\nW・ブレイカー", autoEffect:null },
+  { id:13, name:"エメラルド・グラスパー",           race:"スノーフェアリー",           cost:3,  power:4000,  type:"creature", civ:"nature",            keywords:[],                             effect:"このクリーチャーがバトルゾーンに出た時、自分のマナゾーンにあるカードを1枚、手札に戻してもよい。", autoEffect:{ trigger:"play", type:"manaReturn", target:"self", amount:1, optional:true } },
+  { id:14, name:"霊騎コルテオ",                     race:"エンジェル・コマンド",       cost:4,  power:3000,  type:"creature", civ:"light",             keywords:["blocker"],                    effect:"ブロッカー（相手クリーチャーが攻撃する時、このクリーチャーは盾の前に立ちはだかることができる）", autoEffect:null },
+  { id:15, name:"斬隠テンサイ・ジャニット",         race:"ゴースト",                   cost:3,  power:1000,  type:"creature", civ:"darkness",          keywords:[],                             effect:"このクリーチャーが攻撃する時、相手はカードを1枚選んで捨てる。[攻撃時例外処理]", autoEffect:null },
+  { id:16, name:"アクア・ハルカス",                 race:"リキッド・ピープル",         cost:2,  power:1000,  type:"creature", civ:"water",             keywords:[],                             effect:"このクリーチャーがバトルゾーンに出た時、カードを1枚引いてもよい。", autoEffect:{ trigger:"play", type:"draw", amount:1 } },
+  { id:17, name:"サイバー・ブレイン",               race:null,                         cost:5,  power:0,     type:"spell",    civ:"water",             keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nカードを3枚引く。", autoEffect:{ trigger:"cast", type:"draw", amount:3 } },
+  { id:18, name:"クリスタル・メモリー",             race:null,                         cost:4,  power:0,     type:"spell",    civ:"water",             keywords:[],                             effect:"自分の山札を見る。その中からカードを1枚選び、手札に加える。その後、山札をシャッフルする。", autoEffect:{ trigger:"cast", type:"deckSearch", amount:1 } },
+  { id:19, name:"魂と記憶の盾",                     race:null,                         cost:5,  power:0,     type:"spell",    civ:"light",             keywords:[],                             effect:"バトルゾーンにある相手のクリーチャーを1体選び、持ち主の手札に戻す。", autoEffect:{ trigger:"cast", type:"bounce", target:"opponent", amount:1 } },
+  { id:20, name:"スパイラル・ゲート",               race:null,                         cost:4,  power:0,     type:"spell",    civ:"water",             keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーを1体選び、持ち主の手札に戻す。", autoEffect:{ trigger:"cast", type:"bounce", target:"opponent", amount:1 } },
+  { id:21, name:"地獄スクラッパー",                 race:null,                         cost:5,  power:0,     type:"spell",    civ:"fire",              keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nパワー3000以下の相手クリーチャーをすべて破壊する。", autoEffect:{ trigger:"cast", type:"destroyUnder", target:"opponent", threshold:3000 } },
+  { id:22, name:"フェアリー・ライフ",               race:null,                         cost:2,  power:0,     type:"spell",    civ:"nature",            keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\n自分の山札の上から1枚目をマナゾーンに置く。", autoEffect:{ trigger:"cast", type:"deckToMana", amount:1 } },
+  { id:23, name:"ホーリー・スパーク",               race:null,                         cost:4,  power:0,     type:"spell",    civ:"light",             keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーをすべてタップする。", autoEffect:{ trigger:"cast", type:"tapAll", target:"opponent" } },
+  { id:24, name:"クリムゾン・チャージャー",         race:null,                         cost:3,  power:0,     type:"spell",    civ:"fire",              keywords:[],                             effect:"自分の山札の上から3枚を墓地に置く。こうして墓地に置いたカードの中にクリーチャーが1体あれば、そのクリーチャーをバトルゾーンに出してもよい。[例外処理]", autoEffect:null },
+  { id:25, name:"ボルバルザーク・エクス",           race:"アーマード・ドラゴン",       cost:7,  power:6000,  type:"creature", civ:"fire",              keywords:["speedAttacker","wBreaker"],   effect:"スピードアタッカー\nW・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、相手のマナゾーンのカードを1枚選んで墓地に置く。[例外処理]", autoEffect:null },
+  { id:26, name:"界王類邪龍目ギョウ",               race:"ドラゴン・ゾンビ / オリジン", cost:8, power:13000, type:"creature", civ:"darkness",          keywords:["tBreaker"],                   effect:"T・ブレイカー\n相手がクリーチャーを召喚するコストは2多くなる。[例外処理]", autoEffect:null },
+  { id:27, name:"聖霊王アルカディアス",             race:"エンジェル・コマンド",       cost:7,  power:9000,  type:"creature", civ:"light",             keywords:["wBreaker"],                   effect:"W・ブレイカー\n相手は闇のカードを使えない。[例外処理]", autoEffect:null },
+  { id:28, name:"魔龍バベルギヌス",                 race:"ドラゴン・ゾンビ",           cost:7,  power:6000,  type:"creature", civ:"darkness",          keywords:[],                             effect:"このクリーチャーがバトルゾーンに出た時、バトルゾーンにある相手のクリーチャーを1体と自分のクリーチャーを1体破壊する。[例外処理]", autoEffect:null },
+  { id:29, name:"ヘブンズ・ゲート",                race:null,                         cost:6,  power:0,     type:"spell",    civ:"light",             keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nブロッカーを2体まで、自分の手札からバトルゾーンに出す。[例外処理]", autoEffect:null },
+  { id:30, name:"母なる大地",                       race:null,                         cost:4,  power:0,     type:"spell",    civ:"nature",            keywords:["sTrigger"],                   effect:"S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある自分のクリーチャーを1体マナゾーンに置き、自分のマナゾーンからクリーチャーを1体出してもよい。[例外処理]", autoEffect:null },
+  { id:31, name:"ボルシャック・ドラゴン",           race:"アーマード・ドラゴン",       cost:6,  power:6000,  type:"creature", civ:"fire",              keywords:["speedAttacker","wBreaker"],   effect:"スピードアタッカー\nW・ブレイカー\n攻撃中、このクリーチャーのパワーは自分の墓地にある火のカード1枚につき+1000される。[例外処理]", autoEffect:null },
+  { id:32, name:"無双竜機ボルバルザーク",           race:"アーマード・ドラゴン",       cost:7,  power:6000,  type:"creature", civ:["fire","nature"],   keywords:["speedAttacker","wBreaker"],   effect:"スピードアタッカー\nW・ブレイカー\nこのクリーチャーをバトルゾーンに出した時、このターンの後、もう一度自分のターンを行う。そのターンの終わりに、このクリーチャーを破壊する。[例外処理]", autoEffect:null },
+  { id:33, name:"光器ペトローバ",                   race:"メカ・サンダー",             cost:5,  power:3500,  type:"creature", civ:"light",             keywords:["blocker"],                    effect:"ブロッカー\n自分のクリーチャーが召喚してバトルゾーンに出た時、そのクリーチャーのパワーは+2000される。[例外処理]", autoEffect:null },
+  { id:34, name:"アクア・サーファー",               race:"リキッド・ピープル",         cost:6,  power:3000,  type:"creature", civ:"water",             keywords:["sTrigger"],                   effect:"S・トリガー（このクリーチャーをシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してよい）\nこのクリーチャーがバトルゾーンに出た時、相手のクリーチャーを1体、持ち主の手札に戻してもよい。", autoEffect:{ trigger:"play", type:"bounce", target:"opponent", amount:1 } },
+  { id:35, name:"悪魔神バロム",                     race:"デーモン・コマンド",         cost:8,  power:9000,  type:"creature", civ:"darkness",          keywords:["wBreaker"],                   effect:"W・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、闇以外のクリーチャーをすべて破壊する。[例外処理]", autoEffect:null },
 ];
 
 const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay"];
@@ -83,19 +89,36 @@ function initPlayerState(deckIds, cardDb) {
   return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[]};
 }
 
+// civs: 単色="fire" or 多色=["fire","nature"]
+function getCardCivs(card){ return Array.isArray(card.civ)?card.civ:[card.civ]; }
+
 function canPayCost(mana,card){
   const untapped=mana.filter(c=>!c.tapped);
   if(untapped.length<card.cost) return {ok:false,reason:`マナ不足 (必要:${card.cost} / 利用可能:${untapped.length})`};
   if(card.cost===0) return {ok:true};
-  const hasCiv=untapped.some(c=>c.civ===card.civ);
-  if(!hasCiv) return {ok:false,reason:`${CIV[card.civ]?.label}文明のマナが必要です`};
+  const civs=getCardCivs(card);
+  // 多色: 各文明のマナが1枚以上必要
+  for(const civ of civs){
+    if(!untapped.some(c=>c.civ===civ)){
+      return {ok:false,reason:`${CIV[civ]?.label}文明のマナが必要です`};
+    }
+  }
   return {ok:true};
 }
 
 function tapManaForCost(mana,card){
   let tapped=0;const needed=card.cost;const nm=mana.map(c=>({...c}));
-  for(let i=0;i<nm.length&&tapped<needed;i++){if(!nm[i].tapped&&nm[i].civ===card.civ){nm[i].tapped=true;tapped++;}}
-  for(let i=0;i<nm.length&&tapped<needed;i++){if(!nm[i].tapped){nm[i].tapped=true;tapped++;}}
+  const civs=getCardCivs(card);
+  // まず各文明を1枚ずつタップ
+  for(const civ of civs){
+    for(let i=0;i<nm.length&&tapped<needed;i++){
+      if(!nm[i].tapped&&nm[i].civ===civ){nm[i].tapped=true;tapped++;break;}
+    }
+  }
+  // 残りは任意
+  for(let i=0;i<nm.length&&tapped<needed;i++){
+    if(!nm[i].tapped){nm[i].tapped=true;tapped++;}
+  }
   return nm;
 }
 
@@ -185,16 +208,21 @@ function processEffect(effect,ownerPid,selfState,setSelf,otherState,setOther,add
 // CARD COMPONENTS
 // ===========================
 function CardFace({card,selected,onClick,small,dimmed}){
-  const c=CIV[card.civ]||CIV.fire;
+  const civs=getCardCivs(card);
+  const c=CIV[civs[0]]||CIV.fire;
+  const c2=civs[1]?CIV[civs[1]]:null;
   const w=small?52:74;const h=small?72:106;
   return(
-    <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":c.color}`,background:`linear-gradient(160deg,${c.bg},#08080f)`,cursor:"pointer",position:"relative",transform:card.tapped?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
+    <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":c.color}`,background:c2?`linear-gradient(160deg,${c.bg},${c2.bg})`:`linear-gradient(160deg,${c.bg},#08080f)`,cursor:"pointer",position:"relative",transform:card.tapped?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:1}}>
         <span style={{background:c.color,color:"#fff",fontWeight:700,fontSize:small?8:10,borderRadius:3,padding:"0 3px",lineHeight:"15px"}}>{card.cost}</span>
-        <span style={{fontSize:small?9:11}}>{c.icon}</span>
+        <div style={{display:"flex",gap:1}}>{civs.map(cv=><span key={cv} style={{fontSize:small?9:11}}>{CIV[cv]?.icon}</span>)}</div>
       </div>
       <div style={{color:"#fff",fontSize:small?6.5:8.5,fontWeight:700,lineHeight:1.2,textAlign:"center",flex:1,overflow:"hidden",wordBreak:"break-all",margin:"2px 0",textShadow:`0 0 5px ${c.glow}`}}>{card.name.length>13?card.name.slice(0,12)+"…":card.name}</div>
-      <div style={{color:c.color,fontSize:small?6:7.5,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2}}>{card.type==="creature"?`⚔ ${card.power}`:"📜 呪文"}</div>
+      {/* Race */}
+      {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
+      {/* Power */}
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"?`${card.power}`:"📜 呪文"}</div>
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:7}}>⚡</span>}
         {card.keywords?.includes("blocker")&&<span style={{fontSize:7}}>🛡</span>}
@@ -267,28 +295,83 @@ function Log({entries}){
 // CREATURE DETAIL PANEL
 // ===========================
 function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose}){
-  const c=CIV[card.civ]||CIV.fire;
+  const civs=getCardCivs(card);
+  const c=CIV[civs[0]]||CIV.fire;
+  const c2=civs[1]?CIV[civs[1]]:null;
   const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!card.keywords?.includes("speedAttacker"));
   const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!card.keywords?.includes("speedAttacker"))?"召喚酔い":!drewThisTurn?"ドロー前":null;
+
+  // Parse effect text: lines starting with known keywords get bold styling
+  const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカー","T・ブレイカー","ブロッカー","S・トリガー"];
+  const effectLines = card.effect?.split("\n")||[];
+
   return(
-    <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:`linear-gradient(160deg,${c.bg},#0a0a18)`,border:`2px solid ${c.color}`,borderRadius:16,padding:20,maxWidth:340,width:"100%",boxShadow:`0 0 30px ${c.glow}66`}}>
-        <div style={{display:"flex",gap:12,marginBottom:12}}>
-          <CardFace card={card}/>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:"#fff",fontSize:14,lineHeight:1.3,marginBottom:4}}>{card.name}</div>
-            <div style={{fontSize:11,color:"#777",marginBottom:4}}>{c.icon} {c.label}文明 ／ コスト {card.cost} ／ パワー {card.power}</div>
-            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-              {card.keywords?.map(k=><span key={k} style={{fontSize:9,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,color:c.textColor,border:`1px solid ${c.color}44`}}>{KEYWORD_LABELS[k]||k}</span>)}
+    <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:`linear-gradient(170deg,${c.bg} 0%,${c2?c2.bg:"#08080f"} 100%)`,
+        border:`2px solid ${c.color}`,borderRadius:12,maxWidth:340,width:"100%",
+        boxShadow:`0 0 30px ${c.glow}55`,overflow:"hidden",
+      }}>
+        {/* Card header - official style */}
+        <div style={{background:`linear-gradient(90deg,${c.color}33,${c2?c2.color+"22":"transparent"})`,padding:"10px 14px",borderBottom:`1px solid ${c.color}44`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              {/* Cost badge */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                <div style={{width:28,height:28,borderRadius:"50%",background:c.color,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:15,color:"#fff",boxShadow:`0 0 8px ${c.glow}`}}>{card.cost}</div>
+                {c2&&<div style={{width:24,height:24,borderRadius:"50%",background:c2.color,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:12,color:"#fff"}}>{c2.icon}</div>}
+              </div>
+              {/* Name */}
+              <div style={{fontWeight:900,color:"#fff",fontSize:15,lineHeight:1.2,textShadow:`0 0 8px ${c.glow}`}}>{card.name}</div>
+              {/* Race */}
+              {card.race&&<div style={{fontSize:11,color:c.textColor,marginTop:2,fontStyle:"italic"}}>{card.race}</div>}
             </div>
+            {/* Civ icons */}
+            <div style={{display:"flex",gap:4,fontSize:22}}>{civs.map(cv=><span key={cv}>{CIV[cv]?.icon}</span>)}</div>
           </div>
         </div>
-        <div style={{fontSize:11,color:"#bbb",lineHeight:1.6,marginBottom:14,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:6,border:"1px solid #1a1a2a"}}>{card.effect}</div>
-        {card.tapped&&<div style={{fontSize:11,color:"#888",marginBottom:8,padding:"4px 8px",background:"#111",borderRadius:4}}>⟳ タップ状態</div>}
-        {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&<div style={{fontSize:11,color:"#888",marginBottom:8,padding:"4px 8px",background:"#111",borderRadius:4}}>💤 召喚酔い</div>}
-        <div style={{display:"flex",gap:8}}>
-          {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:7,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}44,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed"}}>{canAtk?"⚔ 攻撃する":`⚔ 攻撃不可 (${reason})`}</button>}
-          <button onClick={onClose} style={{padding:"10px 16px",borderRadius:7,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>閉じる</button>
+
+        {/* Effect text box - official style */}
+        <div style={{margin:"10px 12px",background:"rgba(0,0,0,0.5)",border:`1px solid ${c.color}44`,borderRadius:6,padding:"10px 12px",minHeight:80}}>
+          {effectLines.map((line,i)=>{
+            const isKw=KEYWORD_PATTERNS.some(k=>line.startsWith(k));
+            const isSTrigger=line.startsWith("S・トリガー");
+            return(
+              <div key={i} style={{
+                fontSize:11,lineHeight:1.6,marginBottom:isKw?2:0,
+                color: isSTrigger?"#ffcc44":isKw?c.textColor:"#ccc",
+                fontWeight: isKw?700:400,
+              }}>{line}</div>
+            );
+          })}
+        </div>
+
+        {/* Power - big and prominent */}
+        {card.type==="creature"&&(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 14px 10px"}}>
+            <div style={{display:"flex",alignItems:"baseline",gap:4}}>
+              <span style={{fontSize:28,fontWeight:900,color:"#fff",textShadow:`0 0 10px ${c.glow}`,fontFamily:"'Cinzel',serif"}}>{card.power}</span>
+              <span style={{fontSize:12,color:c.textColor,fontWeight:600}}>POWER</span>
+            </div>
+            <div style={{display:"flex",gap:4}}>
+              {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#ff440022",border:"1px solid #ff4444",color:"#ff8877"}}>⚡ SA</span>}
+              {card.keywords?.includes("wBreaker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>W.BRK</span>}
+              {card.keywords?.includes("tBreaker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>T.BRK</span>}
+              {card.keywords?.includes("blocker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#4444ff22",border:"1px solid #4444ff",color:"#8888ff"}}>🛡 BLK</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Status indicators */}
+        <div style={{padding:"0 12px 8px",display:"flex",gap:6,flexWrap:"wrap"}}>
+          {card.tapped&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>⟳ タップ中</div>}
+          {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>💤 召喚酔い</div>}
+        </div>
+
+        {/* Buttons */}
+        <div style={{display:"flex",gap:8,padding:"8px 12px 12px"}}>
+          {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed"}}>{canAtk?"⚔ 攻撃する":`攻撃不可 (${reason})`}</button>}
+          <button onClick={onClose} style={{padding:"10px 16px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>閉じる</button>
         </div>
       </div>
     </div>
@@ -323,8 +406,8 @@ function EffectModal({modal,p1State,setP1,p2State,setP2,onClose,addLog}){
       addLog(`${modal.pid}: ${selected.length}枚捨て`);
     }else if(modal.type==="destroy"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const d=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),grave:[...s.grave,...d]}));addLog(`${modal.pid}: ${d.length}体破壊`);}
     else if(modal.type==="sendToMana"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const m=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),mana:[...s.mana,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: ${m.length}体マナへ`);}
-    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...b]}));addLog(`${modal.pid}: ${b.length}体手札へ`);}
-    else if(modal.type==="manaReturn"){const m=ownerState.mana.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,mana:s.mana.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...m]}));addLog(`${modal.pid}: マナ${m.length}枚手札へ`);}
+    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...b.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: ${b.length}体手札へ`);}
+    else if(modal.type==="manaReturn"){const m=ownerState.mana.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,mana:s.mana.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: マナ${m.length}枚手札へ`);}
     else if(modal.type==="deckSearch"){const m=ownerState.deck.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,deck:shuffle(s.deck.filter(c=>!selected.includes(c.uid))),hand:[...s.hand,...m]}));addLog(`${modal.pid}: デッキ${m.length}枚→手札`);}
     onClose();
   };
@@ -817,6 +900,147 @@ function CardManager({cardDb,setCardDb,onClose}){
     </div>
   );
 }
+// ===========================
+// BATTLE SCREEN
+// ===========================
+function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
+  const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb));
+  const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb));
+  const [active,setActive]=useState("p1");
+  const [drewThisTurn,setDrewThisTurn]=useState(false);
+  const [chargedThisTurn,setChargedThisTurn]=useState(false);
+  const [attackingUid,setAttackingUid]=useState(null);
+  const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
+  const [message,setMessage]=useState("P1: カードをドローしてください");
+  const [winner,setWinner]=useState(null);
+  const [handoff,setHandoff]=useState(null);
+  const [turn,setTurn]=useState(1);
+  const [effectModal,setEffectModal]=useState(null);
+  const [cutin,setCutin]=useState(null);
+
+  const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
+  const showCutIn=useCallback(data=>setCutin(data),[]);
+  const openEffectModal=useCallback(m=>setEffectModal(m),[]);
+
+  const otherPid=active==="p1"?"p2":"p1";
+  const activeState=active==="p1"?p1:p2;
+  const otherState=active==="p1"?p2:p1;
+  const setActiveState=active==="p1"?setP1:setP2;
+  const setOtherState=active==="p1"?setP2:setP1;
+
+  const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName)=>{
+    if(!effect) return;
+    const srcCard=cardDb.find(c=>c.name===sourceName);
+    showCutIn({title:"効果発動！",cardName:sourceName,civ:srcCard?.civ||"fire",icon:CIV[srcCard?.civ||"fire"]?.icon});
+    setTimeout(()=>processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal),400);
+  };
+
+  // 先行1ターン目はドロー不要（マナチャージから開始）
+  const isFirstTurn = turn===1 && active==="p1";
+
+  const handleDraw=()=>{
+    if(drewThisTurn)return;
+    if(isFirstTurn){ setDrewThisTurn(true); addLog("P1: 先行1ターン目のためドローなし"); setMessage("P1: マナチャージorカードをプレイ"); return; }
+    if(activeState.deck.length===0){setWinner(otherPid==="p1"?"P1":"P2");return;}
+    const[card,...rest]=activeState.deck;
+    setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
+    setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
+  };
+  const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:false}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ`);};
+  const handlePlayCard=idx=>{
+    const card=activeState.hand[idx];
+    const check=canPayCost(activeState.mana,card);
+    if(!check.ok){setMessage(`✗ ${check.reason}`);return false;}
+    const newMana=tapManaForCost(activeState.mana,card);
+    const newHand=activeState.hand.filter((_,i)=>i!==idx);
+    if(card.type==="creature"){
+      const isSpeed=card.keywords?.includes("speedAttacker");
+      const newBattle=[...activeState.battle,{...card,tapped:false,summonedThisTurn:!isSpeed}];
+      setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
+      addLog(`${active}: ${card.name}(${card.power}) 召喚！`);
+      showCutIn({title:"召喚！",cardName:card.name,civ:card.civ,icon:CIV[card.civ]?.icon});
+      if(card.autoEffect) setTimeout(()=>triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name),600);
+    }else{
+      setActiveState(s=>({...s,hand:newHand,mana:newMana,grave:[...s.grave,card]}));
+      addLog(`${active}: 呪文「${card.name}」`);
+      showCutIn({title:"呪文！",cardName:card.name,civ:card.civ,icon:"📜"});
+      if(card.autoEffect) setTimeout(()=>triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,card.name),600);
+    }
+    return true;
+  };
+  const handleStartAttack=uid=>{setAttackingUid(uid);const card=activeState.battle.find(c=>c.uid===uid);addLog(`${active}: ${card?.name} 攻撃宣言`);setMessage("攻撃対象を選択");};
+  const handleAttackCreature=targetUid=>{
+    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
+    const target=otherState.battle.find(c=>c.uid===targetUid);
+    if(!attacker||!target)return;
+    setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
+    addLog(`⚔ ${attacker.name}(${attacker.power}) vs ${target.name}(${target.power})`);
+    const aWin=attacker.power>=target.power;const dWin=target.power>=attacker.power;
+    if(aWin){setOtherState(s=>({...s,battle:s.battle.filter(c=>c.uid!==targetUid),grave:[...s.grave,target]}));addLog(`✅ ${target.name} 破壊`);}
+    if(dWin){setActiveState(s=>({...s,battle:s.battle.filter(c=>c.uid!==attackingUid),grave:[...s.grave,attacker]}));addLog(`💔 ${attacker.name} 破壊`);}
+    setAttackingUid(null);
+  };
+  const handleAttackShield=shieldIdx=>{
+    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
+    if(!attacker)return;
+    const breakCount=attacker.keywords?.includes("tBreaker")?3:attacker.keywords?.includes("wBreaker")?2:1;
+    setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
+    let shields=[...otherState.shields];const broken=[];
+    for(let i=0;i<breakCount;i++){if(shields.length===0)break;broken.push(shields[0]);shields=shields.slice(1);}
+    const isBolmetheus=attacker.name.includes("ボルメテウス");
+    const sTriggers=broken.filter(c=>c.keywords?.includes("sTrigger"));
+    const normal=broken.filter(c=>!c.keywords?.includes("sTrigger"));
+    if(isBolmetheus){setOtherState(s=>({...s,shields,grave:[...s.grave,...broken]}));addLog(`☠ ボルメテウス効果`);}
+    else{
+      // シールドから手札に入るときtappedをリセット
+      const toHand=[...normal,...sTriggers].map(c=>({...c,tapped:false}));
+      setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand]}));
+      sTriggers.forEach(c=>{addLog(`🛡 S・トリガー「${c.name}」`);showCutIn({title:"S・トリガー発動！",cardName:c.name,civ:c.civ,icon:"🛡"});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
+    }
+    addLog(`🔥 ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
+    if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
+    setAttackingUid(null);
+  };
+  const handleEndTurn=()=>{
+    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
+    setAttackingUid(null);const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
+    addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
+    setHandoff({from:active.toUpperCase(),to:next.toUpperCase()});
+    setActive(next);setTurn(newTurn);setDrewThisTurn(false);setChargedThisTurn(false);
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}::-webkit-scrollbar{width:4px;background:#111;}::-webkit-scrollbar-thumb{background:#333;border-radius:4px;}`}</style>
+      {cutin&&<CutIn cutin={cutin} onDone={()=>setCutin(null)}/>}
+      {winner&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:700}}>
+          <div style={{fontSize:72}}>🏆</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:48,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066",marginTop:12}}>{winner} WIN!</div>
+          <div style={{display:"flex",gap:12,marginTop:32}}>
+            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(false);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: ドローしてください");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
+            <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
+          </div>
+        </div>
+      )}
+      {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
+      {effectModal&&<EffectModal modal={effectModal} p1State={p1} setP1={setP1} p2State={p2} setP2={setP2} onClose={()=>setEffectModal(null)} addLog={addLog}/>}
+      <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>
+        <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
+        <button onClick={onBackToMenu} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>← メニュー</button>
+      </div>
+      <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>💬 {message}</div>
+      <div style={{flex:1,overflowY:"auto",padding:"8px 10px",display:"flex",flexDirection:"column",gap:8}}>
+        <PlayerBoard pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={active==="p2"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog}/>
+        <Log entries={logs}/>
+        <PlayerBoard pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={active==="p1"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog}/>
+      </div>
+    </div>
+  );
+}
+
+
 
 // ===========================
 // MENU SCREEN (redesigned)
