@@ -1,0 +1,15 @@
+{
+  "name": "Duel Masters Simulator",
+  "short_name": "DuelMasters",
+  "start_url": "/duel-masters/",
+  "display": "fullscreen",
+  "background_color": "#020208",
+  "theme_color": "#020208",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/020208/ffe066?text=DM",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
