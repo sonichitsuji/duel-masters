@@ -39,10 +39,11 @@ const INITIAL_CARD_DB = [
   { id:33, name:"光器ペトローバ",                   race:"メカ・サンダー",             cost:5,  power:3500,  type:"creature", civ:"light",             keywords:["blocker"],                    effect:"ブロッカー\n自分のクリーチャーが召喚してバトルゾーンに出た時、そのクリーチャーのパワーは+2000される。[例外処理]", autoEffect:null },
   { id:34, name:"アクア・サーファー",               race:"リキッド・ピープル",         cost:6,  power:3000,  type:"creature", civ:"water",             keywords:["sTrigger"],                   effect:"S・トリガー（このクリーチャーをシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してよい）\nこのクリーチャーがバトルゾーンに出た時、相手のクリーチャーを1体、持ち主の手札に戻してもよい。", autoEffect:{ trigger:"play", type:"bounce", target:"opponent", amount:1 } },
   { id:35, name:"悪魔神バロム",                     race:"デーモン・コマンド",         cost:8,  power:9000,  type:"creature", civ:"darkness",          keywords:["wBreaker"],                   effect:"W・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、闇以外のクリーチャーをすべて破壊する。[例外処理]", autoEffect:null },
+  { id:36, name:"行くぜ2号！ボスカツ",              race:"メガ・コマンド・ドラゴン/革命軍/ハムカツ団", cost:6, power:6000, type:"creature", civ:["fire","nature"], keywords:["revolutionChange","wBreaker"], effect:"革命チェンジ−火または自然のドラゴン（自分の火または自然のドラゴンが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）\nW・ブレイカー", autoEffect:null, revolutionChangeCond:{ civs:["fire","nature"], race:"ドラゴン" } },
 ];
 
-const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay"];
-const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)" };
+const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange"];
+const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ" };
 
 const CIV = {
   fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", icon:"🔥", textColor:"#ff8877" },
@@ -516,11 +517,67 @@ function ExceptionPanel({pid,state,setState,otherState,setOtherState,addLog}){
 }
 
 // ===========================
+// ATTACK TRIGGER MODAL
+// 攻撃宣言時: 革命チェンジ・手札誘発・アタックトリガーを処理
+// ===========================
+function AttackTriggerModal({ attacker, hand, battle, onRevChange, onSkip }) {
+  // 革命チェンジ可能なカードを手札から探す
+  const revChangeable = hand.filter(c => {
+    if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
+    const cond = c.revolutionChangeCond;
+    // 攻撃クリーチャーの文明チェック
+    const attackerCivs = getCardCivs(attacker);
+    const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
+    // 攻撃クリーチャーの種族チェック
+    const raceMatch = !cond.race || (attacker.race && attacker.race.includes(cond.race));
+    return civMatch && raceMatch;
+  });
+
+  if (revChangeable.length === 0) return null;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:350, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"linear-gradient(160deg,#1a0505,#08080f)", border:"2px solid #ff6600", borderRadius:14, padding:20, maxWidth:360, width:"100%", boxShadow:"0 0 30px #ff660066" }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff8844", fontSize:14, fontWeight:900, marginBottom:4 }}>⚡ 革命チェンジ</div>
+        <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>
+          <span style={{ color:"#fff", fontWeight:700 }}>{attacker.name}</span> が攻撃！<br/>
+          以下のカードと革命チェンジできます。
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+          {revChangeable.map(c => {
+            const civs = getCardCivs(c);
+            const cv = CIV[civs[0]];
+            return (
+              <button key={c.uid} onClick={() => onRevChange(c)} style={{
+                display:"flex", alignItems:"center", gap:10, padding:"10px 12px",
+                background:"rgba(255,100,0,0.1)", border:"1px solid #ff660055",
+                borderRadius:8, cursor:"pointer", textAlign:"left",
+              }}>
+                <CardFace card={c} small />
+                <div>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{c.name}</div>
+                  <div style={{ fontSize:10, color:cv?.textColor }}>{c.race}</div>
+                  <div style={{ fontSize:10, color:"#888" }}>コスト:{c.cost} / パワー:{c.power}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={onSkip} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+          チェンジしない → そのまま攻撃
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
 // PLAYER BOARD
 // ===========================
 function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog}){
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
+  const [revChangeTarget,setRevChangeTarget]=useState(null); // 攻撃宣言中のクリーチャー(革命チェンジ確認中)
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);},[isActive]);
@@ -531,10 +588,57 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
   const handleCharge=()=>{if(selHand===null)return;onChargeMana(selHand);setSelHand(null);};
   const handlePlay=()=>{if(selHand===null)return;const ok=onPlayCard(selHand);if(ok!==false)setSelHand(null);};
+
+  // 攻撃宣言: 革命チェンジ可能かチェック
+  const handleAttackWithTriggerCheck = (uid) => {
+    const card = state.battle.find(c => c.uid === uid);
+    if (!card) return;
+    // 革命チェンジ可能なカードが手札にあるかチェック
+    const hasRevChange = state.hand.some(c => {
+      if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
+      const cond = c.revolutionChangeCond;
+      const attackerCivs = getCardCivs(card);
+      const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
+      const raceMatch = !cond.race || (card.race && card.race.includes(cond.race));
+      return civMatch && raceMatch;
+    });
+    if (hasRevChange) {
+      setRevChangeTarget(card);
+      setSelBattle(null);
+    } else {
+      onStartAttack(uid);
+    }
+  };
+
+  // 革命チェンジ実行
+  const handleRevChange = (handCard) => {
+    if (!revChangeTarget) return;
+    const attacker = revChangeTarget;
+    // バトルゾーンのattackerをhandCardに置き換え（タップ状態で攻撃継続）
+    setState(s => ({
+      ...s,
+      battle: s.battle.map(c => c.uid === attacker.uid ? { ...handCard, uid: handCard.uid, tapped: false, summonedThisTurn: false } : c),
+      hand: s.hand.filter(c => c.uid !== handCard.uid).concat({ ...attacker, tapped: false }),
+    }));
+    addLog(`⚡ 革命チェンジ！${attacker.name} → ${handCard.name}`);
+    // チェンジ後のクリーチャーで攻撃宣言
+    onStartAttack(handCard.uid);
+    setRevChangeTarget(null);
+  };
+
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
     <div style={{background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
-      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} onAttack={()=>{onStartAttack(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
+      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
+      {revChangeTarget&&(
+        <AttackTriggerModal
+          attacker={revChangeTarget}
+          hand={state.hand}
+          battle={state.battle}
+          onRevChange={handleRevChange}
+          onSkip={()=>{ onStartAttack(revChangeTarget.uid); setRevChangeTarget(null); }}
+        />
+      )}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         <span style={{fontWeight:700,color,fontSize:13}}>{pid==="p1"?"🧑":"👹"} {label}{isActive&&<span style={{fontSize:10,color:"#ffe066",marginLeft:6}}>▶ アクティブ</span>}</span>
         <span style={{fontSize:10,color:"#444"}}>手札:{state.hand.length} BZ:{state.battle.length} 墓地:{state.grave.length} 山:{state.deck.length}</span>
@@ -779,7 +883,10 @@ function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
   const deckIds=[];Object.entries(counts).forEach(([id,cnt])=>{for(let i=0;i<cnt;i++)deckIds.push(Number(id));});
   const filtered=cardDb.filter(c=>{
     if(search&&!c.name.includes(search))return false;
-    if(civFilter!=="all"&&c.civ!==civFilter)return false;
+    if(civFilter!=="all"){
+      const civs=getCardCivs(c);
+      if(!civs.includes(civFilter))return false;
+    }
     if(typeFilter!=="all"&&c.type!==typeFilter)return false;
     return true;
   });
