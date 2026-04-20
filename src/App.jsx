@@ -1272,7 +1272,7 @@ function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2De
           </div>
 
           {/* Version tag */}
-          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#332255",letterSpacing:3,marginTop:8}}>SIMULATOR v5.0</div>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#332255",letterSpacing:3,marginTop:8}}>SIMULATOR v6.0</div>
 
           {/* Bottom accent */}
           <div style={{marginTop:16,height:1,background:"linear-gradient(90deg,transparent,#6633ff44,#ff333344,transparent)"}}/>
