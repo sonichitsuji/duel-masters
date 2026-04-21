@@ -874,7 +874,7 @@ function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
       {/* Card list */}
       <div style={{flex:1,overflowY:"auto",padding:"8px 12px",display:"flex",flexDirection:"column",gap:5}}>
         {filtered.map(card=>{
-          const cnt=counts[card.id]||0;const c=CIV[card.civ];
+          const cnt=counts[card.id]||0;const c=CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]||CIV.fire;
           return(
             <div key={card.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:8,border:`1px solid ${cnt>0?c.color+"44":"#1a1a2a"}`}}>
               <span style={{fontSize:15}}>{c.icon}</span>
@@ -950,7 +950,7 @@ function CardManager({cardDb,setCardDb,onClose}){
         </select>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"8px 12px",display:"flex",flexDirection:"column",gap:5}}>
-        {filtered.map(card=>{const c=CIV[card.civ];return(
+        {filtered.map(card=>{const c=CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]||CIV.fire;return(
           <div key={card.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1a1a2a"}}>
             <span style={{fontSize:15}}>{c.icon}</span>
             <div style={{flex:1,minWidth:0}}>
