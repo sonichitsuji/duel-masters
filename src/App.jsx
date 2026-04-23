@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import INITIAL_CARD_DB from "../public/cards.json";
 
-const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","invasion"];
-const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", invasion:"侵略" };
+const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange"];
+const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ" };
 
 const CIV = {
   fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", icon:"🔥", textColor:"#ff8877" },
@@ -160,15 +160,6 @@ function processEffect(effect,ownerPid,selfState,setSelf,otherState,setOther,add
         return{...s,deck:rest,mana:[...s.mana,{...card,tapped:false}]};
       });break;
     }
-    case"destroyMaxPower":{
-      const tgt=effect.target==="opponent"?otherState:selfState;
-      const st=effect.target==="opponent"?setOther:setSelf;
-      if(tgt.battle.length===0){addLog(`${pid}: 破壊対象なし`);break;}
-      const maxPow=Math.max(...tgt.battle.map(c=>c.power));
-      const toDestroy=tgt.battle.filter(c=>c.power===maxPow);
-      st(s=>({...s,battle:s.battle.filter(c=>c.power!==maxPow),grave:[...s.grave,...toDestroy]}));
-      addLog(`${pid}: 最大パワー${maxPow}の${toDestroy.length}体を破壊`);break;
-    }
     default: addLog(`[未実装] ${effect.type}`);
   }
 }
@@ -199,7 +190,6 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
         {card.keywords?.includes("wBreaker")&&<span style={{fontSize:7}}>✦✦</span>}
         {card.keywords?.includes("tBreaker")&&<span style={{fontSize:7}}>✦✦✦</span>}
         {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
-        {card.keywords?.includes("invasion")&&<span style={{fontSize:7}}>⚡⬆</span>}
       </div>
       {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
     </div>
@@ -543,102 +533,6 @@ function AttackTriggerModal({ attacker, hand, battle, onRevChange, onSkip }) {
   );
 }
 
-// ===========================
-// INVASION MODAL
-// ===========================
-function InvasionModal({ attacker, hand, onInvade, onSkip }) {
-  const invasionCands = hand.filter(c => {
-    if (!c.keywords?.includes("invasion") || !c.invasionCond) return false;
-    const cond = c.invasionCond;
-    const attackerCivs = getCardCivs(attacker);
-    const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
-    const raceMatch = !cond.race || (attacker.race && attacker.race.includes(cond.race));
-    return civMatch && raceMatch;
-  });
-  if (invasionCands.length === 0) return null;
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:355, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"linear-gradient(160deg,#1a0505,#08080f)", border:"2px solid #ff2200", borderRadius:14, padding:20, maxWidth:360, width:"100%", boxShadow:"0 0 30px #ff220066" }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff4422", fontSize:14, fontWeight:900, marginBottom:4 }}>⚡⬆ 侵略</div>
-        <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>
-          <span style={{ color:"#fff", fontWeight:700 }}>{attacker.name}</span> が攻撃！<br/>
-          手札から侵略できます。
-        </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
-          {invasionCands.map(c => {
-            const civs = getCardCivs(c);
-            const cv = CIV[civs[0]];
-            return (
-              <button key={c.uid} onClick={() => onInvade(c)} style={{
-                display:"flex", alignItems:"center", gap:10, padding:"10px 12px",
-                background:"rgba(255,30,0,0.1)", border:"1px solid #ff220055",
-                borderRadius:8, cursor:"pointer", textAlign:"left",
-              }}>
-                <CardFace card={c} small />
-                <div>
-                  <div style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{c.name}</div>
-                  <div style={{ fontSize:10, color:cv?.textColor }}>{c.race}</div>
-                  <div style={{ fontSize:10, color:"#888" }}>コスト:{c.cost} / パワー:{c.power}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        <button onClick={onSkip} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
-          侵略しない → そのまま攻撃
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ===========================
-// EVOLUTION MODAL (手札から進化クリーチャーをプレイ)
-// ===========================
-function EvolutionModal({ card, battle, onSelect, onCancel }) {
-  const civs = getCardCivs(card);
-  const bases = battle.filter(b => {
-    const bCivs = getCardCivs(b);
-    return civs.some(cv => bCivs.includes(cv));
-  });
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:360, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"linear-gradient(160deg,#0a0a1a,#08080f)", border:"2px solid #ff6600", borderRadius:14, padding:20, maxWidth:360, width:"100%", boxShadow:"0 0 30px #ff660066" }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff8844", fontSize:14, fontWeight:900, marginBottom:4 }}>🔺 進化元を選択</div>
-        <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>
-          <span style={{ color:"#fff", fontWeight:700 }}>{card.name}</span> の進化元を選んでください。
-        </div>
-        {bases.length === 0 ? (
-          <div style={{ fontSize:12, color:"#f84", marginBottom:14 }}>条件に合う進化元がバトルゾーンにいません。</div>
-        ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
-            {bases.map(b => {
-              const bCivs = getCardCivs(b);
-              const bc = CIV[bCivs[0]];
-              return (
-                <button key={b.uid} onClick={() => onSelect(b)} style={{
-                  display:"flex", alignItems:"center", gap:10, padding:"10px 12px",
-                  background:"rgba(255,100,0,0.1)", border:"1px solid #ff660055",
-                  borderRadius:8, cursor:"pointer", textAlign:"left",
-                }}>
-                  <CardFace card={b} small />
-                  <div>
-                    <div style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{b.name}</div>
-                    <div style={{ fontSize:10, color:bc?.textColor }}>{b.race}</div>
-                    <div style={{ fontSize:10, color:"#888" }}>パワー:{b.power}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
-          キャンセル
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ===========================
 // FINAL REVOLUTION MODAL
@@ -754,11 +648,10 @@ function EffectConfirmModal({ modal, onConfirm, onSkip }) {
 // ===========================
 // PLAYER BOARD
 // ===========================
-function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onInvade}){
+function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange}){
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
   const [revChangeTarget,setRevChangeTarget]=useState(null);
-  const [invasionTarget,setInvasionTarget]=useState(null);
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);},[isActive]);
@@ -784,19 +677,8 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       const costMatch = !cond.minCost || card.cost >= cond.minCost;
       return civMatch && raceMatch && costMatch;
     });
-    const hasInvasion = state.hand.some(c => {
-      if (!c.keywords?.includes("invasion") || !c.invasionCond) return false;
-      const cond = c.invasionCond;
-      const attackerCivs = getCardCivs(card);
-      const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
-      const raceMatch = !cond.race || (card.race && card.race.includes(cond.race));
-      return civMatch && raceMatch;
-    });
     if (hasRevChange) {
       setRevChangeTarget(card);
-      setSelBattle(null);
-    } else if (hasInvasion) {
-      setInvasionTarget(card);
       setSelBattle(null);
     } else {
       onStartAttack(uid);
@@ -810,13 +692,6 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
     setRevChangeTarget(null);
   };
 
-  // 侵略実行
-  const handleInvadeExecute = (invasionCard) => {
-    if (!invasionTarget) return;
-    onInvade(invasionCard, invasionTarget);
-    setInvasionTarget(null);
-  };
-
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
     <div style={{background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
@@ -828,14 +703,6 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
           battle={state.battle}
           onRevChange={handleRevChange}
           onSkip={()=>{ onStartAttack(revChangeTarget.uid); setRevChangeTarget(null); }}
-        />
-      )}
-      {invasionTarget&&(
-        <InvasionModal
-          attacker={invasionTarget}
-          hand={state.hand}
-          onInvade={handleInvadeExecute}
-          onSkip={()=>{ onStartAttack(invasionTarget.uid); setInvasionTarget(null); }}
         />
       )}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
@@ -1230,7 +1097,6 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [usedFinalRevThisTurn,setUsedFinalRevThisTurn]=useState(false);
   const [finalRevModal,setFinalRevModal]=useState(false);
   const [effectConfirmModal,setEffectConfirmModal]=useState(null);
-  const [pendingEvolutionPlay,setPendingEvolutionPlay]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const showCutIn=useCallback(data=>setCutin(data),[]);
@@ -1265,13 +1131,6 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const card=activeState.hand[idx];
     const check=canPayCost(activeState.mana,card);
     if(!check.ok){setMessage(`✗ ${check.reason}`);return false;}
-    if(card.type==="creature"&&card.keywords?.includes("invasion")){
-      const civs=getCardCivs(card);
-      const bases=activeState.battle.filter(b=>{const bCivs=getCardCivs(b);return civs.some(cv=>bCivs.includes(cv));});
-      if(bases.length===0){setMessage("✗ 進化元がバトルゾーンにいません");return false;}
-      setPendingEvolutionPlay({idx,card});
-      return false;
-    }
     const newMana=tapManaForCost(activeState.mana,card);
     const newHand=activeState.hand.filter((_,i)=>i!==idx);
     if(card.type==="creature"){
@@ -1289,18 +1148,6 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }
     return true;
   };
-  const handleEvolutionSelect=baseCard=>{
-    const{idx,card}=pendingEvolutionPlay;
-    setPendingEvolutionPlay(null);
-    const newMana=tapManaForCost(activeState.mana,card);
-    const newHand=activeState.hand.filter((_,i)=>i!==idx);
-    const newBattle=activeState.battle.filter(c=>c.uid!==baseCard.uid).concat({...card,tapped:false,summonedThisTurn:false});
-    const newGrave=[...activeState.grave,baseCard];
-    setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle,grave:newGrave}));
-    addLog(`${active}: ${card.name}(${card.power}) 進化召喚！(${baseCard.name}の上に)`);
-    showCutIn({title:"進化召喚！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]?.icon});
-    if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle,grave:newGrave},setActiveState,otherState,setOtherState,card.name);
-  };
   const handleRevChangeExec=(handCard,attacker)=>{
     setActiveState(s=>({
       ...s,
@@ -1310,16 +1157,6 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     addLog(`⚡ 革命チェンジ！${attacker.name} → ${handCard.name}`);
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     handleStartAttack(handCard.uid);
-  };
-  const handleInvadeExec=(invasionCard,baseCard)=>{
-    const newBattle=activeState.battle.filter(c=>c.uid!==baseCard.uid).concat({...invasionCard,tapped:false,summonedThisTurn:false});
-    const newHand=activeState.hand.filter(c=>c.uid!==invasionCard.uid);
-    const newGrave=[...activeState.grave,baseCard];
-    setActiveState(s=>({...s,battle:newBattle,hand:newHand,grave:newGrave}));
-    addLog(`⚡⬆ 侵略！${invasionCard.name} が ${baseCard.name} の上に！`);
-    showCutIn({title:"侵略！",cardName:invasionCard.name,civ:Array.isArray(invasionCard.civ)?invasionCard.civ[0]:invasionCard.civ,icon:CIV[Array.isArray(invasionCard.civ)?invasionCard.civ[0]:invasionCard.civ]?.icon});
-    if(invasionCard.autoEffect) triggerEffect(invasionCard.autoEffect,active,{...activeState,battle:newBattle,hand:newHand,grave:newGrave},setActiveState,otherState,setOtherState,invasionCard.name);
-    handleStartAttack(invasionCard.uid);
   };
   const handleFinalRevConfirm=selected=>{
     setUsedFinalRevThisTurn(true);
@@ -1395,7 +1232,6 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {effectModal&&<EffectModal modal={effectModal} p1State={p1} setP1={setP1} p2State={p2} setP2={setP2} onClose={()=>setEffectModal(null)} addLog={addLog}/>}
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
-      {pendingEvolutionPlay&&<EvolutionModal card={pendingEvolutionPlay.card} battle={activeState.battle} onSelect={handleEvolutionSelect} onCancel={()=>setPendingEvolutionPlay(null)}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>
         <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
@@ -1403,9 +1239,9 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       </div>
       <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>💬 {message}</div>
       <div style={{flex:1,overflowY:"auto",padding:"8px 10px",display:"flex",flexDirection:"column",gap:8}}>
-        <PlayerBoard pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={active==="p2"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onInvade={handleInvadeExec}/>
+        <PlayerBoard pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={active==="p2"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec}/>
         <Log entries={logs}/>
-        <PlayerBoard pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={active==="p1"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onInvade={handleInvadeExec}/>
+        <PlayerBoard pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={active==="p1"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec}/>
       </div>
     </div>
   );
