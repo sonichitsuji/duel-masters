@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import INITIAL_CARD_DB from "../public/cards.json";
 
-const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange"];
-const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ" };
+const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","invasion"];
+const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", invasion:"侵略" };
 
 const CIV = {
   fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", icon:"🔥", textColor:"#ff8877" },
@@ -159,6 +159,15 @@ function processEffect(effect,ownerPid,selfState,setSelf,otherState,setOther,add
         addLog(`${pid}: ${card.name}→マナ`);
         return{...s,deck:rest,mana:[...s.mana,{...card,tapped:false}]};
       });break;
+    }
+    case"destroyMaxPower":{
+      const tgt=effect.target==="opponent"?otherState:selfState;
+      const st=effect.target==="opponent"?setOther:setSelf;
+      if(tgt.battle.length===0){addLog(`${pid}: 破壊対象なし`);break;}
+      const maxPow=Math.max(...tgt.battle.map(c=>c.power));
+      const toDestroy=tgt.battle.filter(c=>c.power===maxPow);
+      st(s=>({...s,battle:s.battle.filter(c=>c.power!==maxPow),grave:[...s.grave,...toDestroy]}));
+      addLog(`${pid}: 最大パワー${maxPow}の${toDestroy.length}体を破壊`);break;
     }
     default: addLog(`[未実装] ${effect.type}`);
   }
@@ -484,12 +493,11 @@ function AttackTriggerModal({ attacker, hand, battle, onRevChange, onSkip }) {
   const revChangeable = hand.filter(c => {
     if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
     const cond = c.revolutionChangeCond;
-    // 攻撃クリーチャーの文明チェック
     const attackerCivs = getCardCivs(attacker);
     const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
-    // 攻撃クリーチャーの種族チェック
     const raceMatch = !cond.race || (attacker.race && attacker.race.includes(cond.race));
-    return civMatch && raceMatch;
+    const costMatch = !cond.minCost || attacker.cost >= cond.minCost;
+    return civMatch && raceMatch && costMatch;
   });
 
   if (revChangeable.length === 0) return null;
@@ -559,7 +567,8 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       const attackerCivs = getCardCivs(card);
       const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
       const raceMatch = !cond.race || (card.race && card.race.includes(cond.race));
-      return civMatch && raceMatch;
+      const costMatch = !cond.minCost || card.cost >= cond.minCost;
+      return civMatch && raceMatch && costMatch;
     });
     if (hasRevChange) {
       setRevChangeTarget(card);
