@@ -176,7 +176,7 @@ function processEffect(effect,ownerPid,selfState,setSelf,otherState,setOther,add
 // ===========================
 // CARD COMPONENTS
 // ===========================
-function CardFace({card,selected,onClick,small,dimmed}){
+function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
@@ -194,12 +194,14 @@ function CardFace({card,selected,onClick,small,dimmed}){
       <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"?`${card.power}`:"📜 呪文"}</div>
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:7}}>⚡</span>}
+        {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:7,color:"#ffe066",textShadow:"0 0 4px #ffe066"}}>⚡</span>}
         {card.keywords?.includes("blocker")&&<span style={{fontSize:7}}>🛡</span>}
         {card.keywords?.includes("wBreaker")&&<span style={{fontSize:7}}>✦✦</span>}
         {card.keywords?.includes("tBreaker")&&<span style={{fontSize:7}}>✦✦✦</span>}
         {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
+        {card.keywords?.includes("invasion")&&<span style={{fontSize:7}}>⚡⬆</span>}
       </div>
-      {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
+      {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
     </div>
   );
 }
@@ -263,12 +265,15 @@ function Log({entries}){
 // ===========================
 // CREATURE DETAIL PANEL
 // ===========================
-function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose}){
+function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone}){
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
-  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!card.keywords?.includes("speedAttacker"));
-  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!card.keywords?.includes("speedAttacker"))?"召喚酔い":!drewThisTurn?"ドロー前":null;
+  const dogiPresent=battleZone?.some(c=>c.name==="蒼き団長 ドギラゴン剣");
+  const isMulticolor=Array.isArray(card.civ)&&card.civ.length>=2;
+  const effectiveSA=card.keywords?.includes("speedAttacker")||(dogiPresent&&isMulticolor);
+  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA);
+  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":!drewThisTurn?"ドロー前":null;
 
   // Parse effect text: lines starting with known keywords get bold styling
   const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカー","T・ブレイカー","ブロッカー","S・トリガー"];
@@ -597,7 +602,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
     <div style={{background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
-      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
+      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
       {revChangeTarget&&(
         <AttackTriggerModal
           attacker={revChangeTarget}
@@ -616,7 +621,11 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       <div style={{marginBottom:8}}>
         <div style={{fontSize:10,color:"#333",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",minHeight:36}}>
-          {state.battle.map(c=><CardFace key={c.uid} card={c} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)}/>)}
+          {(()=>{
+            const dogiPresent=state.battle.some(c=>c.name==="蒼き団長 ドギラゴン剣");
+            const getGranted=c=>{const g=[];if(dogiPresent&&Array.isArray(c.civ)&&c.civ.length>=2&&!c.keywords?.includes("speedAttacker"))g.push("speedAttacker");return g;};
+            return state.battle.map(c=><CardFace key={c.uid} card={c} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
+          })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
         </div>
       </div>
