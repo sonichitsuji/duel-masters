@@ -419,5 +419,18 @@
     "effect": "革命チェンジ−火または自然のドラゴン（自分の火または自然のドラゴンが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）\nW・ブレイカー",
     "autoEffect": null,
     "revolutionChangeCond": { "civs": ["fire", "nature"], "race": "ドラゴン" }
+  },
+  {
+    "id": 37,
+    "name": "蒼き団長 ドギラゴン剣",
+    "race": "メガ・コマンド・ドラゴン/革命軍/ハムカツ団",
+    "cost": 8,
+    "power": 13000,
+    "type": "creature",
+    "civ": ["fire", "nature"],
+    "keywords": ["revolutionChange", "tBreaker"],
+    "effect": "革命チェンジ―火または自然のコスト5以上のドラゴン\n自分の多色クリーチャーすべてに「スピードアタッカー」を与える。\nT・ブレイカー\nファイナル革命―このクリーチャーが「革命チェンジ」によってバトルゾーンに出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、コストが合計6以下になるよう、進化ではない多色クリーチャーを自分のマナゾーンまたは手札から選び、バトルゾーンに出す。",
+    "autoEffect": null,
+    "revolutionChangeCond": { "civs": ["fire", "nature"], "race": "ドラゴン", "minCost": 5 }
   }
 ]
