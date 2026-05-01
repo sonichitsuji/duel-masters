@@ -44,6 +44,38 @@ function defaultDeckIds(cardDb) {
   return ids;
 }
 
+// サンプルデッキA: ボルシャック・ドラゴン中心の火文明デッキ
+const DECK_BOLSHACK = [
+  6,6,6,6,       // ガントラ・マックス x4
+  38,38,38,38,   // コッコ・ルピア x4
+  12,12,12,12,   // 紅蓮の戦士ガルベリアス x4
+  24,24,24,      // クリムゾン・チャージャー x3
+  39,39,39,39,   // ボルシャック・NEX x4
+  31,31,31,31,   // ボルシャック・ドラゴン x4
+  41,41,41,      // デュアルショック・ドラゴン x3
+  42,42,42,      // メガ・マナロック・ドラゴン x3
+  40,40,40,      // バルケリオス・ドラゴン x3
+  25,25,         // ボルバルザーク・エクス x2
+  1,1,           // ボルメテウス・ホワイト・ドラゴン x2
+  21,21,21,21,   // 地獄スクラッパー x4
+];
+
+// サンプルデッキB: 時の法皇 ミラダンテXII中心の光/水文明デッキ
+const DECK_MIRADANTE = [
+  44,44,44,44,   // タイム1 ドレミ x4
+  45,45,45,45,   // タイム1 ドレミ・レード x4
+  46,46,46,46,   // タイム3 シド x4
+  47,47,47,      // タイム1 ドレミXII x3
+  43,            // 時の法皇 ミラダンテXII x1
+  50,50,50,50,   // 真・龍覇 ヘブンズロージア x4
+  49,49,49,49,   // ドラゴンズ・サイン x4
+  48,48,48,48,   // ドレミ団の光魂Go! x4
+  18,18,18,      // クリスタル・メモリー x3
+  20,20,20,20,   // スパイラル・ゲート x4
+  23,23,23,      // ホーリー・スパーク x3
+  17,17,         // サイバー・ブレイン x2
+];
+
 function initPlayerState(deckIds, cardDb) {
   const deck=makeDeckFromList(deckIds, cardDb);
   return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[]};
@@ -1577,8 +1609,8 @@ export default function App(){
       if (saved) return JSON.parse(saved);
     } catch {}
     return [
-      { name:"サンプルデッキA", ids:defaultDeckIds(INITIAL_CARD_DB) },
-      { name:"サンプルデッキB", ids:defaultDeckIds(INITIAL_CARD_DB) },
+      { name:"サンプルデッキA (ボルシャック)", ids:DECK_BOLSHACK },
+      { name:"サンプルデッキB (ミラダンテ)", ids:DECK_MIRADANTE },
     ];
   });
 
