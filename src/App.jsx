@@ -239,7 +239,12 @@ function CardBack({small,onClick,label}){
 // ===========================
 function ManaDisplay({mana}){
   const civCounts={};
-  mana.forEach(c=>{if(!civCounts[c.civ])civCounts[c.civ]={total:0,available:0};civCounts[c.civ].total++;if(!c.tapped)civCounts[c.civ].available++;});
+  mana.forEach(c=>{
+    const civKey=getCardCivs(c)[0];
+    if(!civCounts[civKey])civCounts[civKey]={total:0,available:0};
+    civCounts[civKey].total++;
+    if(!c.tapped)civCounts[civKey].available++;
+  });
   const available=mana.filter(c=>!c.tapped).length;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -247,7 +252,7 @@ function ManaDisplay({mana}){
         <span style={{fontSize:10,color:"#555"}}>マナ:</span>
         <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>{available}</span>
         <span style={{fontSize:10,color:"#333"}}>/ {mana.length}</span>
-        {Object.entries(civCounts).map(([civ,cnt])=>{const c=CIV[civ];return(
+        {Object.entries(civCounts).map(([civ,cnt])=>{const c=CIV[civ];if(!c)return null;return(
           <div key={civ} style={{display:"flex",alignItems:"center",gap:2,background:`${c.color}18`,border:`1px solid ${c.color}44`,borderRadius:4,padding:"1px 5px"}}>
             <span style={{fontSize:11}}>{c.icon}</span>
             <span style={{fontSize:11,fontWeight:700,color:cnt.available>0?c.textColor:"#333"}}>{cnt.available}</span>
@@ -256,7 +261,7 @@ function ManaDisplay({mana}){
         );})}
       </div>
       <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
-        {mana.map(c=>{const cv=CIV[c.civ];return(
+        {mana.map(c=>{const cv=CIV[getCardCivs(c)[0]];return(
           <div key={c.uid} title={c.name} style={{width:18,height:18,borderRadius:3,background:c.tapped?"#111":cv?.color,border:`1px solid ${c.tapped?"#222":cv?.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,opacity:c.tapped?0.3:1,transition:"all 0.2s",boxShadow:c.tapped?"none":`0 0 4px ${cv?.glow}66`}}>{c.tapped?"":cv?.icon}</div>
         );})}
       </div>
