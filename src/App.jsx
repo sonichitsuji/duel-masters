@@ -89,29 +89,16 @@ function canPayCost(mana,card){
   if(untapped.length<card.cost) return {ok:false,reason:`マナ不足 (必要:${card.cost} / 利用可能:${untapped.length})`};
   if(card.cost===0) return {ok:true};
   const civs=getCardCivs(card);
-  // 多色: 各文明のマナが1枚以上必要
   for(const civ of civs){
-    if(!untapped.some(c=>c.civ===civ)){
+    if(!untapped.some(c=>getCardCivs(c).includes(civ))){
       return {ok:false,reason:`${CIV[civ]?.label}文明のマナが必要です`};
     }
   }
   return {ok:true};
 }
 
-function tapManaForCost(mana,card){
-  let tapped=0;const needed=card.cost;const nm=mana.map(c=>({...c}));
-  const civs=getCardCivs(card);
-  // まず各文明を1枚ずつタップ
-  for(const civ of civs){
-    for(let i=0;i<nm.length&&tapped<needed;i++){
-      if(!nm[i].tapped&&nm[i].civ===civ){nm[i].tapped=true;tapped++;break;}
-    }
-  }
-  // 残りは任意
-  for(let i=0;i<nm.length&&tapped<needed;i++){
-    if(!nm[i].tapped){nm[i].tapped=true;tapped++;}
-  }
-  return nm;
+function tapManaByUids(mana,uids){
+  return mana.map(c=>uids.includes(c.uid)?{...c,tapped:true}:c);
 }
 
 // autoEffect inference from keywords/effect text
@@ -878,6 +865,120 @@ const EFFECT_TYPE_LABELS = {
   destroyUnder:"パワー以下のクリーチャーを破壊", tapAll:"相手クリーチャーを全タップ",
   deckToMana:"山札の上をマナゾーンへ", destroyMaxPower:"最大パワーの相手クリーチャーを破壊",
 };
+// ===========================
+// MANA PAY MODAL
+// ===========================
+function ManaPayModal({ card, mana, onConfirm, onCancel }) {
+  const [selected, setSelected] = useState([]); // [{uid, assignedCiv}]
+  const [civPicker, setCivPicker] = useState(null); // null | {uid, civs:[]}
+
+  const needed = card.cost;
+  const requiredCivs = getCardCivs(card);
+  const selectedUids = selected.map(s => s.uid);
+  const civsSatisfied = requiredCivs.every(civ => selected.some(s => s.assignedCiv === civ));
+  const canConfirm = selected.length >= needed && civsSatisfied && !civPicker;
+
+  const cardCivs = getCardCivs(card);
+  const c = CIV[cardCivs[0]] || CIV.fire;
+
+  const handleManaClick = (mc) => {
+    if (mc.tapped) return;
+    if (selectedUids.includes(mc.uid)) {
+      setSelected(s => s.filter(x => x.uid !== mc.uid));
+      return;
+    }
+    if (selected.length >= needed) return;
+    const civs = getCardCivs(mc);
+    if (civs.length === 1) {
+      setSelected(s => [...s, { uid: mc.uid, assignedCiv: civs[0] }]);
+    } else {
+      setCivPicker({ uid: mc.uid, civs });
+    }
+  };
+
+  const handleCivChoice = (civ) => {
+    setSelected(s => [...s, { uid: civPicker.uid, assignedCiv: civ }]);
+    setCivPicker(null);
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:390, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:500, width:"100%", boxShadow:`0 0 30px ${c.glow}55`, maxHeight:"90vh", display:"flex", flexDirection:"column", gap:10 }}>
+
+        {/* Header */}
+        <div>
+          <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900 }}>マナを選択</div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5 }}>
+            <span style={{ fontSize:12, color:"#ccc" }}>{cardCivs.map(cv=>CIV[cv]?.icon).join("")} {card.name}</span>
+            <span style={{ fontSize:11, color:"#666" }}>コスト {needed}</span>
+          </div>
+        </div>
+
+        {/* Civ requirement status */}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+          {requiredCivs.map(civ => {
+            const ok = selected.some(s => s.assignedCiv === civ);
+            return (
+              <div key={civ} style={{ display:"flex", alignItems:"center", gap:3, padding:"2px 8px", borderRadius:6, fontSize:11, fontWeight:700, background:ok?`${CIV[civ]?.color}22`:"rgba(255,80,80,0.08)", border:`1px solid ${ok?CIV[civ]?.color:"#f84"}`, color:ok?CIV[civ]?.textColor:"#f84" }}>
+                {ok?"✓":"✗"} {CIV[civ]?.icon} {CIV[civ]?.label}
+              </div>
+            );
+          })}
+          <div style={{ marginLeft:"auto", fontSize:13, fontWeight:700, color:selected.length>=needed?"#4f8":"#aaa" }}>
+            {selected.length} / {needed}
+          </div>
+        </div>
+
+        {/* Multi-color civ picker */}
+        {civPicker && (
+          <div style={{ background:"rgba(0,0,0,0.85)", border:"1px solid #555", borderRadius:8, padding:10 }}>
+            <div style={{ fontSize:11, color:"#aaa", marginBottom:7 }}>どの文明として使いますか？</div>
+            <div style={{ display:"flex", gap:6 }}>
+              {civPicker.civs.map(civ => (
+                <button key={civ} onClick={() => handleCivChoice(civ)} style={{ padding:"6px 14px", borderRadius:6, fontWeight:700, fontSize:12, background:`${CIV[civ]?.color}33`, border:`1px solid ${CIV[civ]?.color}`, color:CIV[civ]?.textColor, cursor:"pointer" }}>
+                  {CIV[civ]?.icon} {CIV[civ]?.label}
+                </button>
+              ))}
+              <button onClick={() => setCivPicker(null)} style={{ padding:"6px 10px", borderRadius:6, background:"#111", border:"1px solid #444", color:"#666", cursor:"pointer", fontSize:12 }}>
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Mana cards */}
+        <div>
+          <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>マナゾーン（タップで選択 / 再タップで解除）</div>
+          <div style={{ display:"flex", gap:4, flexWrap:"wrap", minHeight:44 }}>
+            {mana.map(mc => {
+              const isSel = selectedUids.includes(mc.uid);
+              const isDisabled = mc.tapped || (!isSel && selected.length >= needed);
+              return (
+                <CardFace key={mc.uid} card={mc} selected={isSel} dimmed={isDisabled}
+                  onClick={isDisabled ? undefined : () => handleManaClick(mc)} small />
+              );
+            })}
+            {mana.filter(c=>!c.tapped).length===0 && (
+              <div style={{ fontSize:11, color:"#333", alignSelf:"center" }}>利用可能なマナがありません</div>
+            )}
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={() => canConfirm && onConfirm(selectedUids)} disabled={!canConfirm}
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
+            ✓ 決定
+          </button>
+          <button onClick={onCancel} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #444", color:"#888", cursor:"pointer", fontSize:12 }}>
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EffectConfirmModal({ modal, onConfirm, onSkip }) {
   if (!modal) return null;
   const { srcCard, effect } = modal;
@@ -994,16 +1095,28 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
   const [revChangeTarget,setRevChangeTarget]=useState(null);
+  const [manaPayModal,setManaPayModal]=useState(null);
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
-  useEffect(()=>{setSelHand(null);setSelBattle(null);},[isActive]);
+  useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
   const selectedCard=selHand!==null?state.hand[selHand]:null;
   const civCheck=selectedCard?canPayCost(state.mana,selectedCard):null;
   const selBattleCard=selBattle?state.battle.find(c=>c.uid===selBattle):null;
   const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
   const handleCharge=()=>{if(selHand===null)return;onChargeMana(selHand);setSelHand(null);};
-  const handlePlay=()=>{if(selHand===null)return;const ok=onPlayCard(selHand);if(ok!==false)setSelHand(null);};
+  const handlePlay=()=>{
+    if(selHand===null||!civCheck?.ok)return;
+    const card=state.hand[selHand];
+    if(card.cost===0){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
+    else{setManaPayModal({handIdx:selHand,card});}
+  };
+  const handleManaConfirm=uids=>{
+    if(!manaPayModal)return;
+    const ok=onPlayCard(manaPayModal.handIdx,uids);
+    if(ok!==false)setSelHand(null);
+    setManaPayModal(null);
+  };
 
   // 攻撃宣言: 革命チェンジ可能かチェック
   const handleAttackWithTriggerCheck = (uid) => {
@@ -1047,6 +1160,14 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
           onSkip={()=>{ onStartAttack(revChangeTarget.uid); setRevChangeTarget(null); }}
         />
       )}
+      {manaPayModal&&(
+        <ManaPayModal
+          card={manaPayModal.card}
+          mana={state.mana}
+          onConfirm={handleManaConfirm}
+          onCancel={()=>setManaPayModal(null)}
+        />
+      )}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         <span style={{fontWeight:700,color,fontSize:13}}>{pid==="p1"?"🧑":"👹"} {label}{isActive&&<span style={{fontSize:10,color:"#ffe066",marginLeft:6}}>▶ アクティブ</span>}</span>
         <span style={{fontSize:10,color:"#444"}}>手札:{state.hand.length} BZ:{state.battle.length} 墓地:{state.grave.length} 山:{state.deck.length}</span>
@@ -1072,9 +1193,9 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         </div>
       </div>
       {selectedCard&&(
-        <div style={{background:"#080818",border:`1px solid ${CIV[selectedCard.civ]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
+        <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{CIV[selectedCard.civ]?.icon} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}</span></div>
+            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.icon).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}</span></div>
             <div style={{fontSize:10,color:civCheck?.ok?"#4f8":"#f84",fontWeight:700}}>{civCheck?.ok?`✓ プレイ可 (${availMana}マナ)`:`✗ ${civCheck?.reason}`}</div>
           </div>
           <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}>{selectedCard.effect}</div>
@@ -1505,12 +1626,10 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
   };
-  const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:false}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ`);};
-  const handlePlayCard=idx=>{
+  const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
+  const handlePlayCard=(idx,selectedManaUids)=>{
     const card=activeState.hand[idx];
-    const check=canPayCost(activeState.mana,card);
-    if(!check.ok){setMessage(`✗ ${check.reason}`);return false;}
-    const newMana=tapManaForCost(activeState.mana,card);
+    const newMana=tapManaByUids(activeState.mana,selectedManaUids);
     const newHand=activeState.hand.filter((_,i)=>i!==idx);
     if(card.type==="creature"){
       const isSpeed=card.keywords?.includes("speedAttacker");
