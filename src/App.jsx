@@ -197,6 +197,231 @@ function processEffect(effect,ownerPid,selfState,setSelf,otherState,setOther,add
 }
 
 // ===========================
+// STEP EFFECT SYSTEM
+// ===========================
+function getStepCandidates(step, selfState, otherState, context, p1, p2) {
+  switch (step.type) {
+    case "revealDeckTop": case "restRevealedToBottom": case "millTop":
+    case "untapAllMana": case "destroyNonColor":
+      return { candidates: context.revealedCards || [], isAuto: true };
+    case "chooseFromRevealed": {
+      let cards = context.revealedCards || [];
+      if (step.filter?.type === "spell")    cards = cards.filter(c => c.type === "spell");
+      if (step.filter?.type === "creature") cards = cards.filter(c => c.type === "creature");
+      return { candidates: cards, isAuto: false };
+    }
+    case "optionalReviveFromMilled": {
+      const cards = (context.milledCards || []).filter(c => c.type === "creature");
+      return { candidates: cards, isAuto: cards.length === 0 };
+    }
+    case "destroyChooseAny": {
+      const all = [...p1.battle, ...p2.battle];
+      return { candidates: all, isAuto: all.length === 0 };
+    }
+    case "reviveFromDestroyedOwnerGrave": {
+      if (!context.destroyedCreatureOwner) return { candidates: [], isAuto: true };
+      const ownerState = context.destroyedCreatureOwner === "p1" ? p1 : p2;
+      const cards = ownerState.grave.filter(c => c.type === "creature");
+      return { candidates: cards, isAuto: cards.length === 0 };
+    }
+    case "selectShieldToGrave": {
+      const tgt = step.target === "opponent" ? otherState : selfState;
+      return { candidates: tgt.shields, isAuto: false };
+    }
+    case "putFilteredFromHand": {
+      let cards = selfState.hand.filter(c => c.type === "creature");
+      if (step.filter?.keyword)      cards = cards.filter(c => c.keywords?.includes(step.filter.keyword));
+      if (step.filter?.civ)          cards = cards.filter(c => getCardCivs(c).includes(step.filter.civ));
+      if (step.filter?.maxCost != null) cards = cards.filter(c => c.cost <= step.filter.maxCost);
+      if (step.filter?.raceContains) cards = cards.filter(c => c.race && c.race.includes(step.filter.raceContains));
+      return { candidates: cards, isAuto: cards.length === 0 };
+    }
+    case "bzSelectToMana": {
+      const tgt = step.target === "opponent" ? otherState : selfState;
+      return { candidates: tgt.battle, isAuto: false };
+    }
+    case "manaCreatureSelectToBZ": {
+      const cards = selfState.mana.filter(c => c.type === "creature");
+      return { candidates: cards, isAuto: cards.length === 0 };
+    }
+    case "tapSelectCreature": {
+      const tgt = step.target === "opponent" ? otherState : selfState;
+      return { candidates: tgt.battle, isAuto: tgt.battle.length === 0 };
+    }
+    case "handDiscard": {
+      const tgt = step.target === "opponent" ? otherState : selfState;
+      return { candidates: tgt.hand, isAuto: false };
+    }
+    case "bounceMaxCost": {
+      const maxCost = step.maxCost ?? 999;
+      return { candidates: [...p1.battle, ...p2.battle].filter(c => c.cost <= maxCost), isAuto: false };
+    }
+    default:
+      return { candidates: [], isAuto: true };
+  }
+}
+
+function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2, setP2, addLog) {
+  const selfState  = ownerPid === "p1" ? p1 : p2;
+  const setSelf    = ownerPid === "p1" ? setP1 : setP2;
+  const otherState = ownerPid === "p1" ? p2 : p1;
+  const setOther   = ownerPid === "p1" ? setP2 : setP1;
+  const pid = ownerPid === "p1" ? "P1" : "P2";
+  const ctx = { ...context };
+
+  switch (step.type) {
+    case "revealDeckTop": {
+      const n = Math.min(step.amount, selfState.deck.length);
+      const revealed = selfState.deck.slice(0, n);
+      setSelf(s => ({ ...s, deck: s.deck.slice(n) }));
+      ctx.revealedCards = revealed;
+      addLog(`${pid}: 山札の上から${n}枚を公開`);
+      break;
+    }
+    case "chooseFromRevealed": {
+      const picked = (context.revealedCards || []).filter(c => selectedUids.includes(c.uid));
+      const dest = step.destination || "hand";
+      if (picked.length > 0) {
+        if (dest === "hand")   setSelf(s => ({ ...s, hand: [...s.hand, ...picked.map(c => ({ ...c, tapped: false }))] }));
+        else if (dest === "battle") setSelf(s => ({ ...s, battle: [...s.battle, ...picked.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
+        addLog(`${pid}: ${picked.map(c => c.name).join(", ")} → ${dest === "hand" ? "手札" : "BZ"}`);
+      }
+      ctx.revealedCards = (context.revealedCards || []).filter(c => !selectedUids.includes(c.uid));
+      break;
+    }
+    case "restRevealedToBottom": {
+      const rem = context.revealedCards || [];
+      if (rem.length > 0) { setSelf(s => ({ ...s, deck: [...s.deck, ...rem] })); addLog(`${pid}: 残り${rem.length}枚をデッキ下へ`); }
+      ctx.revealedCards = [];
+      break;
+    }
+    case "millTop": {
+      const n = Math.min(step.amount, selfState.deck.length);
+      const milled = selfState.deck.slice(0, n);
+      setSelf(s => ({ ...s, deck: s.deck.slice(n), grave: [...s.grave, ...milled] }));
+      ctx.milledCards = milled;
+      addLog(`${pid}: 山札の上から${n}枚を墓地へ`);
+      break;
+    }
+    case "optionalReviveFromMilled": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = (context.milledCards || []).find(c => c.uid === uid && c.type === "creature");
+        if (card) {
+          setSelf(s => ({ ...s, grave: s.grave.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: false }] }));
+          addLog(`${pid}: ${card.name} 墓地→BZ`);
+        }
+      }
+      break;
+    }
+    case "destroyChooseAny": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        let owner = null;
+        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (c) { owner = "p1"; return { ...s, battle: s.battle.filter(x => x.uid !== uid), grave: [...s.grave, c] }; } return s; });
+        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (c) { owner = "p2"; return { ...s, battle: s.battle.filter(x => x.uid !== uid), grave: [...s.grave, c] }; } return s; });
+        const card = [...p1.battle, ...p2.battle].find(c => c.uid === uid);
+        ctx.destroyedCreatureOwner = card ? (p1.battle.includes(card) ? "p1" : "p2") : null;
+        if (card) addLog(`${pid}: ${card.name} 破壊`);
+      } else {
+        ctx.destroyedCreatureOwner = null;
+      }
+      break;
+    }
+    case "reviveFromDestroyedOwnerGrave": {
+      const ownerPidC = context.destroyedCreatureOwner;
+      if (!ownerPidC || selectedUids.length === 0) break;
+      const setOwner = ownerPidC === "p1" ? setP1 : setP2;
+      const uid = selectedUids[0];
+      setOwner(s => {
+        const card = s.grave.find(c => c.uid === uid);
+        if (!card) return s;
+        addLog(`${pid}: ${card.name} 墓地→BZ`);
+        return { ...s, grave: s.grave.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: false }] };
+      });
+      break;
+    }
+    case "untapAllMana": {
+      setSelf(s => ({ ...s, mana: s.mana.map(c => ({ ...c, tapped: false })) }));
+      addLog(`${pid}: マナゾーンをすべてアンタップ`);
+      break;
+    }
+    case "destroyNonColor": {
+      const col = step.color;
+      const colMatch = c => getCardCivs(c).includes(col);
+      setP1(s => { const dead = s.battle.filter(c => !colMatch(c)); return { ...s, battle: s.battle.filter(colMatch), grave: [...s.grave, ...dead] }; });
+      setP2(s => { const dead = s.battle.filter(c => !colMatch(c)); return { ...s, battle: s.battle.filter(colMatch), grave: [...s.grave, ...dead] }; });
+      const total = [...p1.battle, ...p2.battle].filter(c => !colMatch(c)).length;
+      addLog(`${pid}: ${col}以外のクリーチャーを${total}体破壊`);
+      break;
+    }
+    case "selectShieldToGrave": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const setTgt = step.target === "opponent" ? setOther : setSelf;
+        setTgt(s => { const c = s.shields.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: シールドを墓地へ`); return { ...s, shields: s.shields.filter(x => x.uid !== uid), grave: [...s.grave, c] }; });
+      }
+      break;
+    }
+    case "putFilteredFromHand": {
+      if (selectedUids.length > 0) {
+        const cards = selfState.hand.filter(c => selectedUids.includes(c.uid));
+        const kw = step.tempKeyword;
+        setSelf(s => ({ ...s, hand: s.hand.filter(c => !selectedUids.includes(c.uid)), battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: false, grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }));
+        addLog(`${pid}: ${cards.map(c => c.name).join(", ")} → BZ`);
+      }
+      break;
+    }
+    case "bzSelectToMana": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const setTgt = step.target === "opponent" ? setOther : setSelf;
+        const tgtState = step.target === "opponent" ? otherState : selfState;
+        const card = tgtState.battle.find(c => c.uid === uid);
+        if (card) { setTgt(s => ({ ...s, battle: s.battle.filter(c => c.uid !== uid), mana: [...s.mana, { ...card, tapped: true }] })); addLog(`${pid}: ${card.name} → マナ`); }
+      }
+      break;
+    }
+    case "manaCreatureSelectToBZ": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.mana.find(c => c.uid === uid);
+        if (card) { setSelf(s => ({ ...s, mana: s.mana.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: false }] })); addLog(`${pid}: ${card.name} マナ→BZ`); }
+      }
+      break;
+    }
+    case "tapSelectCreature": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const setTgt = step.target === "opponent" ? setOther : setSelf;
+        const tgtState = step.target === "opponent" ? otherState : selfState;
+        const card = tgtState.battle.find(c => c.uid === uid);
+        setTgt(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tapped: true } : c) }));
+        if (card) addLog(`${pid}: ${card.name} タップ`);
+      }
+      break;
+    }
+    case "handDiscard": {
+      const tgtState = step.target === "opponent" ? otherState : selfState;
+      const setTgt   = step.target === "opponent" ? setOther   : setSelf;
+      const cards = tgtState.hand.filter(c => selectedUids.includes(c.uid));
+      if (cards.length > 0) { setTgt(s => ({ ...s, hand: s.hand.filter(c => !selectedUids.includes(c.uid)), grave: [...s.grave, ...cards] })); addLog(`${pid}: ${cards.map(c => c.name).join(", ")} 捨てる`); }
+      break;
+    }
+    case "bounceMaxCost": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P1手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false }] }; });
+        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P2手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false }] }; });
+      }
+      break;
+    }
+    default: addLog(`[未実装ステップ] ${step.type}`);
+  }
+  return ctx;
+}
+
+// ===========================
 // CARD COMPONENTS
 // ===========================
 function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
@@ -683,6 +908,86 @@ function EffectConfirmModal({ modal, onConfirm, onSkip }) {
 }
 
 // ===========================
+// EFFECT STEP MODAL
+// ===========================
+function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance, onException }) {
+  const [selected, setSelected] = useState([]);
+  useEffect(() => { setSelected([]); }, [activeSteps?.stepIdx]);
+  if (!activeSteps) return null;
+
+  const { steps, stepIdx, ownerPid, srcCard, context } = activeSteps;
+  const step = steps[stepIdx];
+  const selfState  = ownerPid === "p1" ? p1 : p2;
+  const otherState = ownerPid === "p1" ? p2 : p1;
+  const { candidates, isAuto } = getStepCandidates(step, selfState, otherState, context, p1, p2);
+
+  const civs = getCardCivs(srcCard || {});
+  const c = CIV[civs[0]] || CIV.fire;
+
+  const maxSel = step.maxSelect ?? 1;
+  const toggleSelect = uid => {
+    setSelected(s => s.includes(uid) ? s.filter(u => u !== uid) : s.length < maxSel ? [...s, uid] : maxSel === 1 ? [uid] : s);
+  };
+
+  const canConfirm = isAuto || step.optional || selected.length > 0;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:380, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:500, width:"100%", boxShadow:`0 0 30px ${c.glow}55`, maxHeight:"90vh", display:"flex", flexDirection:"column", gap:10 }}>
+        <div>
+          <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:13, fontWeight:900 }}>
+            ステップ {stepIdx+1}/{steps.length}：{srcCard?.name || ""}
+          </div>
+          <div style={{ fontSize:11, color:"#aaa", marginTop:4, padding:"6px 8px", background:"rgba(0,0,0,0.4)", borderRadius:6, border:`1px solid ${c.color}33` }}>
+            {step.label}
+          </div>
+        </div>
+
+        {/* Card grid */}
+        {candidates.length > 0 && (
+          <div style={{ overflowY:"auto", maxHeight:220 }}>
+            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
+              {isAuto ? "公開カード：" : `選択（${selected.length}/${maxSel}）：`}
+            </div>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+              {candidates.map(card => (
+                <CardFace key={card.uid} card={card}
+                  selected={selected.includes(card.uid)}
+                  onClick={isAuto ? undefined : () => toggleSelect(card.uid)}
+                  small />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {candidates.length === 0 && !isAuto && (
+          <div style={{ fontSize:11, color:"#555", textAlign:"center", padding:8 }}>対象カードがありません</div>
+        )}
+
+        {/* Buttons */}
+        <div style={{ display:"flex", gap:8 }}>
+          <button
+            onClick={() => canConfirm && onAdvance(selected)}
+            disabled={!canConfirm}
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
+            {isAuto ? "確認" : "実行"}
+          </button>
+          {step.optional && (
+            <button onClick={() => onAdvance([])} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
+              スキップ
+            </button>
+          )}
+          <button onClick={onException} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
+            例外処理
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
 // PLAYER BOARD
 // ===========================
 function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange}){
@@ -1134,6 +1439,8 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [usedFinalRevThisTurn,setUsedFinalRevThisTurn]=useState(false);
   const [finalRevModal,setFinalRevModal]=useState(false);
   const [effectConfirmModal,setEffectConfirmModal]=useState(null);
+  const [activeSteps,setActiveSteps]=useState(null);
+  const [effectQueue,setEffectQueue]=useState([]);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const showCutIn=useCallback(data=>setCutin(data),[]);
@@ -1145,11 +1452,46 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const setActiveState=active==="p1"?setP1:setP2;
   const setOtherState=active==="p1"?setP2:setP1;
 
-  const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName)=>{
+  const startStepEffect = useCallback((steps, ownerPid, srcCard) => {
+    setActiveSteps(prev => {
+      if (prev === null) return { steps, stepIdx: 0, ownerPid, srcCard, context: {} };
+      setEffectQueue(q => [...q, { steps, ownerPid, srcCard }]);
+      return prev;
+    });
+  }, []);
+
+  const advanceStep = useCallback((selectedUids) => {
+    setActiveSteps(prev => {
+      if (!prev) return null;
+      const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog);
+      let nextIdx = prev.stepIdx + 1;
+      // Skip reviveFromDestroyedOwnerGrave if nothing was destroyed
+      while (nextIdx < prev.steps.length && prev.steps[nextIdx].type === "reviveFromDestroyedOwnerGrave" && !updatedCtx.destroyedCreatureOwner) {
+        nextIdx++;
+      }
+      if (nextIdx < prev.steps.length) return { ...prev, stepIdx: nextIdx, context: updatedCtx };
+      // All done — pop queue
+      setEffectQueue(q => {
+        if (q.length > 0) {
+          const [next, ...rest] = q;
+          setTimeout(() => setActiveSteps({ steps: next.steps, stepIdx: 0, ownerPid: next.ownerPid, srcCard: next.srcCard, context: {} }), 0);
+          return rest;
+        }
+        return q;
+      });
+      return null;
+    });
+  }, [p1, p2, addLog]);
+
+  const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName,srcCardOverride)=>{
     if(!effect) return;
-    const srcCard=cardDb.find(c=>c.name===sourceName)||{name:sourceName};
+    const srcCard=srcCardOverride||cardDb.find(c=>c.name===sourceName)||{name:sourceName};
     showCutIn({title:"効果発動！",cardName:sourceName,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire",icon:CIV[Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"]?.icon});
-    setEffectConfirmModal({effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,srcCard});
+    if(effect.type==="steps"){
+      startStepEffect(effect.steps, ownerPid, srcCard);
+    } else {
+      setEffectConfirmModal({effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,srcCard});
+    }
   };
 
   // 先行1ターン目はドロー不要（マナチャージから開始）
@@ -1268,6 +1610,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
       {effectModal&&<EffectModal modal={effectModal} p1State={p1} setP1={setP1} p2State={p2} setP2={setP2} onClose={()=>setEffectModal(null)} addLog={addLog}/>}
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
+      {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>

@@ -158,14 +158,17 @@
   {
     "id": 15,
     "name": "斬隠テンサイ・ジャニット",
-    "race": "ゴースト",
+    "race": "サイバーロード/シノビ",
     "cost": 3,
     "power": 1000,
     "type": "creature",
-    "civ": "darkness",
+    "civ": "water",
     "keywords": [],
-    "effect": "このクリーチャーが攻撃する時、相手はカードを1枚選んで捨てる。[攻撃時例外処理]",
-    "autoEffect": null
+    "effect": "ニンジャ・ストライク4（相手のクリーチャーが攻撃またはブロックした時、自分のマナゾーンにカードが4枚以上あれば、このシノビをコストを支払わずに召喚してよい。そのターンの終わりに、このシノビを自分の山札の一番下に置く）[例外処理]\nこのクリーチャーがバトルゾーンに出た時、バトルゾーンにあるコスト3以下の他のクリーチャーを1体選び、持ち主の手札に戻してもよい。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [{ "type": "bounceMaxCost", "maxCost": 3, "target": "any", "optional": true, "label": "コスト3以下の他のクリーチャーを1体手札に戻してもよい" }]
+    }
   },
   {
     "id": 16,
@@ -272,20 +275,29 @@
     "type": "spell",
     "civ": "fire",
     "keywords": [],
-    "effect": "自分の山札の上から3枚を墓地に置く。こうして墓地に置いたカードの中にクリーチャーが1体あれば、そのクリーチャーをバトルゾーンに出してもよい。[例外処理]",
-    "autoEffect": null
+    "effect": "自分の山札の上から3枚を墓地に置く。こうして墓地に置いたカードの中にクリーチャーが1体あれば、そのクリーチャーをバトルゾーンに出してもよい。",
+    "autoEffect": {
+      "trigger": "cast", "type": "steps",
+      "steps": [
+        { "type": "millTop", "amount": 3, "label": "山札の上から3枚を墓地に置く" },
+        { "type": "optionalReviveFromMilled", "label": "墓地に置いたカードの中にクリーチャーがいれば1体バトルゾーンに出してもよい" }
+      ]
+    }
   },
   {
     "id": 25,
     "name": "ボルバルザーク・エクス",
-    "race": "アーマード・ドラゴン",
+    "race": "アーマード・ドラゴン/アース・ドラゴン/ハンター",
     "cost": 7,
     "power": 6000,
     "type": "creature",
-    "civ": "fire",
+    "civ": ["fire", "nature"],
     "keywords": ["speedAttacker", "wBreaker"],
-    "effect": "スピードアタッカー\nW・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、相手のマナゾーンのカードを1枚選んで墓地に置く。[例外処理]",
-    "autoEffect": null
+    "effect": "マナゾーンに置く時、このカードはタップして置く。\nスピードアタッカー\nW・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、自分のマナゾーンにあるカードをすべてアンタップする。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [{ "type": "untapAllMana", "label": "自分のマナゾーンのカードをすべてアンタップ" }]
+    }
   },
   {
     "id": 26,
@@ -314,14 +326,20 @@
   {
     "id": 28,
     "name": "魔龍バベルギヌス",
-    "race": "ドラゴン・ゾンビ",
+    "race": "ドラゴン・ゾンビ/グランド・デビル",
     "cost": 7,
     "power": 6000,
     "type": "creature",
     "civ": "darkness",
     "keywords": [],
-    "effect": "このクリーチャーがバトルゾーンに出た時、バトルゾーンにある相手のクリーチャーを1体と自分のクリーチャーを1体破壊する。[例外処理]",
-    "autoEffect": null
+    "effect": "このクリーチャーがバトルゾーンに出た時、プレイヤーをひとり選ぶ。そのプレイヤーのクリーチャーを1体破壊してもよい。そうした場合、そのプレイヤーの墓地から、このクリーチャー以外の進化ではないクリーチャーを1体選び、バトルゾーンに出す。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [
+        { "type": "destroyChooseAny", "optional": true, "label": "任意のプレイヤーのクリーチャーを1体破壊してもよい" },
+        { "type": "reviveFromDestroyedOwnerGrave", "label": "破壊したクリーチャーのオーナーの墓地から進化でないクリーチャーを1体バトルゾーンに出す" }
+      ]
+    }
   },
   {
     "id": 29,
@@ -332,8 +350,11 @@
     "type": "spell",
     "civ": "light",
     "keywords": ["sTrigger"],
-    "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nブロッカーを2体まで、自分の手札からバトルゾーンに出す。[例外処理]",
-    "autoEffect": null
+    "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nブロッカーを2体まで、自分の手札からバトルゾーンに出す。",
+    "autoEffect": {
+      "trigger": "cast", "type": "steps",
+      "steps": [{ "type": "putFilteredFromHand", "filter": { "keyword": "blocker" }, "maxSelect": 2, "label": "ブロッカーを2体まで手札からバトルゾーンに出す" }]
+    }
   },
   {
     "id": 30,
@@ -344,8 +365,14 @@
     "type": "spell",
     "civ": "nature",
     "keywords": ["sTrigger"],
-    "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある自分のクリーチャーを1体マナゾーンに置き、自分のマナゾーンからクリーチャーを1体出してもよい。[例外処理]",
-    "autoEffect": null
+    "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある自分のクリーチャーを1体マナゾーンに置き、自分のマナゾーンからクリーチャーを1体出してもよい。",
+    "autoEffect": {
+      "trigger": "cast", "type": "steps",
+      "steps": [
+        { "type": "bzSelectToMana", "target": "self", "amount": 1, "label": "自分のバトルゾーンのクリーチャーを1体マナゾーンに置く" },
+        { "type": "manaCreatureSelectToBZ", "target": "self", "amount": 1, "optional": true, "label": "自分のマナゾーンからクリーチャーを1体バトルゾーンに出してもよい" }
+      ]
+    }
   },
   {
     "id": 31,
@@ -400,12 +427,15 @@
     "name": "悪魔神バロム",
     "race": "デーモン・コマンド",
     "cost": 8,
-    "power": 9000,
+    "power": 12000,
     "type": "creature",
     "civ": "darkness",
     "keywords": ["wBreaker"],
-    "effect": "W・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、闇以外のクリーチャーをすべて破壊する。[例外処理]",
-    "autoEffect": null
+    "effect": "進化―自分のデーモン・コマンド1体の上に置く。[例外処理]\nW・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、闇以外のクリーチャーをすべて破壊する。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [{ "type": "destroyNonColor", "color": "darkness", "label": "闇以外のクリーチャーをすべて破壊する" }]
+    }
   },
   {
     "id": 36,
@@ -478,8 +508,11 @@
     "type": "creature",
     "civ": "fire",
     "keywords": ["wBreaker"],
-    "effect": "S・バック-火（自分のシールドゾーンから火のカードが手札に加わった時、そのカードを捨てることでコストを支払わずに召喚してもよい）[例外処理]\nこのクリーチャーをバトルゾーンに出した時、自分のシールドを1枚選び、墓地に置く。[例外処理]\nW・ブレイカー",
-    "autoEffect": null
+    "effect": "S・バック-火（自分のシールドゾーンから火のカードが手札に加わった時、そのカードを捨てることでコストを支払わずに召喚してもよい）[例外処理]\nこのクリーチャーをバトルゾーンに出した時、自分のシールドを1枚選び、墓地に置く。\nW・ブレイカー",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [{ "type": "selectShieldToGrave", "target": "self", "amount": 1, "label": "自分のシールドを1枚選び墓地に置く" }]
+    }
   },
   {
     "id": 42,
@@ -527,8 +560,11 @@
     "type": "creature",
     "civ": ["light", "water"],
     "keywords": [],
-    "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーがバトルゾーンに出た時、またはバトルゾーンを離れた時、相手のクリーチャーを1体選びタップする。[例外処理]",
-    "autoEffect": null
+    "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーがバトルゾーンに出た時、またはバトルゾーンを離れた時、相手のクリーチャーを1体選びタップする。（バトルゾーンを離れた時の効果は[例外処理]）",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [{ "type": "tapSelectCreature", "target": "opponent", "amount": 1, "label": "相手のクリーチャーを1体タップする" }]
+    }
   },
   {
     "id": 46,
@@ -552,8 +588,15 @@
     "type": "creature",
     "civ": ["light", "water"],
     "keywords": [],
-    "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーがバトルゾーンに出た時、自分の山札の上から3枚を見る。その中から呪文を1枚選び、手札に加えてもよい。残りを好きな順序で山札の一番下に置く。[例外処理]",
-    "autoEffect": null
+    "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーがバトルゾーンに出た時、自分の山札の上から3枚を見る。その中から呪文を1枚選び、相手に見せてから手札に加えてもよい。残りを好きな順序で山札の一番下に置く。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [
+        { "type": "revealDeckTop", "amount": 3, "label": "山札の上から3枚を公開する" },
+        { "type": "chooseFromRevealed", "filter": { "type": "spell" }, "amount": 1, "destination": "hand", "optional": true, "label": "公開したカードの中から呪文を1枚選んで手札に加えてもよい" },
+        { "type": "restRevealedToBottom", "label": "残りのカードを好きな順序で山札の一番下に置く" }
+      ]
+    }
   },
   {
     "id": 48,
@@ -576,8 +619,11 @@
     "type": "spell",
     "civ": "light",
     "keywords": ["sTrigger"],
-    "effect": "S・トリガー\n光のコスト7以下の進化でないドラゴンを1体、自分の手札からバトルゾーンに出す。そのクリーチャーは次の自分のターンのはじめまで「ブロッカー」を得る。[例外処理]",
-    "autoEffect": null
+    "effect": "S・トリガー\n光のコスト7以下の進化でないドラゴンを1体、自分の手札からバトルゾーンに出す。そのクリーチャーは次の自分のターンのはじめまで「ブロッカー」を得る。（ブロッカー付与の持続は[例外処理]）",
+    "autoEffect": {
+      "trigger": "cast", "type": "steps",
+      "steps": [{ "type": "putFilteredFromHand", "filter": { "civ": "light", "maxCost": 7, "raceContains": "ドラゴン" }, "maxSelect": 1, "tempKeyword": "blocker", "label": "光のコスト7以下のドラゴンを1体手札からバトルゾーンに出す（ブロッカー付与）" }]
+    }
   },
   {
     "id": 50,
