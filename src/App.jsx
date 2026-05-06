@@ -1757,9 +1757,18 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       </div>
       <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>💬 {message}</div>
       <div style={{flex:1,overflowY:"auto",padding:"8px 10px",display:"flex",flexDirection:"column",gap:8}}>
-        <PlayerBoard pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={active==="p2"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-        <Log entries={logs}/>
-        <PlayerBoard pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={active==="p1"} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+        {(active==="p1"
+          ? [
+              <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
+              <Log key="log" entries={logs}/>,
+              <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
+            ]
+          : [
+              <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
+              <Log key="log" entries={logs}/>,
+              <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
+            ]
+        )}
       </div>
     </div>
   );
