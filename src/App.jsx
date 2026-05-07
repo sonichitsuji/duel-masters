@@ -642,7 +642,7 @@ function EffectModal({modal,p1State,setP1,p2State,setP2,onClose,addLog}){
         <div style={{fontWeight:700,color:"#ffe066",fontSize:14,marginBottom:10}}>⚡ {title}</div>
         <div style={{color:"#777",fontSize:11,marginBottom:10}}>{selected.length}/{maxSel} 選択中</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-          {cards.map(c=>zone==="deck"?<CardBack key={c.uid} small onClick={()=>toggle(c.uid)} label={selected.includes(c.uid)?"✓":""}/>:<CardFace key={c.uid} card={c} small selected={selected.includes(c.uid)} onClick={()=>toggle(c.uid)}/>)}
+          {cards.map(c=>(zone==="deck"&&modal.type!=="deckSearch")?<CardBack key={c.uid} small onClick={()=>toggle(c.uid)} label={selected.includes(c.uid)?"✓":""}/>:<CardFace key={c.uid} card={c} small selected={selected.includes(c.uid)} onClick={()=>toggle(c.uid)}/>)}
           {cards.length===0&&<div style={{color:"#444",fontSize:12}}>対象なし</div>}
         </div>
         <div style={{display:"flex",gap:8}}>
