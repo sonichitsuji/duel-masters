@@ -626,6 +626,26 @@
     }
   },
   {
+    "id": 51,
+    "name": "勇者の1号 ハムカツマン蒼",
+    "race": "メガ・ドラゴン/革命軍/ハムカツ団",
+    "cost": 5,
+    "power": 4000,
+    "type": "creature",
+    "civ": ["fire", "nature"],
+    "keywords": ["revolutionChange"],
+    "effect": "マナゾーンに置く時、このカードはタップして置く。\n革命チェンジ―火または自然のクリーチャー\nこのクリーチャーが出た時、自分の山札の上から5枚を見る。その中から多色クリーチャーを1体選んで相手に見せ、山札の上に置いてもよい。残りを好きな順序で山札の下に置く。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [
+        { "type": "revealDeckTop", "amount": 5, "label": "山札の上から5枚を見る" },
+        { "type": "chooseFromRevealed", "filter": { "type": "creature", "multiColor": true }, "amount": 1, "destination": "deckTop", "optional": true, "label": "多色クリーチャーを1体選んで山札の上に置いてもよい" },
+        { "type": "restRevealedToBottom", "label": "残りのカードを好きな順序で山札の一番下に置く" }
+      ]
+    },
+    "revolutionChangeCond": { "civs": ["fire", "nature"] }
+  },
+  {
     "id": 50,
     "name": "真・龍覇 ヘブンズロージア",
     "race": "エンジェル・コマンド・ドラゴン/ジャスティス・ウィング/ドラグナー",
