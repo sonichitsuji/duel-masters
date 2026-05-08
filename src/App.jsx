@@ -208,6 +208,7 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2) {
       let cards = context.revealedCards || [];
       if (step.filter?.type === "spell")    cards = cards.filter(c => c.type === "spell");
       if (step.filter?.type === "creature") cards = cards.filter(c => c.type === "creature");
+      if (step.filter?.multiColor)          cards = cards.filter(c => Array.isArray(c.civ) && c.civ.length >= 2);
       return { candidates: cards, isAuto: false };
     }
     case "optionalReviveFromMilled": {
@@ -281,10 +282,12 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
     case "chooseFromRevealed": {
       const picked = (context.revealedCards || []).filter(c => selectedUids.includes(c.uid));
       const dest = step.destination || "hand";
+      const destLabel = dest === "hand" ? "手札" : dest === "battle" ? "BZ" : dest === "deckTop" ? "山札の上" : dest;
       if (picked.length > 0) {
-        if (dest === "hand")   setSelf(s => ({ ...s, hand: [...s.hand, ...picked.map(c => ({ ...c, tapped: false }))] }));
-        else if (dest === "battle") setSelf(s => ({ ...s, battle: [...s.battle, ...picked.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
-        addLog(`${pid}: ${picked.map(c => c.name).join(", ")} → ${dest === "hand" ? "手札" : "BZ"}`);
+        if (dest === "hand")     setSelf(s => ({ ...s, hand: [...s.hand, ...picked.map(c => ({ ...c, tapped: false }))] }));
+        else if (dest === "battle")  setSelf(s => ({ ...s, battle: [...s.battle, ...picked.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
+        else if (dest === "deckTop") setSelf(s => ({ ...s, deck: [...picked, ...s.deck] }));
+        addLog(`${pid}: ${picked.map(c => c.name).join(", ")} → ${destLabel}`);
       }
       ctx.revealedCards = (context.revealedCards || []).filter(c => !selectedUids.includes(c.uid));
       break;
