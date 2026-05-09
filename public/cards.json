@@ -461,6 +461,7 @@
     "keywords": ["revolutionChange", "tBreaker"],
     "effect": "革命チェンジ―火または自然のコスト5以上のドラゴン\n自分の多色クリーチャーすべてに「スピードアタッカー」を与える。\nT・ブレイカー\nファイナル革命―このクリーチャーが「革命チェンジ」によってバトルゾーンに出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、コストが合計6以下になるよう、進化ではない多色クリーチャーを自分のマナゾーンまたは手札から選び、バトルゾーンに出す。",
     "autoEffect": null,
+    "grantKeywords": [{ "keyword": "speedAttacker", "filter": { "multiColor": true } }],
     "revolutionChangeCond": { "civs": ["fire", "nature"], "race": "ドラゴン", "minCost": 5 }
   },
   {
@@ -472,8 +473,9 @@
     "type": "creature",
     "civ": "fire",
     "keywords": [],
-    "effect": "バトルゾーンにある間、自分のドラゴンを召喚するコストは2少なくなる。ただし、コストは1以下にならない。[例外処理]",
-    "autoEffect": null
+    "effect": "バトルゾーンにある間、自分のドラゴンを召喚するコストは2少なくなる。ただし、コストは1以下にならない。",
+    "autoEffect": null,
+    "costReduce": { "amount": 2, "filter": { "raceContains": "ドラゴン" }, "min": 1 }
   },
   {
     "id": 39,
@@ -656,5 +658,110 @@
     "keywords": [],
     "effect": "このクリーチャーをバトルゾーンに出した時、コスト3以下のドラグハート1枚または光のコスト5以下のドラグハートを1枚、超次元ゾーンからバトルゾーンに出す。[例外処理]\nマナ武装5：自分のマナゾーンに光のカードが5枚以上あれば、バトルゾーンにある自分の光のクリーチャーはすべて「シールド・セイバー」を得る。[例外処理]",
     "autoEffect": null
+  },
+  {
+    "id": 52,
+    "name": "チャラ・ルピア",
+    "race": "ファイアー・バード",
+    "cost": 2,
+    "power": 1500,
+    "type": "creature",
+    "civ": ["light", "fire"],
+    "keywords": [],
+    "effect": "マナゾーンに置く時、このカードはタップして置く。\n自分のドラゴン・クリーチャーの召喚コストを2少なくする。ただしコストは0以下にはならない。",
+    "autoEffect": null,
+    "costReduce": { "amount": 2, "filter": { "raceContains": "ドラゴン" }, "min": 0 }
+  },
+  {
+    "id": 53,
+    "name": "飛ぶ革命 ヴァル・ボルシャック",
+    "race": "アーマード・ドラゴン",
+    "cost": 5,
+    "power": 5500,
+    "type": "creature",
+    "civ": ["light", "fire"],
+    "keywords": ["revolutionChange", "speedAttacker"],
+    "effect": "革命チェンジ―アーマード\nスピードアタッカー\nこのクリーチャーが出た時、他のクリーチャーを2体まで選び、それぞれタップまたはアンタップする。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [{ "type": "tapOrUntapSelectCreature", "maxSelect": 2, "optional": true, "label": "他のクリーチャーを2体まで選びタップまたはアンタップする" }]
+    },
+    "revolutionChangeCond": { "races": ["アーマード"] }
+  },
+  {
+    "id": 54,
+    "name": "ボルシャック・栄光・ルピア",
+    "race": "ファイアー・バード/アーマード・ドラゴン",
+    "cost": 3,
+    "power": 4000,
+    "type": "creature",
+    "civ": ["fire", "nature"],
+    "keywords": [],
+    "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーが出た時、自分の山札の上から1枚をタップしてマナゾーンに置く。それがドラゴン・カードなら、自分の山札の上からもう1枚、タップしてマナゾーンに置く。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [
+        { "type": "millTopToMana", "amount": 1, "label": "山札の上から1枚をタップしてマナゾーンに置く" },
+        { "type": "millTopToManaIfDragon", "label": "それがドラゴンなら、山札の上からもう1枚タップしてマナゾーンに置く" }
+      ]
+    }
+  },
+  {
+    "id": 55,
+    "name": "堅き革命 ボルシュゴス/「ボルシュゴス・スラッシャー!!」",
+    "race": "アーマード・ドラゴン",
+    "cost": 5,
+    "power": 4000,
+    "type": "twinpact",
+    "civ": ["light", "fire"],
+    "keywords": ["revolutionChange", "speedAttacker"],
+    "effect": "革命チェンジ―アーマード\nスピードアタッカー\n自分の他のクリーチャーすべてに「ブロッカー」を与える。\nメガ・ラスト・バースト [例外処理]",
+    "autoEffect": null,
+    "grantKeywords": [{ "keyword": "blocker", "filter": { "notSelf": true } }],
+    "revolutionChangeCond": { "races": ["アーマード"] },
+    "spellSide": {
+      "name": "ボルシュゴス・スラッシャー!!",
+      "cost": 2,
+      "civ": "fire",
+      "effect": "自分の山札の上から5枚を見る。その中からアーマードを1枚、相手に見せてから手札に加えてもよい。残りを好きな順序で山札の下に置く。",
+      "autoEffect": {
+        "trigger": "cast", "type": "steps",
+        "steps": [
+          { "type": "revealDeckTop", "amount": 5, "label": "山札の上から5枚を見る" },
+          { "type": "chooseFromRevealed", "filter": { "raceContains": "アーマード" }, "amount": 1, "destination": "hand", "optional": true, "label": "アーマードを1枚選んで手札に加えてもよい" },
+          { "type": "restRevealedToBottom", "label": "残りを好きな順序で山札の下に置く" }
+        ]
+      }
+    }
+  },
+  {
+    "id": 56,
+    "name": "凰翔竜機ワルキューレ・ルピア",
+    "race": "ファイアー・バード/アーマード・ドラゴン",
+    "cost": 5,
+    "power": 6000,
+    "type": "creature",
+    "civ": ["light", "fire"],
+    "keywords": ["revolutionChange", "wBreaker"],
+    "effect": "革命チェンジ―ファイアー・バードまたはドラゴン\nW・ブレイカー\n自分のファイアー・バードすべてに「スピードアタッカー」を与える。\n自分のドラゴンすべてに「ブロッカー」を与える。",
+    "autoEffect": null,
+    "grantKeywords": [
+      { "keyword": "speedAttacker", "filter": { "raceContains": "ファイアー・バード" } },
+      { "keyword": "blocker", "filter": { "raceContains": "ドラゴン" } }
+    ],
+    "revolutionChangeCond": { "races": ["ファイアー・バード", "ドラゴン"] }
+  },
+  {
+    "id": 57,
+    "name": "ボルシャック・ヴォルジャアク",
+    "race": "アーマード・ドラゴン",
+    "cost": 7,
+    "power": 11000,
+    "type": "creature",
+    "civ": ["light", "fire"],
+    "keywords": ["revolutionChange", "speedAttacker", "wBreaker"],
+    "effect": "革命チェンジ―コスト5以上のアーマード\nスピードアタッカー\nW・ブレイカー\n各ターンに1度、クリーチャーが出た時、自分の山札の上から1枚目をシールド化してもよい。[例外処理]\nこのクリーチャーが破壊された時、名前に《ボルシャック》とあるコスト7以下のクリーチャーを1体、自分の手札から出してもよい。[例外処理]\n終極宣言 [例外処理]",
+    "autoEffect": null,
+    "revolutionChangeCond": { "races": ["アーマード"], "minCost": 5 }
   }
 ]

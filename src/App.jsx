@@ -97,10 +97,11 @@ function makeCardBg(civs) {
   return `linear-gradient(180deg, ${stops.join(', ')})`;
 }
 
-function canPayCost(mana,card){
+function canPayCost(mana,card,selfBattle){
+  const effectiveCost=selfBattle?getEffectiveCost(card,selfBattle):card.cost;
   const untapped=mana.filter(c=>!c.tapped);
-  if(untapped.length<card.cost) return {ok:false,reason:`マナ不足 (必要:${card.cost} / 利用可能:${untapped.length})`};
-  if(card.cost===0) return {ok:true};
+  if(untapped.length<effectiveCost) return {ok:false,reason:`マナ不足 (必要:${effectiveCost} / 利用可能:${untapped.length})`};
+  if(effectiveCost===0) return {ok:true};
   const civs=getCardCivs(card);
   for(const civ of civs){
     if(!untapped.some(c=>getCardCivs(c).includes(civ))){
@@ -112,6 +113,33 @@ function canPayCost(mana,card){
 
 function tapManaByUids(mana,uids){
   return mana.map(c=>uids.includes(c.uid)?{...c,tapped:true}:c);
+}
+
+function getEffectiveCost(card, selfBattle) {
+  if (!selfBattle || selfBattle.length === 0) return card.cost;
+  let cost = card.cost;
+  for (const c of selfBattle) {
+    if (!c.costReduce) continue;
+    const { amount, filter, min } = c.costReduce;
+    if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
+    cost = Math.max(min ?? 0, cost - amount);
+  }
+  return cost;
+}
+
+function computeGrantedKeywords(card, battleZone) {
+  if (!battleZone) return [];
+  const granted = [];
+  for (const granter of battleZone) {
+    if (!granter.grantKeywords) continue;
+    for (const rule of granter.grantKeywords) {
+      if (rule.filter?.raceContains && !card.race?.includes(rule.filter.raceContains)) continue;
+      if (rule.filter?.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) continue;
+      if (rule.filter?.notSelf && granter.uid === card.uid) continue;
+      if (!granted.includes(rule.keyword)) granted.push(rule.keyword);
+    }
+  }
+  return granted;
 }
 
 // autoEffect inference from keywords/effect text
@@ -199,7 +227,7 @@ function processEffect(effect,ownerPid,selfState,setSelf,otherState,setOther,add
 // ===========================
 // STEP EFFECT SYSTEM
 // ===========================
-function getStepCandidates(step, selfState, otherState, context, p1, p2) {
+function getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard) {
   switch (step.type) {
     case "revealDeckTop": case "restRevealedToBottom": case "millTop":
     case "untapAllMana": case "destroyNonColor":
@@ -209,6 +237,7 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2) {
       if (step.filter?.type === "spell")    cards = cards.filter(c => c.type === "spell");
       if (step.filter?.type === "creature") cards = cards.filter(c => c.type === "creature");
       if (step.filter?.multiColor)          cards = cards.filter(c => Array.isArray(c.civ) && c.civ.length >= 2);
+      if (step.filter?.raceContains) cards = cards.filter(c => c.race && c.race.includes(step.filter.raceContains));
       return { candidates: cards, isAuto: false };
     }
     case "optionalReviveFromMilled": {
@@ -257,6 +286,15 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2) {
       const maxCost = step.maxCost ?? 999;
       return { candidates: [...p1.battle, ...p2.battle].filter(c => c.cost <= maxCost), isAuto: false };
     }
+    case "tapOrUntapSelectCreature": {
+      const srcUid = srcCard?.uid;
+      const all = [...p1.battle, ...p2.battle].filter(c => !srcUid || c.uid !== srcUid);
+      return { candidates: all, isAuto: all.length === 0 };
+    }
+    case "millTopToMana":
+      return { candidates: [], isAuto: true };
+    case "millTopToManaIfDragon":
+      return { candidates: [], isAuto: true };
     default:
       return { candidates: [], isAuto: true };
   }
@@ -419,6 +457,36 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
       }
       break;
     }
+    case "tapOrUntapSelectCreature": {
+      selectedUids.forEach(uid => {
+        setP1(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tapped: !c.tapped } : c) }));
+        setP2(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tapped: !c.tapped } : c) }));
+      });
+      if (selectedUids.length > 0) addLog(`${pid}: ${selectedUids.length}体をタップ/アンタップ`);
+      break;
+    }
+    case "millTopToMana": {
+      const n = Math.min(step.amount ?? 1, selfState.deck.length);
+      if (n > 0) {
+        const milled = selfState.deck.slice(0, n).map(c => ({ ...c, tapped: true }));
+        setSelf(s => ({ ...s, deck: s.deck.slice(n), mana: [...s.mana, ...milled] }));
+        ctx.milledToMana = [...(context.milledToMana || []), ...milled];
+        addLog(`${pid}: ${milled.map(c => c.name).join(", ")} → マナ(タップ)`);
+      }
+      break;
+    }
+    case "millTopToManaIfDragon": {
+      const lastMilled = (context.milledToMana || []).slice(-1)[0];
+      if (lastMilled?.race?.includes("ドラゴン") && selfState.deck.length > 0) {
+        const card2 = { ...selfState.deck[0], tapped: true };
+        setSelf(s => ({ ...s, deck: s.deck.slice(1), mana: [...s.mana, card2] }));
+        ctx.milledToMana = [...(context.milledToMana || []), card2];
+        addLog(`${pid}: ${card2.name} → マナ(タップ)（ドラゴン追加）`);
+      } else {
+        addLog(`${pid}: ドラゴンでないためスキップ`);
+      }
+      break;
+    }
     default: addLog(`[未実装ステップ] ${step.type}`);
   }
   return ctx;
@@ -441,7 +509,7 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"?`${card.power}`:"📜 呪文"}</div>
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"?`${card.power}`:card.type==="twinpact"?"⚔/📜 ツイン":"📜 呪文"}</div>
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:7}}>⚡</span>}
         {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:7,color:"#ffe066",textShadow:"0 0 4px #ffe066"}}>⚡</span>}
@@ -523,9 +591,7 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
-  const dogiPresent=battleZone?.some(c=>c.name==="蒼き団長 ドギラゴン剣");
-  const isMulticolor=Array.isArray(card.civ)&&card.civ.length>=2;
-  const effectiveSA=card.keywords?.includes("speedAttacker")||(dogiPresent&&isMulticolor);
+  const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[]).includes("speedAttacker");
   const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA);
   const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":!drewThisTurn?"ドロー前":null;
 
@@ -753,8 +819,8 @@ function AttackTriggerModal({ attacker, hand, battle, onRevChange, onSkip }) {
     if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
     const cond = c.revolutionChangeCond;
     const attackerCivs = getCardCivs(attacker);
-    const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
-    const raceMatch = !cond.race || (attacker.race && attacker.race.includes(cond.race));
+    const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
+    const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => attacker.race?.includes(r)) : attacker.race?.includes(cond.race);
     const costMatch = !cond.minCost || attacker.cost >= cond.minCost;
     return civMatch && raceMatch && costMatch;
   });
@@ -883,11 +949,11 @@ const EFFECT_TYPE_LABELS = {
 // ===========================
 // MANA PAY MODAL
 // ===========================
-function ManaPayModal({ card, mana, onConfirm, onCancel }) {
+function ManaPayModal({ card, mana, selfBattle, onConfirm, onCancel }) {
   const [selected, setSelected] = useState([]); // [{uid, assignedCiv}]
   const [civPicker, setCivPicker] = useState(null); // null | {uid, civs:[]}
 
-  const needed = card.cost;
+  const needed = getEffectiveCost(card, selfBattle || []);
   const requiredCivs = getCardCivs(card);
   const selectedUids = selected.map(s => s.uid);
   const civsSatisfied = requiredCivs.every(civ => selected.some(s => s.assignedCiv === civ));
@@ -1035,7 +1101,7 @@ function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance,
   const step = steps[stepIdx];
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const otherState = ownerPid === "p1" ? p2 : p1;
-  const { candidates, isAuto } = getStepCandidates(step, selfState, otherState, context, p1, p2);
+  const { candidates, isAuto } = getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard);
 
   const civs = getCardCivs(srcCard || {});
   const c = CIV[civs[0]] || CIV.fire;
@@ -1104,6 +1170,36 @@ function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance,
 }
 
 // ===========================
+// TWIN PACT CHOICE MODAL
+// ===========================
+function TwinPactChoiceModal({ card, onSelectCreature, onSelectSpell, onCancel }) {
+  const civs = getCardCivs(card);
+  const c = CIV[civs[0]] || CIV.fire;
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:395, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:380, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4 }}>⚔/📜 ツインパクト</div>
+        <div style={{ fontSize:12, color:"#ccc", marginBottom:14 }}>{card.name} をどちらとして使いますか？</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+          <button onClick={onSelectCreature} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(255,180,0,0.1)", border:"1px solid #ffbb0055", cursor:"pointer", textAlign:"left" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>⚔ クリーチャーとして召喚</div>
+            <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.cost} / パワー {card.power} / {card.race}</div>
+          </button>
+          <button onClick={onSelectSpell} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(100,180,255,0.1)", border:"1px solid #44aaff55", cursor:"pointer", textAlign:"left" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>📜 呪文として唱える</div>
+            <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.spellSide?.cost} / {card.spellSide?.name}</div>
+            <div style={{ fontSize:10, color:"#666", marginTop:2 }}>{card.spellSide?.effect}</div>
+          </button>
+        </div>
+        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+          キャンセル
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
 // PLAYER BOARD
 // ===========================
 function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack}){
@@ -1111,11 +1207,12 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const [selBattle,setSelBattle]=useState(null);
   const [revChangeTarget,setRevChangeTarget]=useState(null);
   const [manaPayModal,setManaPayModal]=useState(null);
+  const [twinPactModal,setTwinPactModal]=useState(null);
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
   const selectedCard=selHand!==null?state.hand[selHand]:null;
-  const civCheck=selectedCard?canPayCost(state.mana,selectedCard):null;
+  const civCheck=selectedCard?(selectedCard.type==="twinpact"?(canPayCost(state.mana,selectedCard,state.battle).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state.battle).ok?{ok:true}:canPayCost(state.mana,selectedCard,state.battle)):canPayCost(state.mana,selectedCard,state.battle)):null;
   const selBattleCard=selBattle?state.battle.find(c=>c.uid===selBattle):null;
   const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
@@ -1123,12 +1220,13 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const handlePlay=()=>{
     if(selHand===null||!civCheck?.ok)return;
     const card=state.hand[selHand];
-    if(card.cost===0){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
+    if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
+    else if(card.type==="twinpact"){setTwinPactModal({handIdx:selHand,card});}
     else{setManaPayModal({handIdx:selHand,card});}
   };
   const handleManaConfirm=uids=>{
     if(!manaPayModal)return;
-    const ok=onPlayCard(manaPayModal.handIdx,uids);
+    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null);
     if(ok!==false)setSelHand(null);
     setManaPayModal(null);
   };
@@ -1142,8 +1240,8 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
       const cond = c.revolutionChangeCond;
       const attackerCivs = getCardCivs(card);
-      const civMatch = cond.civs.some(cv => attackerCivs.includes(cv));
-      const raceMatch = !cond.race || (card.race && card.race.includes(cond.race));
+      const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
+      const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => card.race?.includes(r)) : card.race?.includes(cond.race);
       const costMatch = !cond.minCost || card.cost >= cond.minCost;
       return civMatch && raceMatch && costMatch;
     });
@@ -1179,8 +1277,17 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         <ManaPayModal
           card={manaPayModal.card}
           mana={state.mana}
+          selfBattle={state.battle}
           onConfirm={handleManaConfirm}
           onCancel={()=>setManaPayModal(null)}
+        />
+      )}
+      {twinPactModal&&(
+        <TwinPactChoiceModal
+          card={twinPactModal.card}
+          onSelectCreature={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card,twinpactSide:"creature"});}}
+          onSelectSpell={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card:{...card,...card.spellSide,uid:card.uid,grantKeywords:card.grantKeywords},twinpactSide:"spell"});}}
+          onCancel={()=>setTwinPactModal(null)}
         />
       )}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
@@ -1193,8 +1300,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         <div style={{fontSize:10,color:"#333",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",minHeight:36}}>
           {(()=>{
-            const dogiPresent=state.battle.some(c=>c.name==="蒼き団長 ドギラゴン剣");
-            const getGranted=c=>{const g=[];if(dogiPresent&&Array.isArray(c.civ)&&c.civ.length>=2&&!c.keywords?.includes("speedAttacker"))g.push("speedAttacker");return g;};
+            const getGranted=c=>computeGrantedKeywords(c,state.battle);
             return state.battle.map(c=><CardFace key={c.uid} card={c} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
@@ -1642,22 +1748,26 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
-  const handlePlayCard=(idx,selectedManaUids)=>{
+  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null)=>{
     const card=activeState.hand[idx];
     const newMana=tapManaByUids(activeState.mana,selectedManaUids);
     const newHand=activeState.hand.filter((_,i)=>i!==idx);
-    if(card.type==="creature"){
-      const isSpeed=card.keywords?.includes("speedAttacker");
+    const isSpell=card.type==="spell"||(card.type==="twinpact"&&twinpactSide==="spell");
+    const effectiveSide=twinpactSide==="spell"?card.spellSide:card;
+    if(!isSpell){
+      const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
       const newBattle=[...activeState.battle,{...card,tapped:false,summonedThisTurn:!isSpeed}];
       setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
-      addLog(`${active}: ${card.name}(${card.power}) 召喚！`);
+      addLog(`${active}: ${card.name}(${effectiveSide.power||card.power}) 召喚！`);
       showCutIn({title:"召喚！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]?.icon});
-      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name);
+      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,card);
     }else{
       setActiveState(s=>({...s,hand:newHand,mana:newMana,grave:[...s.grave,card]}));
-      addLog(`${active}: 呪文「${card.name}」`);
-      showCutIn({title:"呪文！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:"📜"});
-      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,card.name);
+      const spellName=effectiveSide?.name||card.name;
+      addLog(`${active}: 呪文「${spellName}」`);
+      showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:"📜"});
+      const spellEffect=effectiveSide?.autoEffect||card.autoEffect;
+      if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
     }
     return true;
   };
