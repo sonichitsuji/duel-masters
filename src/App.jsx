@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import INITIAL_CARD_DB from "../public/cards.json";
 
-const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger"];
-const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー" };
+const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush"];
+const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー", zRush:"Zラッシュ" };
 
 const CIV = {
   fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", icon:"🔥", textColor:"#ff8877" },
@@ -207,6 +207,23 @@ function CutIn({cutin,onDone}){
         <div style={{fontFamily:"'Cinzel',serif",fontSize:22,fontWeight:900,color:c.color,textShadow:`0 0 16px ${c.glow}`,letterSpacing:2,marginBottom:4,textAlign:"center"}}>{cutin.title}</div>
         {cutin.cardName&&<div style={{marginTop:8,padding:"4px 12px",borderRadius:4,background:`${c.color}22`,border:`1px solid ${c.color}55`,fontSize:12,color:c.textColor,fontWeight:700}}>{cutin.cardName}</div>}
       </div>
+    </div>
+  );
+}
+
+function HyperModeCutIn({creature,onDismiss}){
+  const civKey=Array.isArray(creature.civ)?creature.civ[0]:creature.civ||"fire";
+  const c=CIV[civKey]||CIV.fire;
+  return(
+    <div onClick={onDismiss} style={{position:"fixed",inset:0,zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",cursor:"pointer"}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:`linear-gradient(135deg,#1a0500ee,#000000ff)`,border:`3px solid #ffcc00`,borderRadius:20,padding:"24px 48px",boxShadow:`0 0 60px #ffcc0099,0 0 120px #ff880055`,minWidth:260,animation:"hyperGlow 1.2s ease-in-out infinite alternate"}}>
+        <div style={{fontSize:48,marginBottom:4,textShadow:"0 0 20px #ffcc00"}}>⚡</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:20,fontWeight:900,color:"#ffcc00",textShadow:"0 0 16px #ffcc00",letterSpacing:3,marginBottom:6}}>HYPER MODE</div>
+        <div style={{fontSize:13,fontWeight:900,color:"#ffcc00",textShadow:"0 0 10px #ff8800",marginBottom:4}}>ハイパーモード解放！</div>
+        <div style={{marginTop:8,padding:"4px 14px",borderRadius:4,background:"rgba(255,200,0,0.12)",border:"1px solid #ffcc0066",fontSize:12,color:"#ffe066",fontWeight:700}}>{creature.name}</div>
+        <div style={{marginTop:16,fontSize:10,color:"#888"}}>タップでスキップ</div>
+      </div>
+      <style>{`@keyframes hyperGlow{from{box-shadow:0 0 40px #ffcc0088,0 0 80px #ff880044;}to{box-shadow:0 0 80px #ffcc00cc,0 0 160px #ff880088;}}`}</style>
     </div>
   );
 }
@@ -599,8 +616,9 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const w=small?52:74;const h=small?72:106;
+  const hyper=card.hyperMode;
   return(
-    <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:card.tapped?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
+    <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:card.tapped?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:1}}>
         <span style={{background:c.color,color:"#fff",fontWeight:700,fontSize:small?8:10,borderRadius:3,padding:"0 3px",lineHeight:"15px"}}>{card.cost}</span>
         <div style={{display:"flex",gap:1}}>{civs.map(cv=><span key={cv} style={{fontSize:small?9:11}}>{CIV[cv]?.icon}</span>)}</div>
@@ -619,7 +637,9 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
         {card.keywords?.includes("tBreaker")&&<span style={{fontSize:7}}>✦✦✦</span>}
         {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
         {card.keywords?.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
+        {card.keywords?.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
       </div>
+      {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>⚡HYPER</div>}
       {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
       {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:8,background:"rgba(0,0,0,0.7)",color:"gold",borderRadius:3,padding:"1px 3px"}}>⚡×{card.evolutionBase.length + 1}</div>}
     </div>
@@ -1899,6 +1919,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [turn,setTurn]=useState(1);
   const [effectModal,setEffectModal]=useState(null);
   const [cutin,setCutin]=useState(null);
+  const [hyperModeCutIn,setHyperModeCutIn]=useState(null);
   const [usedFinalRevThisTurn,setUsedFinalRevThisTurn]=useState(false);
   const [finalRevModal,setFinalRevModal]=useState(false);
   const [effectConfirmModal,setEffectConfirmModal]=useState(null);
@@ -2081,6 +2102,18 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle});
       }
     }
+    // Z-Rush: シールドが離れたら両プレイヤーのzRushクリーチャーのhyperModeを解放
+    if(broken.length>0){
+      const zActive=activeState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
+      const zOther=otherState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
+      const zAll=[...zActive,...zOther];
+      if(zAll.length>0){
+        if(zActive.length>0)setActiveState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
+        if(zOther.length>0)setOtherState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
+        zAll.forEach(c=>addLog(`⚡ Zラッシュ: ${c.name} ハイパーモード解放！`));
+        setHyperModeCutIn(zAll[0]);
+      }
+    }
     addLog(`🔥 ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
     if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
     setAttackingUid(null);
@@ -2101,8 +2134,8 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         }
       });
     });
-    // cantAttackThisTurnリセット + 通常アンタップ
-    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false,cantAttackThisTurn:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
+    // cantAttackThisTurn / hyperModeリセット + 通常アンタップ
+    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false,cantAttackThisTurn:false,hyperMode:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
     setOtherState(s=>({...s,battle:s.battle.map(c=>({...c,cantAttackThisTurn:false}))}));
     setAttackingUid(null);setUsedFinalRevThisTurn(false);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
@@ -2115,6 +2148,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     <div style={{minHeight:"100vh",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}::-webkit-scrollbar{width:4px;background:#111;}::-webkit-scrollbar-thumb{background:#333;border-radius:4px;}`}</style>
       {cutin&&<CutIn cutin={cutin} onDone={()=>setCutin(null)}/>}
+      {hyperModeCutIn&&<HyperModeCutIn creature={hyperModeCutIn} onDismiss={()=>setHyperModeCutIn(null)}/>}
       {winner&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:700}}>
           <div style={{fontSize:72}}>🏆</div>
