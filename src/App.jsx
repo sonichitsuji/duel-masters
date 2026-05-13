@@ -123,7 +123,7 @@ function getEffectiveCost(card, selfBattle) {
     if (filter?.nameContains && !card.name?.includes(filter.nameContains)) continue;
     cost = Math.max(min ?? 0, cost - amount);
   }
-  return cost;
+  return Math.max(cost, getCardCivs(card).length);
 }
 
 function extractFromBattle(battle, uid) {
