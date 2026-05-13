@@ -355,6 +355,9 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard
     case "battleOpponentCreature": {
       return { candidates: otherState.battle, isAuto: false, maxSelect: 1, optional: true };
     }
+    case "breakOpponentShieldChoice": {
+      return { candidates: otherState.shields, isAuto: false, maxSelect: 1, optional: true };
+    }
     default:
       return { candidates: [], isAuto: true };
   }
@@ -524,8 +527,8 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
     case "bounceMaxCost": {
       if (selectedUids.length > 0) {
         const uid = selectedUids[0];
-        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P1手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false }] }; });
-        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P2手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false }] }; });
+        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P1手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }] }; });
+        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P2手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }] }; });
       }
       break;
     }
@@ -592,14 +595,17 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
         const { newBattle: nb2, extracted: ex2 } = extractFromBattle(otherState.battle, target.uid);
         setOther(s => ({ ...s, battle: nb2, grave: [...s.grave, ...ex2] }));
         addLog(`✅ ${target.name} 破壊（ETBバトル）`);
-        // Break 1 shield on battle win
-        setOther(s => {
-          if (s.shields.length === 0) return s;
-          const broken = s.shields[0];
-          addLog(`💥 ETBバトル勝利でシールドブレイク`);
-          return { ...s, shields: s.shields.slice(1), hand: [...s.hand, { ...broken, tapped: false }] };
-        });
+        ctx.etbBattleWon = true;
       }
+      break;
+    }
+    case "breakOpponentShieldChoice": {
+      if (selectedUids.length === 0) break;
+      const uid = selectedUids[0];
+      const shield = otherState.shields.find(c => c.uid === uid);
+      if (!shield) break;
+      setOther(s => ({ ...s, shields: s.shields.filter(c => c.uid !== uid), hand: [...s.hand, { ...shield, tapped: false }] }));
+      addLog(`💥 ${srcCard?.name}: シールドブレイク「${shield.name}」`);
       break;
     }
     default: addLog(`[未実装ステップ] ${step.type}`);
@@ -821,7 +827,7 @@ function EffectModal({modal,p1State,setP1,p2State,setP2,onClose,addLog}){
       addLog(`${modal.pid}: ${selected.length}枚捨て`);
     }else if(modal.type==="destroy"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const d=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),grave:[...s.grave,...d]}));addLog(`${modal.pid}: ${d.length}体破壊`);}
     else if(modal.type==="sendToMana"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const m=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),mana:[...s.mana,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: ${m.length}体マナへ`);}
-    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...b.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: ${b.length}体手札へ`);}
+    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...b.map(c=>({...c,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}))]}));addLog(`${modal.pid}: ${b.length}体手札へ`);}
     else if(modal.type==="manaReturn"){const m=ownerState.mana.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,mana:s.mana.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: マナ${m.length}枚手札へ`);}
     else if(modal.type==="deckSearch"){const m=ownerState.deck.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,deck:shuffle(s.deck.filter(c=>!selected.includes(c.uid))),hand:[...s.hand,...m]}));addLog(`${modal.pid}: デッキ${m.length}枚→手札`);}
     onClose();
@@ -1948,8 +1954,11 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if (!prev) return null;
       const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog);
       let nextIdx = prev.stepIdx + 1;
-      // Skip reviveFromDestroyedOwnerGrave if nothing was destroyed
-      while (nextIdx < prev.steps.length && prev.steps[nextIdx].type === "reviveFromDestroyedOwnerGrave" && !updatedCtx.destroyedCreatureOwner) {
+      // Skip conditional steps when their precondition is not met
+      while (nextIdx < prev.steps.length && (
+        (prev.steps[nextIdx].type === "reviveFromDestroyedOwnerGrave" && !updatedCtx.destroyedCreatureOwner) ||
+        (prev.steps[nextIdx].type === "breakOpponentShieldChoice" && !updatedCtx.etbBattleWon)
+      )) {
         nextIdx++;
       }
       if (nextIdx < prev.steps.length) return { ...prev, stepIdx: nextIdx, context: updatedCtx };
@@ -2033,7 +2042,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveState(s=>({
       ...s,
       battle:newBattle,
-      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false}),
+      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}),
     }));
     addLog(`⚡ 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
     if(handCard.autoEffect) triggerEffect(handCard.autoEffect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,{...handCard,uid:handCard.uid});
