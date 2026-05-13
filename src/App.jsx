@@ -2029,12 +2029,14 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     return true;
   };
   const handleRevChangeExec=(handCard,attacker)=>{
+    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,summonedThisTurn:false}:c);
     setActiveState(s=>({
       ...s,
-      battle:s.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,summonedThisTurn:false}:c),
+      battle:newBattle,
       hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false}),
     }));
     addLog(`⚡ 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
+    if(handCard.autoEffect) triggerEffect(handCard.autoEffect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,{...handCard,uid:handCard.uid});
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     setAttackingUid(handCard.uid);
     setMessage("攻撃対象を選択");
@@ -2097,7 +2099,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       sTriggers.forEach(c=>{addLog(`🛡 S・トリガー「${c.name}」`);showCutIn({title:"S・トリガー発動！",cardName:c.name,civ:c.civ,icon:"🛡"});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
       if(gStrikeCards.length>0){
         gStrikeCards.forEach(c=>addLog(`⚡ G・ストライク「${c.name}」`));
-        setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle});
+        setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
       }
     }
     // Z-Rush: シールドが離れたら両プレイヤーのzRushクリーチャーのhyperModeを解放
@@ -2162,7 +2164,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
-      {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=active==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
+      {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>
         <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
