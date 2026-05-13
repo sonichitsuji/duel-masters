@@ -355,6 +355,9 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard
     case "battleOpponentCreature": {
       return { candidates: otherState.battle, isAuto: false, maxSelect: 1, optional: true };
     }
+    case "breakOpponentShieldChoice": {
+      return { candidates: otherState.shields, isAuto: false, maxSelect: 1, optional: true };
+    }
     default:
       return { candidates: [], isAuto: true };
   }
@@ -524,8 +527,8 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
     case "bounceMaxCost": {
       if (selectedUids.length > 0) {
         const uid = selectedUids[0];
-        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P1手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false }] }; });
-        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P2手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false }] }; });
+        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P1手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }] }; });
+        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P2手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }] }; });
       }
       break;
     }
@@ -592,14 +595,17 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
         const { newBattle: nb2, extracted: ex2 } = extractFromBattle(otherState.battle, target.uid);
         setOther(s => ({ ...s, battle: nb2, grave: [...s.grave, ...ex2] }));
         addLog(`✅ ${target.name} 破壊（ETBバトル）`);
-        // Break 1 shield on battle win
-        setOther(s => {
-          if (s.shields.length === 0) return s;
-          const broken = s.shields[0];
-          addLog(`💥 ETBバトル勝利でシールドブレイク`);
-          return { ...s, shields: s.shields.slice(1), hand: [...s.hand, { ...broken, tapped: false }] };
-        });
+        ctx.etbBattleWon = true;
       }
+      break;
+    }
+    case "breakOpponentShieldChoice": {
+      if (selectedUids.length === 0) break;
+      const uid = selectedUids[0];
+      const shield = otherState.shields.find(c => c.uid === uid);
+      if (!shield) break;
+      setOther(s => ({ ...s, shields: s.shields.filter(c => c.uid !== uid), hand: [...s.hand, { ...shield, tapped: false }] }));
+      addLog(`💥 ${srcCard?.name}: シールドブレイク「${shield.name}」`);
       break;
     }
     default: addLog(`[未実装ステップ] ${step.type}`);
@@ -821,7 +827,7 @@ function EffectModal({modal,p1State,setP1,p2State,setP2,onClose,addLog}){
       addLog(`${modal.pid}: ${selected.length}枚捨て`);
     }else if(modal.type==="destroy"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const d=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),grave:[...s.grave,...d]}));addLog(`${modal.pid}: ${d.length}体破壊`);}
     else if(modal.type==="sendToMana"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const m=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),mana:[...s.mana,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: ${m.length}体マナへ`);}
-    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...b.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: ${b.length}体手札へ`);}
+    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...b.map(c=>({...c,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}))]}));addLog(`${modal.pid}: ${b.length}体手札へ`);}
     else if(modal.type==="manaReturn"){const m=ownerState.mana.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,mana:s.mana.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: マナ${m.length}枚手札へ`);}
     else if(modal.type==="deckSearch"){const m=ownerState.deck.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,deck:shuffle(s.deck.filter(c=>!selected.includes(c.uid))),hand:[...s.hand,...m]}));addLog(`${modal.pid}: デッキ${m.length}枚→手札`);}
     onClose();
@@ -1948,8 +1954,11 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if (!prev) return null;
       const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog);
       let nextIdx = prev.stepIdx + 1;
-      // Skip reviveFromDestroyedOwnerGrave if nothing was destroyed
-      while (nextIdx < prev.steps.length && prev.steps[nextIdx].type === "reviveFromDestroyedOwnerGrave" && !updatedCtx.destroyedCreatureOwner) {
+      // Skip conditional steps when their precondition is not met
+      while (nextIdx < prev.steps.length && (
+        (prev.steps[nextIdx].type === "reviveFromDestroyedOwnerGrave" && !updatedCtx.destroyedCreatureOwner) ||
+        (prev.steps[nextIdx].type === "breakOpponentShieldChoice" && !updatedCtx.etbBattleWon)
+      )) {
         nextIdx++;
       }
       if (nextIdx < prev.steps.length) return { ...prev, stepIdx: nextIdx, context: updatedCtx };
@@ -2029,12 +2038,14 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     return true;
   };
   const handleRevChangeExec=(handCard,attacker)=>{
+    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,summonedThisTurn:false}:c);
     setActiveState(s=>({
       ...s,
-      battle:s.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,summonedThisTurn:false}:c),
-      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false}),
+      battle:newBattle,
+      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}),
     }));
     addLog(`⚡ 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
+    if(handCard.autoEffect) triggerEffect(handCard.autoEffect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,{...handCard,uid:handCard.uid});
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     setAttackingUid(handCard.uid);
     setMessage("攻撃対象を選択");
@@ -2097,7 +2108,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       sTriggers.forEach(c=>{addLog(`🛡 S・トリガー「${c.name}」`);showCutIn({title:"S・トリガー発動！",cardName:c.name,civ:c.civ,icon:"🛡"});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
       if(gStrikeCards.length>0){
         gStrikeCards.forEach(c=>addLog(`⚡ G・ストライク「${c.name}」`));
-        setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle});
+        setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
       }
     }
     // Z-Rush: シールドが離れたら両プレイヤーのzRushクリーチャーのhyperModeを解放
@@ -2162,7 +2173,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
-      {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=active==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
+      {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>
         <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
