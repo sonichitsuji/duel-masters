@@ -363,7 +363,7 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard
   }
 }
 
-function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2, setP2, addLog) {
+function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2, setP2, addLog, srcCard) {
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const setSelf    = ownerPid === "p1" ? setP1 : setP2;
   const otherState = ownerPid === "p1" ? p2 : p1;
@@ -1261,11 +1261,20 @@ function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance,
               {isAuto ? "公開カード：" : `選択（${selected.length}/${maxSel}）：`}
             </div>
             <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-              {candidates.map(card => (
-                <CardFace key={card.uid} card={card}
-                  selected={selected.includes(card.uid)}
-                  onClick={isAuto ? undefined : () => toggleSelect(card.uid)}
-                  small />
+              {candidates.map((card, i) => (
+                step.type === "breakOpponentShieldChoice" ? (
+                  <div key={card.uid}
+                    onClick={() => toggleSelect(card.uid)}
+                    style={{width:52,height:72,borderRadius:7,flexShrink:0,border:`2px solid ${selected.includes(card.uid)?"#ffe066":"#888"}`,background:"linear-gradient(135deg,#1a3050,#0a1828)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,transform:selected.includes(card.uid)?"translateY(-8px) scale(1.07)":"none",transition:"all 0.15s",boxShadow:selected.includes(card.uid)?"0 0 18px #ffe066":"0 0 6px #44aaff44",userSelect:"none"}}>
+                    <span style={{fontSize:22}}>🛡</span>
+                    <span style={{fontSize:8,color:"#88aacc"}}>{i+1}</span>
+                  </div>
+                ) : (
+                  <CardFace key={card.uid} card={card}
+                    selected={selected.includes(card.uid)}
+                    onClick={isAuto ? undefined : () => toggleSelect(card.uid)}
+                    small />
+                )
               ))}
             </div>
           </div>
@@ -1952,7 +1961,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const advanceStep = useCallback((selectedUids) => {
     setActiveSteps(prev => {
       if (!prev) return null;
-      const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog);
+      const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
       let nextIdx = prev.stepIdx + 1;
       // Skip conditional steps when their precondition is not met
       while (nextIdx < prev.steps.length && (
