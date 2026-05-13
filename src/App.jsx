@@ -2405,7 +2405,7 @@ function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2De
                 <MenuBtn id="card" onClick={()=>setScreen("cardManager")} color="#44aaff" icon="🗂">カード管理</MenuBtn>
               </div>
             </>
-          )}
+                      )}
 
           {/* Deck list */}
           {screen==="deckList"&&(
