@@ -763,5 +763,120 @@
     "effect": "革命チェンジ―コスト5以上のアーマード\nスピードアタッカー\nW・ブレイカー\n各ターンに1度、クリーチャーが出た時、自分の山札の上から1枚目をシールド化してもよい。[例外処理]\nこのクリーチャーが破壊された時、名前に《ボルシャック》とあるコスト7以下のクリーチャーを1体、自分の手札から出してもよい。[例外処理]\n終極宣言 [例外処理]",
     "autoEffect": null,
     "revolutionChangeCond": { "races": ["アーマード"], "minCost": 5 }
+  },
+  {
+    "id": 58,
+    "name": "ボルシャック・ドラゴン／決闘者デュエリスト・チャージャー",
+    "type": "twinpact",
+    "civ": "fire",
+    "cost": 6,
+    "race": "アーマード・ドラゴン",
+    "power": 6000,
+    "keywords": ["wBreaker"],
+    "effect": "W・ブレイカー\n攻撃中、このクリーチャーのパワーを、自分の墓地にある火のカード1枚につき+1000する。",
+    "autoEffect": null,
+    "selfPowerBoostGrave": { "civFilter": "fire", "perCard": 1000 },
+    "spellSide": {
+      "name": "決闘者デュエリスト・チャージャー",
+      "cost": 3,
+      "civ": "fire",
+      "keywords": ["charger"],
+      "effect": "自分の山札の上から3枚を表向きにする。その中から、名前に《ボルシャック》とあるカードをすべて手札に加え、残りを好きな順序で山札の下に置く。\nチャージャー（この呪文を唱えた後、墓地のかわりにマナゾーンに置く）",
+      "autoEffect": {
+        "trigger": "cast", "type": "steps",
+        "steps": [
+          { "type": "revealDeckTop", "amount": 3, "label": "山札の上から3枚を表向きにする" },
+          { "type": "chooseFromRevealed", "filter": { "nameContains": "ボルシャック" }, "takeAll": true, "destination": "hand", "label": "名前に《ボルシャック》とあるカードをすべて手札に加える" },
+          { "type": "restRevealedToBottom", "label": "残りを好きな順序で山札の下に置く" }
+        ]
+      }
+    }
+  },
+  {
+    "id": 59,
+    "name": "ボルシャック・太陽・ルピア",
+    "type": "creature",
+    "civ": "fire",
+    "race": "ファイアー・バード/アーマード・ドラゴン",
+    "cost": 3,
+    "power": 4000,
+    "keywords": ["gStrike"],
+    "effect": "G・ストライク\n各ターンに一度、名前に《ボルシャック》とある自分のクリーチャーの召喚コストを3少なくしてもよい。ただし、コストは1以下にならない。\n※「各ターンに一度」は [例外処理]",
+    "autoEffect": null,
+    "costReduce": { "amount": 3, "filter": { "nameContains": "ボルシャック" }, "min": 1 }
+  },
+  {
+    "id": 60,
+    "name": "巻く革命 ボルシャック・テイラー",
+    "type": "creature",
+    "civ": ["light", "fire"],
+    "race": "アーマード・ドラゴン",
+    "cost": 7,
+    "power": 8500,
+    "keywords": ["revolutionChange", "wBreaker"],
+    "effect": "革命チェンジ：コスト5以上のアーマード\nW・ブレイカー\nこのクリーチャーが出た時、相手のクリーチャーをすべてタップする。\n自分のクリーチャーすべてに「パワーアタッカー+3000」を与える。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [{ "type": "tapAllOpponent", "label": "相手のクリーチャーをすべてタップする" }]
+    },
+    "grantPowerBoost": { "amount": 3000, "filter": {} },
+    "revolutionChangeCond": { "races": ["アーマード"], "minCost": 5 }
+  },
+  {
+    "id": 61,
+    "name": "超竜キング・ボルシャック",
+    "type": "evo_creature",
+    "civ": "fire",
+    "race": "アーマード・ドラゴン",
+    "cost": 7,
+    "power": 13000,
+    "keywords": ["tBreaker"],
+    "effect": "G・ゼロ：自分の、名前に《ボルシャック》とあるドラゴンがあれば、このクリーチャーをコストを支払わずに召喚してもよい。\n進化：火のドラゴン・クリーチャー1体の上に置く。\nT・ブレイカー\n自分のクリーチャーすべてに、自分の墓地にある火のカード1枚につき「パワーアタッカー+1000」を与える。",
+    "autoEffect": null,
+    "evolution": { "civFilter": "fire", "raceContains": "ドラゴン" },
+    "gZero": { "nameContains": "ボルシャック", "raceContains": "ドラゴン" },
+    "grantPowerBoostGrave": { "civFilter": "fire", "perCard": 1000, "filter": {} }
+  },
+  {
+    "id": 62,
+    "name": "竜皇神 ボルシャック・バクテラス",
+    "type": "creature",
+    "civ": ["light", "fire"],
+    "race": "アーマード・ドラゴン",
+    "cost": 10,
+    "power": 17000,
+    "keywords": ["revolutionChange", "tBreaker"],
+    "effect": "革命チェンジ：コスト7以上の名前に《ボルシャック》とある多色クリーチャー\nT・ブレイカー\nこのクリーチャーが出た時、自分の山札の上から4枚を見て、その中から《竜皇神 ボルシャック・バクテラス》ではないアーマードを好きな数出す。残りを好きな順序で山札の下に置く。\n自分の他のクリーチャーすべてに「ブロッカー」と「スピードアタッカー」を与える。\n各ターンの終わりに、自分の他のクリーチャーをすべてアンタップする。",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [
+        { "type": "revealDeckTop", "amount": 4, "label": "山札の上から4枚を見る" },
+        { "type": "playFromRevealed", "filter": { "raceContains": "アーマード", "notNameSelf": true }, "optional": true, "label": "その中のアーマードを好きな数出す" },
+        { "type": "restRevealedToBottom", "label": "残りを好きな順序で山札の下に置く" }
+      ]
+    },
+    "grantKeywords": [
+      { "keyword": "blocker", "filter": { "notSelf": true } },
+      { "keyword": "speedAttacker", "filter": { "notSelf": true } }
+    ],
+    "endOfTurnEffect": { "type": "untapOthers" },
+    "revolutionChangeCond": { "nameContains": "ボルシャック", "multiColor": true, "minCost": 7 }
+  },
+  {
+    "id": 63,
+    "name": "逆転の火焔 ボルシャック・メビウス",
+    "type": "creature",
+    "civ": "fire",
+    "race": "アーマード・ドラゴン/超化獣",
+    "cost": 5,
+    "power": 7000,
+    "keywords": ["speedAttacker", "wBreaker"],
+    "effect": "スピードアタッカー\nW・ブレイカー\nこのクリーチャーが出た時、相手のクリーチャーを1体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる。このクリーチャーがバトルに勝った時、相手のシールドを1つブレイクしてもよい。\nZラッシュ・ハイパーモード [例外処理]",
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [
+        { "type": "battleOpponentCreature", "optional": true, "label": "相手のクリーチャーを1体選んでバトルする（勝った時シールド1枚ブレイク）" }
+      ]
+    }
   }
 ]

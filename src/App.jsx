@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import INITIAL_CARD_DB from "../public/cards.json";
 
-const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange"];
-const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ" };
+const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger"];
+const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー" };
 
 const CIV = {
   fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", icon:"🔥", textColor:"#ff8877" },
@@ -122,9 +122,40 @@ function getEffectiveCost(card, selfBattle) {
     if (!c.costReduce) continue;
     const { amount, filter, min } = c.costReduce;
     if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
+    if (filter?.nameContains && !card.name?.includes(filter.nameContains)) continue;
     cost = Math.max(min ?? 0, cost - amount);
   }
   return cost;
+}
+
+function extractFromBattle(battle, uid) {
+  const card = battle.find(c => c.uid === uid);
+  if (!card) return { newBattle: battle, extracted: [] };
+  const extracted = [card, ...(card.evolutionBase || [])].map(({evolutionBase, ...c}) => c);
+  return { newBattle: battle.filter(c => c.uid !== uid), extracted };
+}
+
+function getEffectivePower(card, ownerState, allOwnBattle) {
+  let power = card.power || 0;
+  if (card.selfPowerBoostGrave) {
+    const { civFilter, perCard } = card.selfPowerBoostGrave;
+    const count = (ownerState.grave || []).filter(c => getCardCivs(c).includes(civFilter)).length;
+    power += count * perCard;
+  }
+  for (const ally of (allOwnBattle || [])) {
+    if (!ally.grantPowerBoost || ally.uid === card.uid) continue;
+    const { amount, filter } = ally.grantPowerBoost;
+    if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
+    power += amount;
+  }
+  for (const ally of (allOwnBattle || [])) {
+    if (!ally.grantPowerBoostGrave || ally.uid === card.uid) continue;
+    const { civFilter, perCard, filter } = ally.grantPowerBoostGrave;
+    if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
+    const count = (ownerState.grave || []).filter(c => getCardCivs(c).includes(civFilter)).length;
+    power += count * perCard;
+  }
+  return power;
 }
 
 function computeGrantedKeywords(card, battleZone) {
@@ -136,6 +167,7 @@ function computeGrantedKeywords(card, battleZone) {
       if (rule.filter?.raceContains && !card.race?.includes(rule.filter.raceContains)) continue;
       if (rule.filter?.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) continue;
       if (rule.filter?.notSelf && granter.uid === card.uid) continue;
+      if (rule.filter?.nameContains && !card.name?.includes(rule.filter.nameContains)) continue;
       if (!granted.includes(rule.keyword)) granted.push(rule.keyword);
     }
   }
@@ -232,14 +264,6 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard
     case "revealDeckTop": case "restRevealedToBottom": case "millTop":
     case "untapAllMana": case "destroyNonColor":
       return { candidates: context.revealedCards || [], isAuto: true };
-    case "chooseFromRevealed": {
-      let cards = context.revealedCards || [];
-      if (step.filter?.type === "spell")    cards = cards.filter(c => c.type === "spell");
-      if (step.filter?.type === "creature") cards = cards.filter(c => c.type === "creature");
-      if (step.filter?.multiColor)          cards = cards.filter(c => Array.isArray(c.civ) && c.civ.length >= 2);
-      if (step.filter?.raceContains) cards = cards.filter(c => c.race && c.race.includes(step.filter.raceContains));
-      return { candidates: cards, isAuto: false };
-    }
     case "optionalReviveFromMilled": {
       const cards = (context.milledCards || []).filter(c => c.type === "creature");
       return { candidates: cards, isAuto: cards.length === 0 };
@@ -295,6 +319,27 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard
       return { candidates: [], isAuto: true };
     case "millTopToManaIfDragon":
       return { candidates: [], isAuto: true };
+    case "tapAllOpponent":
+      return { candidates: [], isAuto: true };
+    case "chooseFromRevealed": {
+      let cards = context.revealedCards || [];
+      if (step.filter?.type === "spell")    cards = cards.filter(c => c.type === "spell");
+      if (step.filter?.type === "creature") cards = cards.filter(c => c.type === "creature");
+      if (step.filter?.multiColor)          cards = cards.filter(c => Array.isArray(c.civ) && c.civ.length >= 2);
+      if (step.filter?.raceContains) cards = cards.filter(c => c.race && c.race.includes(step.filter.raceContains));
+      if (step.filter?.nameContains) cards = cards.filter(c => c.name && c.name.includes(step.filter.nameContains));
+      const isAuto2 = step.takeAll === true;
+      return { candidates: cards, isAuto: isAuto2, maxSelect: step.takeAll ? cards.length : (step.amount || 1) };
+    }
+    case "playFromRevealed": {
+      let cards = context.revealedCards || [];
+      if (step.filter?.raceContains) cards = cards.filter(c => c.race && c.race.includes(step.filter.raceContains));
+      if (step.filter?.notNameSelf) cards = cards.filter(c => c.name !== srcCard?.name);
+      return { candidates: cards, isAuto: false, maxSelect: cards.length, optional: true };
+    }
+    case "battleOpponentCreature": {
+      return { candidates: otherState.battle, isAuto: false, maxSelect: 1, optional: true };
+    }
     default:
       return { candidates: [], isAuto: true };
   }
@@ -318,16 +363,28 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
       break;
     }
     case "chooseFromRevealed": {
-      const picked = (context.revealedCards || []).filter(c => selectedUids.includes(c.uid));
+      // If takeAll, auto-pick all filtered candidates
+      let toTake;
+      if (step.takeAll) {
+        let candidates = context.revealedCards || [];
+        if (step.filter?.nameContains) candidates = candidates.filter(c => c.name && c.name.includes(step.filter.nameContains));
+        if (step.filter?.raceContains) candidates = candidates.filter(c => c.race && c.race.includes(step.filter.raceContains));
+        if (step.filter?.type === "spell")    candidates = candidates.filter(c => c.type === "spell");
+        if (step.filter?.type === "creature") candidates = candidates.filter(c => c.type === "creature");
+        toTake = candidates;
+      } else {
+        toTake = (context.revealedCards || []).filter(c => selectedUids.includes(c.uid));
+      }
       const dest = step.destination || "hand";
       const destLabel = dest === "hand" ? "手札" : dest === "battle" ? "BZ" : dest === "deckTop" ? "山札の上" : dest;
-      if (picked.length > 0) {
-        if (dest === "hand")     setSelf(s => ({ ...s, hand: [...s.hand, ...picked.map(c => ({ ...c, tapped: false }))] }));
-        else if (dest === "battle")  setSelf(s => ({ ...s, battle: [...s.battle, ...picked.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
-        else if (dest === "deckTop") setSelf(s => ({ ...s, deck: [...picked, ...s.deck] }));
-        addLog(`${pid}: ${picked.map(c => c.name).join(", ")} → ${destLabel}`);
+      if (toTake.length > 0) {
+        if (dest === "hand")     setSelf(s => ({ ...s, hand: [...s.hand, ...toTake.map(c => ({ ...c, tapped: false }))] }));
+        else if (dest === "battle")  setSelf(s => ({ ...s, battle: [...s.battle, ...toTake.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
+        else if (dest === "deckTop") setSelf(s => ({ ...s, deck: [...toTake, ...s.deck] }));
+        addLog(`${pid}: ${toTake.map(c => c.name).join(", ")} → ${destLabel}`);
       }
-      ctx.revealedCards = (context.revealedCards || []).filter(c => !selectedUids.includes(c.uid));
+      const takenUids = toTake.map(c => c.uid);
+      ctx.revealedCards = (context.revealedCards || []).filter(c => !takenUids.includes(c.uid));
       break;
     }
     case "restRevealedToBottom": {
@@ -487,6 +544,49 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
       }
       break;
     }
+    case "tapAllOpponent": {
+      setOther(s => ({ ...s, battle: s.battle.map(c => ({ ...c, tapped: true })) }));
+      addLog(`${pid}: 相手のクリーチャーをすべてタップ`);
+      break;
+    }
+    case "playFromRevealed": {
+      const toPlay = (context.revealedCards || []).filter(c => selectedUids.includes(c.uid));
+      if (toPlay.length > 0) {
+        setSelf(s => ({ ...s, battle: [...s.battle, ...toPlay.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
+        addLog(`${pid}: ${toPlay.map(c => c.name).join(", ")} → BZ（無償）`);
+      }
+      ctx.revealedCards = (context.revealedCards || []).filter(c => !selectedUids.includes(c.uid));
+      break;
+    }
+    case "battleOpponentCreature": {
+      if (selectedUids.length === 0) break;
+      const target = otherState.battle.find(c => c.uid === selectedUids[0]);
+      const self = selfState.battle.find(c => c.uid === context.srcCardUid);
+      if (!target || !self) break;
+      const sEff = getEffectivePower(self, selfState, selfState.battle);
+      const tEff = getEffectivePower(target, otherState, otherState.battle);
+      addLog(`⚔ ${self.name}(${sEff}) vs ${target.name}(${tEff}) [ETBバトル]`);
+      const sWin = sEff >= tEff;
+      const tWin = tEff >= sEff;
+      if (tWin) {
+        const { newBattle: nb1, extracted: ex1 } = extractFromBattle(selfState.battle, self.uid);
+        setSelf(s => ({ ...s, battle: nb1, grave: [...s.grave, ...ex1] }));
+        addLog(`💔 ${self.name} 破壊（ETBバトル）`);
+      }
+      if (sWin) {
+        const { newBattle: nb2, extracted: ex2 } = extractFromBattle(otherState.battle, target.uid);
+        setOther(s => ({ ...s, battle: nb2, grave: [...s.grave, ...ex2] }));
+        addLog(`✅ ${target.name} 破壊（ETBバトル）`);
+        // Break 1 shield on battle win
+        setOther(s => {
+          if (s.shields.length === 0) return s;
+          const broken = s.shields[0];
+          addLog(`💥 ETBバトル勝利でシールドブレイク`);
+          return { ...s, shields: s.shields.slice(1), hand: [...s.hand, { ...broken, tapped: false }] };
+        });
+      }
+      break;
+    }
     default: addLog(`[未実装ステップ] ${step.type}`);
   }
   return ctx;
@@ -509,7 +609,8 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"?`${card.power}`:card.type==="twinpact"?"⚔/📜 ツイン":"📜 呪文"}</div>
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${card.power}`:card.type==="twinpact"?"⚔/📜 ツイン":"📜 呪文"}</div>
+      {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:7}}>⚡</span>}
         {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:7,color:"#ffe066",textShadow:"0 0 4px #ffe066"}}>⚡</span>}
@@ -517,8 +618,10 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
         {card.keywords?.includes("wBreaker")&&<span style={{fontSize:7}}>✦✦</span>}
         {card.keywords?.includes("tBreaker")&&<span style={{fontSize:7}}>✦✦✦</span>}
         {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
+        {card.keywords?.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
       </div>
       {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
+      {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:8,background:"rgba(0,0,0,0.7)",color:"gold",borderRadius:3,padding:"1px 3px"}}>⚡×{card.evolutionBase.length + 1}</div>}
     </div>
   );
 }
@@ -592,8 +695,8 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
   const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[]).includes("speedAttacker");
-  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA);
-  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":!drewThisTurn?"ドロー前":null;
+  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn;
+  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":!drewThisTurn?"ドロー前":null;
 
   // Parse effect text: lines starting with known keywords get bold styling
   const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカー","T・ブレイカー","ブロッカー","S・トリガー"];
@@ -822,7 +925,9 @@ function AttackTriggerModal({ attacker, hand, battle, onRevChange, onSkip }) {
     const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
     const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => attacker.race?.includes(r)) : attacker.race?.includes(cond.race);
     const costMatch = !cond.minCost || attacker.cost >= cond.minCost;
-    return civMatch && raceMatch && costMatch;
+    const nameMatch = !cond.nameContains || attacker.name?.includes(cond.nameContains);
+    const multiColorMatch = !cond.multiColor || (Array.isArray(attacker.civ) && attacker.civ.length >= 2);
+    return civMatch && raceMatch && costMatch && nameMatch && multiColorMatch;
   });
 
   if (revChangeable.length === 0) return null;
@@ -875,7 +980,7 @@ function FinalRevolutionModal({ selfState, onConfirm, onSkip }) {
       : selfState.mana.find(c => c.uid === s.uid);
     return sum + (card?.cost || 0);
   }, 0);
-  const isMultiNonEvo = c => Array.isArray(c.civ) && c.civ.length >= 2 && !c.keywords?.includes("evolution");
+  const isMultiNonEvo = c => Array.isArray(c.civ) && c.civ.length >= 2 && c.type !== "evo_creature";
   const handCands = selfState.hand.filter(isMultiNonEvo);
   const manaCands = selfState.mana.filter(isMultiNonEvo);
   const toggle = (uid, from) => {
@@ -1200,6 +1305,73 @@ function TwinPactChoiceModal({ card, onSelectCreature, onSelectSpell, onCancel }
 }
 
 // ===========================
+// G-STRIKE MODAL
+// ===========================
+function GStrikeModal({ cards, attackerBattle, onConfirm, onSkip }) {
+  const [selected, setSelected] = useState(null);
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"linear-gradient(160deg,#1a0030,#08080f)", border:"2px solid #ff44ff", borderRadius:14, padding:20, maxWidth:460, width:"100%", boxShadow:"0 0 30px #ff44ff66" }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff88ff", fontSize:14, fontWeight:900, marginBottom:4 }}>⚡ G・ストライク</div>
+        <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>
+          相手の攻撃クリーチャーを1体選んでください。<br/>
+          選んだクリーチャーはこのターン攻撃できません。
+        </div>
+        <div style={{ fontSize:10, color:"#555", marginBottom:6 }}>攻撃側のクリーチャー:</div>
+        <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:14 }}>
+          {(attackerBattle || []).map(c => (
+            <div key={c.uid} onClick={() => setSelected(selected === c.uid ? null : c.uid)} style={{ cursor:"pointer" }}>
+              <CardFace card={c} small selected={selected === c.uid} />
+            </div>
+          ))}
+          {(attackerBattle || []).length === 0 && <div style={{ color:"#444", fontSize:11 }}>対象なし</div>}
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={() => onConfirm(selected)} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:selected?"linear-gradient(135deg,#ff44ff33,#ff44ff11)":"#111", border:`1px solid ${selected?"#ff44ff":"#333"}`, color:selected?"#ff88ff":"#444", cursor:selected?"pointer":"not-allowed" }}>
+            決定
+          </button>
+          <button onClick={onSkip} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
+            スキップ
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
+// EVOLUTION SELECT MODAL
+// ===========================
+function EvolutionSelectModal({ eligible, card, onSelect, onCancel }) {
+  const civs = getCardCivs(card);
+  const c = CIV[civs[0]] || CIV.fire;
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:395, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:420, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4 }}>🔺 進化元を選択</div>
+        <div style={{ fontSize:11, color:"#ccc", marginBottom:4 }}>{card.name} の進化元となるクリーチャーを選んでください</div>
+        <div style={{ fontSize:10, color:"#555", marginBottom:10 }}>
+          条件: {card.evolution?.civFilter ? `${CIV[card.evolution.civFilter]?.label}文明` : ""}
+          {card.evolution?.raceContains ? ` ${card.evolution.raceContains}` : ""}
+        </div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+          {eligible.map(bc => (
+            <div key={bc.uid} onClick={() => onSelect(bc.uid)} style={{ cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+              <CardFace card={bc} small />
+              <div style={{ fontSize:8, color:"#aaa", textAlign:"center", maxWidth:52, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{bc.name}</div>
+            </div>
+          ))}
+          {eligible.length === 0 && <div style={{ color:"#f84", fontSize:12 }}>進化元なし</div>}
+        </div>
+        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+          キャンセル
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
 // PLAYER BOARD
 // ===========================
 function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack}){
@@ -1208,11 +1380,17 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const [revChangeTarget,setRevChangeTarget]=useState(null);
   const [manaPayModal,setManaPayModal]=useState(null);
   const [twinPactModal,setTwinPactModal]=useState(null);
+  const [evolutionSelectModal,setEvolutionSelectModal]=useState(null);
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
   const selectedCard=selHand!==null?state.hand[selHand]:null;
   const civCheck=selectedCard?(selectedCard.type==="twinpact"?(canPayCost(state.mana,selectedCard,state.battle).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state.battle).ok?{ok:true}:canPayCost(state.mana,selectedCard,state.battle)):canPayCost(state.mana,selectedCard,state.battle)):null;
+  // G-Zero check
+  const gZeroOk=selectedCard?.gZero&&state.battle.some(c=>
+    (!selectedCard.gZero.nameContains||c.name?.includes(selectedCard.gZero.nameContains))&&
+    (!selectedCard.gZero.raceContains||c.race?.includes(selectedCard.gZero.raceContains))
+  );
   const selBattleCard=selBattle?state.battle.find(c=>c.uid===selBattle):null;
   const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
@@ -1220,15 +1398,38 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const handlePlay=()=>{
     if(selHand===null||!civCheck?.ok)return;
     const card=state.hand[selHand];
-    if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
+    if(card.type==="evo_creature"){
+      // Evolution flow
+      const eligible=state.battle.filter(c=>
+        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
+        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
+      );
+      if(eligible.length===0)return;
+      setEvolutionSelectModal({handIdx:selHand,card,eligible});
+    }else if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
     else if(card.type==="twinpact"){setTwinPactModal({handIdx:selHand,card});}
     else{setManaPayModal({handIdx:selHand,card});}
   };
   const handleManaConfirm=uids=>{
     if(!manaPayModal)return;
-    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null);
+    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUid||null);
     if(ok!==false)setSelHand(null);
     setManaPayModal(null);
+  };
+  const handleGZeroPlay=()=>{
+    if(!gZeroOk||selHand===null)return;
+    const card=state.hand[selHand];
+    if(card.type==="evo_creature"){
+      const eligible=state.battle.filter(c=>
+        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
+        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
+      );
+      if(eligible.length===0)return;
+      setEvolutionSelectModal({handIdx:selHand,card,eligible,gZero:true});
+    }else{
+      const ok=onPlayCard(selHand,[],null,null);
+      if(ok!==false)setSelHand(null);
+    }
   };
 
   // 攻撃宣言: 革命チェンジ可能かチェック
@@ -1243,7 +1444,9 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
       const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => card.race?.includes(r)) : card.race?.includes(cond.race);
       const costMatch = !cond.minCost || card.cost >= cond.minCost;
-      return civMatch && raceMatch && costMatch;
+      const nameMatch = !cond.nameContains || card.name?.includes(cond.nameContains);
+      const multiColorMatch = !cond.multiColor || (Array.isArray(card.civ) && card.civ.length >= 2);
+      return civMatch && raceMatch && costMatch && nameMatch && multiColorMatch;
     });
     if (hasRevChange) {
       setRevChangeTarget(card);
@@ -1290,6 +1493,23 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
           onCancel={()=>setTwinPactModal(null)}
         />
       )}
+      {evolutionSelectModal&&(
+        <EvolutionSelectModal
+          eligible={evolutionSelectModal.eligible}
+          card={evolutionSelectModal.card}
+          onSelect={baseUid=>{
+            const{handIdx,card,gZero}=evolutionSelectModal;
+            setEvolutionSelectModal(null);
+            if(gZero){
+              const ok=onPlayCard(handIdx,[],null,baseUid);
+              if(ok!==false)setSelHand(null);
+            }else{
+              setManaPayModal({handIdx,card,evolutionBaseUid:baseUid});
+            }
+          }}
+          onCancel={()=>setEvolutionSelectModal(null)}
+        />
+      )}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         <span style={{fontWeight:700,color,fontSize:13}}>{pid==="p1"?"🧑":"👹"} {label}{isActive&&<span style={{fontSize:10,color:"#ffe066",marginLeft:6}}>▶ アクティブ</span>}</span>
         <span style={{fontSize:10,color:"#444"}}>手札:{state.hand.length} BZ:{state.battle.length} 墓地:{state.grave.length} 山:{state.deck.length}</span>
@@ -1333,6 +1553,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
           {!drewThisTurn&&<Btn onClick={onDraw} col="#44ff88">📥 ドロー</Btn>}
           {drewThisTurn&&!chargedThisTurn&&selHand!==null&&<Btn onClick={handleCharge} col="#8888ff">💎 マナチャージ</Btn>}
           {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>▶ プレイ</Btn>}
+          {drewThisTurn&&selHand!==null&&gZeroOk&&<Btn onClick={handleGZeroPlay} col="#ff44ff">⚡ G・ゼロ召喚</Btn>}
           {drewThisTurn&&attackingUid&&otherState.shields.length===0&&<Btn onClick={onDirectAttack} col="#ff4444">💥 ダイレクト</Btn>}
           {drewThisTurn&&<Btn onClick={onEndTurn} col="#ffaa44">⏭ ターン終了</Btn>}
         </div>
@@ -1683,6 +1904,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [effectConfirmModal,setEffectConfirmModal]=useState(null);
   const [activeSteps,setActiveSteps]=useState(null);
   const [effectQueue,setEffectQueue]=useState([]);
+  const [gStrikeModal,setGStrikeModal]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const showCutIn=useCallback(data=>setCutin(data),[]);
@@ -1696,7 +1918,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   const startStepEffect = useCallback((steps, ownerPid, srcCard) => {
     setActiveSteps(prev => {
-      if (prev === null) return { steps, stepIdx: 0, ownerPid, srcCard, context: {} };
+      if (prev === null) return { steps, stepIdx: 0, ownerPid, srcCard, context: { srcCardUid: srcCard?.uid } };
       setEffectQueue(q => [...q, { steps, ownerPid, srcCard }]);
       return prev;
     });
@@ -1716,7 +1938,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setEffectQueue(q => {
         if (q.length > 0) {
           const [next, ...rest] = q;
-          setTimeout(() => setActiveSteps({ steps: next.steps, stepIdx: 0, ownerPid: next.ownerPid, srcCard: next.srcCard, context: {} }), 0);
+          setTimeout(() => setActiveSteps({ steps: next.steps, stepIdx: 0, ownerPid: next.ownerPid, srcCard: next.srcCard, context: { srcCardUid: next.srcCard?.uid } }), 0);
           return rest;
         }
         return q;
@@ -1748,7 +1970,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
-  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null)=>{
+  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUid=null)=>{
     const card=activeState.hand[idx];
     const newMana=tapManaByUids(activeState.mana,selectedManaUids);
     const newHand=activeState.hand.filter((_,i)=>i!==idx);
@@ -1756,15 +1978,31 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const effectiveSide=twinpactSide==="spell"?card.spellSide:card;
     if(!isSpell){
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
-      const newBattle=[...activeState.battle,{...card,tapped:false,summonedThisTurn:!isSpeed}];
+      const isEvo=card.type==="evo_creature";
+      let evoBase=undefined;
+      let battleWithoutBase=activeState.battle;
+      if(evolutionBaseUid){
+        const baseCard=activeState.battle.find(c=>c.uid===evolutionBaseUid);
+        if(baseCard){
+          evoBase=[baseCard,...(baseCard.evolutionBase||[])].map(({evolutionBase:_,...c})=>c);
+          battleWithoutBase=activeState.battle.filter(c=>c.uid!==evolutionBaseUid);
+        }
+      }
+      const newCreature={...card,tapped:false,summonedThisTurn:!isSpeed&&!isEvo,evolutionBase:evoBase};
+      const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
       addLog(`${active}: ${card.name}(${effectiveSide.power||card.power}) 召喚！`);
       showCutIn({title:"召喚！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]?.icon});
-      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,card);
+      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
     }else{
-      setActiveState(s=>({...s,hand:newHand,mana:newMana,grave:[...s.grave,card]}));
+      const isCharger=effectiveSide.keywords?.includes("charger");
+      if(isCharger){
+        setActiveState(s=>({...s,hand:newHand,mana:[...newMana,{...card,tapped:true}]}));
+      }else{
+        setActiveState(s=>({...s,hand:newHand,mana:newMana,grave:[...s.grave,card]}));
+      }
       const spellName=effectiveSide?.name||card.name;
-      addLog(`${active}: 呪文「${spellName}」`);
+      addLog(`${active}: 呪文「${spellName}」${isCharger?"(チャージャー→マナへ)":""}`);
       showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:"📜"});
       const spellEffect=effectiveSide?.autoEffect||card.autoEffect;
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
@@ -1802,28 +2040,46 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const target=otherState.battle.find(c=>c.uid===targetUid);
     if(!attacker||!target)return;
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
-    addLog(`⚔ ${attacker.name}(${attacker.power}) vs ${target.name}(${target.power})`);
-    const aWin=attacker.power>=target.power;const dWin=target.power>=attacker.power;
-    if(aWin){setOtherState(s=>({...s,battle:s.battle.filter(c=>c.uid!==targetUid),grave:[...s.grave,target]}));addLog(`✅ ${target.name} 破壊`);}
-    if(dWin){setActiveState(s=>({...s,battle:s.battle.filter(c=>c.uid!==attackingUid),grave:[...s.grave,attacker]}));addLog(`💔 ${attacker.name} 破壊`);}
+    const aEff=getEffectivePower(attacker,activeState,activeState.battle);
+    const dEff=getEffectivePower(target,otherState,otherState.battle);
+    addLog(`⚔ ${attacker.name}(${aEff}) vs ${target.name}(${dEff})`);
+    const aWin=aEff>=dEff;const dWin=dEff>=aEff;
+    if(aWin){
+      const {newBattle:nb1,extracted:ex1}=extractFromBattle(otherState.battle,targetUid);
+      setOtherState(s=>({...s,battle:nb1,grave:[...s.grave,...ex1]}));
+      addLog(`✅ ${target.name} 破壊`);
+    }
+    if(dWin){
+      const {newBattle:nb2,extracted:ex2}=extractFromBattle(activeState.battle,attackingUid);
+      setActiveState(s=>({...s,battle:nb2,grave:[...s.grave,...ex2]}));
+      addLog(`💔 ${attacker.name} 破壊`);
+    }
     setAttackingUid(null);
   };
   const handleAttackShield=shieldIdx=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
-    const breakCount=attacker.keywords?.includes("tBreaker")?3:attacker.keywords?.includes("wBreaker")?2:1;
+    const effectiveSA=computeGrantedKeywords(attacker,activeState.battle).includes("speedAttacker");
+    const effectiveTBreaker=attacker.keywords?.includes("tBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("tBreaker");
+    const effectiveWBreaker=attacker.keywords?.includes("wBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("wBreaker");
+    const breakCount=effectiveTBreaker?3:effectiveWBreaker?2:1;
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
     let shields=[...otherState.shields];const broken=[];
     for(let i=0;i<breakCount;i++){if(shields.length===0)break;broken.push(shields[0]);shields=shields.slice(1);}
     const isBolmetheus=attacker.name.includes("ボルメテウス");
-    const sTriggers=broken.filter(c=>c.keywords?.includes("sTrigger"));
-    const normal=broken.filter(c=>!c.keywords?.includes("sTrigger"));
+    const gStrikeCards=broken.filter(c=>c.keywords?.includes("gStrike"));
+    const sTriggers=broken.filter(c=>c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
+    const normal=broken.filter(c=>!c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
     if(isBolmetheus){setOtherState(s=>({...s,shields,grave:[...s.grave,...broken]}));addLog(`☠ ボルメテウス効果`);}
     else{
       // シールドから手札に入るときtappedをリセット
-      const toHand=[...normal,...sTriggers].map(c=>({...c,tapped:false}));
+      const toHand=[...normal,...sTriggers,...gStrikeCards].map(c=>({...c,tapped:false}));
       setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand]}));
       sTriggers.forEach(c=>{addLog(`🛡 S・トリガー「${c.name}」`);showCutIn({title:"S・トリガー発動！",cardName:c.name,civ:c.civ,icon:"🛡"});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
+      if(gStrikeCards.length>0){
+        gStrikeCards.forEach(c=>addLog(`⚡ G・ストライク「${c.name}」`));
+        setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle});
+      }
     }
     addLog(`🔥 ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
     if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
@@ -1836,7 +2092,18 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setWinner(active.toUpperCase());
   };
   const handleEndTurn=()=>{
-    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
+    // endOfTurnEffect処理
+    [{state:p1,setState:setP1},{state:p2,setState:setP2}].forEach(({state:ps,setState:pss})=>{
+      ps.battle.forEach(c=>{
+        if(c.endOfTurnEffect?.type==="untapOthers"){
+          pss(s=>({...s,battle:s.battle.map(b=>b.uid===c.uid?b:{...b,tapped:false})}));
+          addLog(`${c.name}: 自分の他のクリーチャーをアンタップ`);
+        }
+      });
+    });
+    // cantAttackThisTurnリセット + 通常アンタップ
+    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false,cantAttackThisTurn:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
+    setOtherState(s=>({...s,battle:s.battle.map(c=>({...c,cantAttackThisTurn:false}))}));
     setAttackingUid(null);setUsedFinalRevThisTurn(false);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
@@ -1863,6 +2130,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
+      {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=active==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>
         <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
