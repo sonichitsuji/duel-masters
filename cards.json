@@ -876,7 +876,8 @@
     "autoEffect": {
       "trigger": "play", "type": "steps",
       "steps": [
-        { "type": "battleOpponentCreature", "optional": true, "label": "相手のクリーチャーを1体選んでバトルする（勝った時シールド1枚ブレイク）" }
+        { "type": "battleOpponentCreature", "optional": true, "label": "相手のクリーチャーを1体選んでバトルする" },
+        { "type": "breakOpponentShieldChoice", "optional": true, "label": "バトル勝利：相手のシールドを1つブレイクしてもよい" }
       ]
     }
   }
