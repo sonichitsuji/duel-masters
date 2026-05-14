@@ -215,7 +215,7 @@ function HyperModeCutIn({creature,onDismiss}){
   return(
     <div onClick={onDismiss} style={{position:"fixed",inset:0,zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",cursor:"pointer"}}>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",background:`linear-gradient(135deg,#1a0500ee,#000000ff)`,border:`3px solid #ffcc00`,borderRadius:20,padding:"24px 48px",boxShadow:`0 0 60px #ffcc0099,0 0 120px #ff880055`,minWidth:260,animation:"hyperGlow 1.2s ease-in-out infinite alternate"}}>
-        <div style={{fontSize:48,marginBottom:4,textShadow:"0 0 20px #ffcc00"}}>⚡</div>
+        <div style={{fontSize:36,marginBottom:4,fontFamily:"'Cinzel',serif",fontWeight:900,color:"#ffcc00",textShadow:"0 0 20px #ffcc00",letterSpacing:2}}>✦</div>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:20,fontWeight:900,color:"#ffcc00",textShadow:"0 0 16px #ffcc00",letterSpacing:3,marginBottom:6}}>HYPER MODE</div>
         <div style={{fontSize:13,fontWeight:900,color:"#ffcc00",textShadow:"0 0 10px #ff8800",marginBottom:4}}>ハイパーモード解放！</div>
         <div style={{marginTop:8,padding:"4px 14px",borderRadius:4,background:"rgba(255,200,0,0.12)",border:"1px solid #ffcc0066",fontSize:12,color:"#ffe066",fontWeight:700}}>{creature.name}</div>
@@ -631,28 +631,32 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${card.power}`:card.type==="twinpact"?"⚔/📜 ツイン":"📜 呪文"}</div>
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${card.power}`:card.type==="twinpact"?"TWIN":"SPELL"}</div>
       {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
-        {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:7}}>⚡</span>}
-        {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:7,color:"#ffe066",textShadow:"0 0 4px #ffe066"}}>⚡</span>}
-        {card.keywords?.includes("blocker")&&<span style={{fontSize:7}}>🛡</span>}
+        {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}
+        {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SA</span>}
+        {card.keywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#8888ff",letterSpacing:0}}>BK</span>}
         {card.keywords?.includes("wBreaker")&&<span style={{fontSize:7}}>✦✦</span>}
         {card.keywords?.includes("tBreaker")&&<span style={{fontSize:7}}>✦✦✦</span>}
         {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
         {card.keywords?.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
         {card.keywords?.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
       </div>
-      {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>⚡HYPER</div>}
+      {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>HYPER</div>}
       {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
-      {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:8,background:"rgba(0,0,0,0.7)",color:"gold",borderRadius:3,padding:"1px 3px"}}>⚡×{card.evolutionBase.length + 1}</div>}
+      {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:7,background:"rgba(0,0,0,0.75)",color:"#ffe066",borderRadius:3,padding:"1px 3px",fontWeight:700,letterSpacing:0}}>EVO×{card.evolutionBase.length + 1}</div>}
     </div>
   );
 }
 
 function CardBack({small,onClick,label}){
   return(
-    <div onClick={onClick} style={{width:small?52:74,height:small?72:106,borderRadius:7,border:"2px solid #2a2a4a",flexShrink:0,background:"linear-gradient(135deg,#0d0d1e,#1a1a3a,#0d0d1e)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontSize:small?18:24,userSelect:"none",gap:2}}>🎴{label&&<span style={{fontSize:8,color:"#555"}}>{label}</span>}</div>
+    <div onClick={onClick} style={{width:small?52:74,height:small?72:106,borderRadius:7,border:"2px solid #2a2a4a",flexShrink:0,background:"linear-gradient(135deg,#080814,#111830,#080814)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",userSelect:"none",gap:3,position:"relative",overflow:"hidden",boxShadow:"inset 0 0 12px rgba(100,100,255,0.08)"}}>
+      <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.015) 8px,rgba(255,255,255,0.015) 9px)"}}/>
+      <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,fontSize:small?9:11,color:"#2a2a5a",letterSpacing:2,textTransform:"uppercase",zIndex:1}}>DM</div>
+      {label&&<span style={{fontSize:8,color:"#3a3a6a",zIndex:1}}>{label}</span>}
+    </div>
   );
 }
 
@@ -695,7 +699,7 @@ function ShieldPile({shields,canClick,onBreak}){
   return(
     <div style={{display:"flex",gap:3}}>
       {[0,1,2,3,4].map(i=>{const exists=!!shields[i];return(
-        <div key={i} onClick={()=>exists&&canClick&&onBreak(i)} style={{width:26,height:36,borderRadius:5,border:exists?(canClick?"2px solid #ffe066":"2px solid #4a6fa5"):"2px solid #1a1a2a",background:exists?(canClick?"#2a2000":"linear-gradient(135deg,#0d1b2a,#1b3a5c)"):"#080810",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,opacity:exists?1:0.2,cursor:exists&&canClick?"pointer":"default",boxShadow:canClick&&exists?"0 0 8px #ffe066":"none",transition:"all 0.15s"}}>{exists?(canClick?"⚡":"🛡"):""}</div>
+        <div key={i} onClick={()=>exists&&canClick&&onBreak(i)} style={{width:26,height:36,borderRadius:5,border:exists?(canClick?"2px solid #ffe066":"2px solid #4a6fa5"):"2px solid #1a1a2a",background:exists?(canClick?"linear-gradient(135deg,#2a2000,#443300)":"linear-gradient(135deg,#0d1b2a,#1b3a5c)"):"#080810",display:"flex",alignItems:"center",justifyContent:"center",opacity:exists?1:0.15,cursor:exists&&canClick?"pointer":"default",boxShadow:canClick&&exists?"0 0 10px #ffe066aa,inset 0 0 6px #ffe06633":"none",transition:"all 0.15s"}}></div>
       );})}
     </div>
   );
@@ -775,23 +779,23 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
               <span style={{fontSize:12,color:c.textColor,fontWeight:600}}>POWER</span>
             </div>
             <div style={{display:"flex",gap:4}}>
-              {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#ff440022",border:"1px solid #ff4444",color:"#ff8877"}}>⚡ SA</span>}
+              {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#ff440022",border:"1px solid #ff4444",color:"#ff8877"}}>SA</span>}
               {card.keywords?.includes("wBreaker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>W.BRK</span>}
               {card.keywords?.includes("tBreaker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>T.BRK</span>}
-              {card.keywords?.includes("blocker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#4444ff22",border:"1px solid #4444ff",color:"#8888ff"}}>🛡 BLK</span>}
+              {card.keywords?.includes("blocker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#4444ff22",border:"1px solid #4444ff",color:"#8888ff"}}>BLK</span>}
             </div>
           </div>
         )}
 
         {/* Status indicators */}
         <div style={{padding:"0 12px 8px",display:"flex",gap:6,flexWrap:"wrap"}}>
-          {card.tapped&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>⟳ タップ中</div>}
-          {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>💤 召喚酔い</div>}
+          {card.tapped&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>TAPPED</div>}
+          {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>召喚酔い</div>}
         </div>
 
         {/* Buttons */}
         <div style={{display:"flex",gap:8,padding:"8px 12px 12px"}}>
-          {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed"}}>{canAtk?"⚔ 攻撃する":`攻撃不可 (${reason})`}</button>}
+          {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>{canAtk?"ATTACK":`攻撃不可 (${reason})`}</button>}
           <button onClick={onClose} style={{padding:"10px 16px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>閉じる</button>
         </div>
       </div>
@@ -835,7 +839,7 @@ function EffectModal({modal,p1State,setP1,p2State,setP2,onClose,addLog}){
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{background:"#0a0a18",border:"1px solid #ffe06655",borderRadius:14,padding:18,maxWidth:480,width:"100%",maxHeight:"80vh",overflow:"auto"}}>
-        <div style={{fontWeight:700,color:"#ffe066",fontSize:14,marginBottom:10}}>⚡ {title}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,color:"#ffe066",fontSize:13,marginBottom:10,letterSpacing:1}}>{title}</div>
         <div style={{color:"#777",fontSize:11,marginBottom:10}}>{selected.length}/{maxSel} 選択中</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
           {cards.map(c=>(zone==="deck"&&modal.type!=="deckSearch")?<CardBack key={c.uid} small onClick={()=>toggle(c.uid)} label={selected.includes(c.uid)?"✓":""}/>:<CardFace key={c.uid} card={c} small selected={selected.includes(c.uid)} onClick={()=>toggle(c.uid)}/>)}
@@ -882,11 +886,11 @@ function ExceptionPanel({pid,state,setState,otherState,setOtherState,addLog}){
   const doShuffle=()=>{setState(s=>({...s,deck:shuffle([...s.deck])}));addLog(`[${label}例外] 山札シャッフル`);};
   const addShield=()=>{if(state.shields.length>=5||state.deck.length===0)return;setState(s=>({...s,shields:[...s.shields,s.deck[0]],deck:s.deck.slice(1)}));addLog(`[${label}例外] シールド追加`);};
   const Btn=({children,onClick,col="#aaa"})=>(<button onClick={onClick} style={{padding:"6px 10px",borderRadius:5,border:`1px solid ${col}33`,background:"rgba(255,255,255,0.03)",color:col,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{children}</button>);
-  if(!open) return(<button onClick={()=>setOpen(true)} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${color}44`,background:`${color}11`,color,cursor:"pointer",fontSize:11,fontWeight:700}}>🔧 {label} 例外処理</button>);
+  if(!open) return(<button onClick={()=>setOpen(true)} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${color}44`,background:`${color}11`,color,cursor:"pointer",fontSize:11,fontWeight:700}}>{label} 例外処理</button>);
   return(
     <div style={{background:"#07071a",border:`1px solid ${color}44`,borderRadius:12,padding:14,fontSize:11}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <span style={{color,fontWeight:700,fontSize:13}}>🔧 {label} 例外処理パネル</span>
+        <span style={{color,fontWeight:700,fontSize:13}}>{label} 例外処理パネル</span>
         <button onClick={()=>{setOpen(false);clearSel();}} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>✕</button>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
@@ -959,7 +963,7 @@ function AttackTriggerModal({ attacker, hand, battle, onRevChange, onSkip }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:350, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:"linear-gradient(160deg,#1a0505,#08080f)", border:"2px solid #ff6600", borderRadius:14, padding:20, maxWidth:360, width:"100%", boxShadow:"0 0 30px #ff660066" }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff8844", fontSize:14, fontWeight:900, marginBottom:4 }}>⚡ 革命チェンジ</div>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff8844", fontSize:14, fontWeight:900, marginBottom:4, letterSpacing:2 }}>革命チェンジ</div>
         <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>
           <span style={{ color:"#fff", fontWeight:700 }}>{attacker.name}</span> が攻撃！<br/>
           以下のカードと革命チェンジできます。
@@ -1198,7 +1202,7 @@ function EffectConfirmModal({ modal, onConfirm, onSkip }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:370, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:340, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4 }}>⚡ 効果発動確認</div>
+        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4, letterSpacing:1 }}>効果発動確認</div>
         <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:4 }}>
           {civs.map(cv=><span key={cv}>{CIV[cv]?.icon}</span>)} {srcCard?.name || "不明"}
         </div>
@@ -1266,7 +1270,7 @@ function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance,
                   <div key={card.uid}
                     onClick={() => toggleSelect(card.uid)}
                     style={{width:52,height:72,borderRadius:7,flexShrink:0,border:`2px solid ${selected.includes(card.uid)?"#ffe066":"#888"}`,background:"linear-gradient(135deg,#1a3050,#0a1828)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,transform:selected.includes(card.uid)?"translateY(-8px) scale(1.07)":"none",transition:"all 0.15s",boxShadow:selected.includes(card.uid)?"0 0 18px #ffe066":"0 0 6px #44aaff44",userSelect:"none"}}>
-                    <span style={{fontSize:22}}>🛡</span>
+                    <div style={{width:14,height:18,background:"linear-gradient(180deg,#3a6090,#1a3a5c)",borderRadius:"3px 3px 2px 2px",border:"1px solid #5a80aa",boxShadow:"0 0 6px #3a6090aa"}}/>
                     <span style={{fontSize:8,color:"#88aacc"}}>{i+1}</span>
                   </div>
                 ) : (
@@ -1316,15 +1320,15 @@ function TwinPactChoiceModal({ card, onSelectCreature, onSelectSpell, onCancel }
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:395, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:380, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4 }}>⚔/📜 ツインパクト</div>
+        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4, letterSpacing:2 }}>TWIN PACT</div>
         <div style={{ fontSize:12, color:"#ccc", marginBottom:14 }}>{card.name} をどちらとして使いますか？</div>
         <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
           <button onClick={onSelectCreature} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(255,180,0,0.1)", border:"1px solid #ffbb0055", cursor:"pointer", textAlign:"left" }}>
-            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>⚔ クリーチャーとして召喚</div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>クリーチャーとして召喚</div>
             <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.cost} / パワー {card.power} / {card.race}</div>
           </button>
           <button onClick={onSelectSpell} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(100,180,255,0.1)", border:"1px solid #44aaff55", cursor:"pointer", textAlign:"left" }}>
-            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>📜 呪文として唱える</div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>呪文として唱える</div>
             <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.spellSide?.cost} / {card.spellSide?.name}</div>
             <div style={{ fontSize:10, color:"#666", marginTop:2 }}>{card.spellSide?.effect}</div>
           </button>
@@ -1345,7 +1349,7 @@ function GStrikeModal({ cards, attackerBattle, onConfirm, onSkip }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:"linear-gradient(160deg,#1a0030,#08080f)", border:"2px solid #ff44ff", borderRadius:14, padding:20, maxWidth:460, width:"100%", boxShadow:"0 0 30px #ff44ff66" }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff88ff", fontSize:14, fontWeight:900, marginBottom:4 }}>⚡ G・ストライク</div>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#ff88ff", fontSize:14, fontWeight:900, marginBottom:4, letterSpacing:2 }}>G·STRIKE</div>
         <div style={{ fontSize:11, color:"#888", marginBottom:12 }}>
           相手の攻撃クリーチャーを1体選んでください。<br/>
           選んだクリーチャーはこのターン攻撃できません。
@@ -1544,7 +1548,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         />
       )}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-        <span style={{fontWeight:700,color,fontSize:13}}>{pid==="p1"?"🧑":"👹"} {label}{isActive&&<span style={{fontSize:10,color:"#ffe066",marginLeft:6}}>▶ アクティブ</span>}</span>
+        <span style={{fontWeight:700,color,fontSize:13}}><span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,marginRight:4}}>{pid==="p1"?"P1":"P2"}</span>{label}{isActive&&<span style={{fontSize:9,color:"#ffe066",marginLeft:6,fontFamily:"'Cinzel',serif",letterSpacing:1}}>◆ ACTIVE</span>}</span>
         <span style={{fontSize:10,color:"#444"}}>手札:{state.hand.length} BZ:{state.battle.length} 墓地:{state.grave.length} 山:{state.deck.length}</span>
         <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield} style={{marginLeft:"auto"}}/>
       </div>
@@ -1577,18 +1581,18 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       )}
       {attackingUid&&!isActive&&(
         <div style={{background:"rgba(255,80,0,0.08)",border:"1px dashed #f8444488",borderRadius:6,padding:"6px 10px",marginBottom:8}}>
-          <div style={{fontSize:11,color:"#f84",marginBottom:4}}>⚔ 攻撃対象を選択</div>
+          <div style={{fontSize:11,color:"#f84",marginBottom:4,fontFamily:"'Cinzel',serif",letterSpacing:1}}>攻撃対象を選択</div>
           <ShieldPile shields={state.shields} canClick onBreak={onAttackShield}/>
         </div>
       )}
       {isActive&&(
         <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
-          {!drewThisTurn&&<Btn onClick={onDraw} col="#44ff88">📥 ドロー</Btn>}
-          {drewThisTurn&&!chargedThisTurn&&selHand!==null&&<Btn onClick={handleCharge} col="#8888ff">💎 マナチャージ</Btn>}
-          {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>▶ プレイ</Btn>}
-          {drewThisTurn&&selHand!==null&&gZeroOk&&<Btn onClick={handleGZeroPlay} col="#ff44ff">⚡ G・ゼロ召喚</Btn>}
-          {drewThisTurn&&attackingUid&&otherState.shields.length===0&&<Btn onClick={onDirectAttack} col="#ff4444">💥 ダイレクト</Btn>}
-          {drewThisTurn&&<Btn onClick={onEndTurn} col="#ffaa44">⏭ ターン終了</Btn>}
+          {!drewThisTurn&&<Btn onClick={onDraw} col="#44ff88">DRAW</Btn>}
+          {drewThisTurn&&!chargedThisTurn&&selHand!==null&&<Btn onClick={handleCharge} col="#8888ff">CHARGE</Btn>}
+          {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>PLAY</Btn>}
+          {drewThisTurn&&selHand!==null&&gZeroOk&&<Btn onClick={handleGZeroPlay} col="#ff44ff">G-ZERO</Btn>}
+          {drewThisTurn&&attackingUid&&otherState.shields.length===0&&<Btn onClick={onDirectAttack} col="#ff4444">DIRECT</Btn>}
+          {drewThisTurn&&<Btn onClick={onEndTurn} col="#ffaa44">END TURN</Btn>}
         </div>
       )}
       <ExceptionPanel pid={pid} state={state} setState={setState} otherState={otherState} setOtherState={setOtherState} addLog={addLog}/>
@@ -1602,10 +1606,10 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
 function HandoffScreen({from,to,onReady}){
   return(
     <div style={{position:"fixed",inset:0,background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:400}}>
-      <div style={{fontSize:56,marginBottom:12}}>🔄</div>
+      <div style={{fontFamily:"'Cinzel',serif",fontSize:28,color:"#ffe066",letterSpacing:6,marginBottom:12,textShadow:"0 0 20px #ffe066aa"}}>◆◆◆</div>
       <div style={{fontFamily:"'Cinzel',serif",fontSize:24,color:"#ffe066",textShadow:"0 0 20px #ffe066",marginBottom:8}}>画面を渡してください</div>
       <div style={{color:"#555",fontSize:14,marginBottom:32}}>{from} → {to} のターン</div>
-      <button onClick={onReady} style={{padding:"14px 48px",borderRadius:10,fontSize:18,fontWeight:900,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",cursor:"pointer"}}>準備完了 ▶</button>
+      <button onClick={onReady} style={{padding:"14px 48px",borderRadius:10,fontSize:18,fontWeight:900,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",cursor:"pointer",fontFamily:"'Cinzel',serif",letterSpacing:3}}>READY</button>
     </div>
   );
 }
@@ -1727,14 +1731,14 @@ JSONのみ返してください。前後の説明は不要です。`}
   return(
     <div style={{className:"fullscreen-panel",background:"rgba(0,0,0,0.92)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{background:"#0a0a18",border:"1px solid #4af44",borderRadius:14,padding:20,maxWidth:500,width:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-        <div style={{fontFamily:"'Cinzel',serif",color:"#4af",fontSize:16,fontWeight:700,marginBottom:4}}>📷 デッキシート読み取り</div>
+        <div style={{fontFamily:"'Cinzel',serif",color:"#4af",fontSize:16,fontWeight:700,marginBottom:4,letterSpacing:1}}>デッキシート読み取り</div>
         <div style={{fontSize:11,color:"#555",marginBottom:16}}>公式デッキシートの画像をアップロードしてください</div>
 
         {!parsed&&(
           <div style={{marginBottom:16}}>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:"none"}}/>
             <button onClick={()=>fileRef.current?.click()} disabled={loading} style={{width:"100%",padding:"16px",borderRadius:10,border:"2px dashed #333",background:"#080818",color:loading?"#444":"#888",cursor:loading?"not-allowed":"pointer",fontSize:13}}>
-              {loading?"🔍 読み取り中...":"📁 画像を選択（タップでカメラ/ファイル）"}
+              {loading?"読み取り中...":"画像を選択（タップでカメラ / ファイル）"}
             </button>
             {error&&<div style={{color:"#f84",fontSize:11,marginTop:8}}>{error}</div>}
           </div>
@@ -1742,7 +1746,7 @@ JSONのみ返してください。前後の説明は不要です。`}
 
         {parsed&&(
           <div>
-            <div style={{fontSize:12,color:"#8f8",marginBottom:8}}>✅ {parsed.length}枚読み取り完了（マッチ:{deckIds.length}枚）</div>
+            <div style={{fontSize:12,color:"#8f8",marginBottom:8}}>✓ {parsed.length}枚読み取り完了（マッチ:{deckIds.length}枚）</div>
             <div style={{maxHeight:240,overflowY:"auto",marginBottom:12,border:"1px solid #1a1a2a",borderRadius:8}}>
               {parsed.map((r,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 10px",borderBottom:"1px solid #0a0a18",background:r.matched?"transparent":"rgba(255,80,80,0.05)"}}>
@@ -1754,7 +1758,7 @@ JSONのみ返してください。前後の説明は不要です。`}
             </div>
             {unmatchedNames.length>0&&(
               <div style={{background:"rgba(255,80,80,0.08)",border:"1px solid #f8444433",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
-                <div style={{fontSize:11,color:"#f84",fontWeight:700,marginBottom:6}}>⚠ 未登録カード ({unmatchedNames.length}種) — デッキには含まれません</div>
+                <div style={{fontSize:11,color:"#f84",fontWeight:700,marginBottom:6}}>未登録カード ({unmatchedNames.length}種) — デッキには含まれません</div>
                 {unmatchedNames.map(n=><div key={n} style={{fontSize:11,color:"#f88",marginBottom:2}}>・{n}</div>)}
                 <div style={{fontSize:10,color:"#555",marginTop:6}}>カード管理から追加後、再度読み込んでください</div>
               </div>
@@ -1809,7 +1813,7 @@ function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
       </div>
       {/* Filters */}
       <div style={{padding:"8px 12px",display:"flex",gap:6,flexWrap:"wrap",borderBottom:"1px solid #141428",background:"#060614"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 カード名検索" style={{flex:1,minWidth:120,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 8px",fontSize:12}}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="カード名検索" style={{flex:1,minWidth:120,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 8px",fontSize:12}}/>
         <select value={civFilter} onChange={e=>setCivFilter(e.target.value)} style={{background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 6px",fontSize:11}}>
           <option value="all">全文明</option>
           {CIVS.map(c=><option key={c} value={c}>{CIV[c].icon} {CIV[c].label}</option>)}
@@ -1892,7 +1896,7 @@ function CardManager({cardDb,setCardDb,onClose}){
         <button onClick={onClose} style={{padding:"6px 12px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>← 戻る</button>
       </div>
       <div style={{padding:"8px 12px",display:"flex",gap:6,flexWrap:"wrap",borderBottom:"1px solid #141428",background:"#060614"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 カード名検索" style={{flex:1,minWidth:120,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 8px",fontSize:12}}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="カード名検索" style={{flex:1,minWidth:120,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 8px",fontSize:12}}/>
         <select value={civFilter} onChange={e=>setCivFilter(e.target.value)} style={{background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 6px",fontSize:11}}>
           <option value="all">全文明</option>
           {CIVS.map(c=><option key={c} value={c}>{CIV[c].icon} {CIV[c].label}</option>)}
@@ -2040,7 +2044,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       }
       const spellName=effectiveSide?.name||card.name;
       addLog(`${active}: 呪文「${spellName}」${isCharger?"(チャージャー→マナへ)":""}`);
-      showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:"📜"});
+      showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       const spellEffect=effectiveSide?.autoEffect||card.autoEffect;
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
     }
@@ -2114,7 +2118,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // シールドから手札に入るときtappedをリセット
       const toHand=[...normal,...sTriggers,...gStrikeCards].map(c=>({...c,tapped:false}));
       setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand]}));
-      sTriggers.forEach(c=>{addLog(`🛡 S・トリガー「${c.name}」`);showCutIn({title:"S・トリガー発動！",cardName:c.name,civ:c.civ,icon:"🛡"});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
+      sTriggers.forEach(c=>{addLog(`ST 「${c.name}」`);showCutIn({title:"S-TRIGGER!",cardName:c.name,civ:c.civ});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
       if(gStrikeCards.length>0){
         gStrikeCards.forEach(c=>addLog(`⚡ G・ストライク「${c.name}」`));
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
@@ -2184,11 +2188,11 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066"}}>⚔ DUEL MASTERS</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066",letterSpacing:3}}>DUEL MASTERS</div>
         <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
         <button onClick={onBackToMenu} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>← メニュー</button>
       </div>
-      <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>💬 {message}</div>
+      <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>{message}</div>
       <div style={{flex:1,overflowY:"auto",padding:"8px 10px",display:"flex",flexDirection:"column",gap:8}}>
         {(active==="p1"
           ? [
@@ -2265,7 +2269,7 @@ function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2De
           transform: hovered ? "translateX(4px)" : "none",
         }}
       >
-        <span style={{fontSize:18,width:24,textAlign:"center"}}>{icon}</span>
+        <span style={{fontSize:13,width:24,textAlign:"center",fontFamily:"'Cinzel',serif",fontWeight:900,opacity:0.7}}>{icon}</span>
         {children}
         <span style={{marginLeft:"auto",opacity:hovered?1:0,transition:"opacity 0.15s",fontSize:12}}>▶</span>
       </button>
@@ -2393,7 +2397,7 @@ function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2De
                 </div>
 
                 <div style={{padding:"14px"}}>
-                  {[{pid:"p1",label:"PLAYER 1",icon:"🧑",color:"#44aaff"},{pid:"p2",label:"PLAYER 2",icon:"👹",color:"#ff6644"}].map(({pid,label,icon,color})=>{
+                  {[{pid:"p1",label:"PLAYER 1",icon:"P1",color:"#44aaff"},{pid:"p2",label:"PLAYER 2",icon:"P2",color:"#ff6644"}].map(({pid,label,icon,color})=>{
                     const idx=pid==="p1"?p1DeckIdx:p2DeckIdx;
                     const setIdx=pid==="p1"?setP1DeckIdx:setP2DeckIdx;
                     return(
@@ -2452,9 +2456,9 @@ function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2De
 
               {/* Nav buttons */}
               <div style={{display:"flex",flexDirection:"column",gap:2,border:"1px solid #1a1a2a",borderRadius:2,overflow:"hidden"}}>
-                <MenuBtn id="deck" onClick={()=>setScreen("deckList")} color="#ffe066" icon="📋">デッキ管理</MenuBtn>
+                <MenuBtn id="deck" onClick={()=>setScreen("deckList")} color="#ffe066" icon="◈">デッキ管理</MenuBtn>
                 <div style={{height:1,background:"#0f0f1a"}}/>
-                <MenuBtn id="card" onClick={()=>setScreen("cardManager")} color="#44aaff" icon="🗂">カード管理</MenuBtn>
+                <MenuBtn id="card" onClick={()=>setScreen("cardManager")} color="#44aaff" icon="◈">カード管理</MenuBtn>
               </div>
             </>
                       )}
@@ -2471,7 +2475,7 @@ function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckIdx,p2De
               </div>
 
               <div style={{display:"flex",gap:8,marginBottom:12}}>
-                {[{label:"＋ 新規作成",color:"#44ff88",onClick:openNewDeck},{label:"📷 シート読込",color:"#44aaff",onClick:()=>setScreen("deckSheet")}].map(({label,color,onClick})=>(
+                {[{label:"＋ 新規作成",color:"#44ff88",onClick:openNewDeck},{label:"シート読込",color:"#44aaff",onClick:()=>setScreen("deckSheet")}].map(({label,color,onClick})=>(
                   <button key={label} onClick={onClick} style={{flex:1,padding:"10px",borderRadius:2,background:`${color}0a`,border:`1px solid ${color}44`,color,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"'Rajdhani',sans-serif",letterSpacing:1,transition:"all 0.12s"}}>{label}</button>
                 ))}
               </div>
