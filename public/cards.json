@@ -873,6 +873,10 @@
     "keywords": ["speedAttacker", "wBreaker", "zRush"],
     "effect": "スピードアタッカー\nW・ブレイカー\nこのクリーチャーが出た時、相手のクリーチャーを1体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる。このクリーチャーがバトルに勝った時、相手のシールドを1つブレイクしてもよい。\nZラッシュ：シールドが離れた時、次の自分のターン終了まで、このクリーチャーはハイパーモードになる。",
     "zRush": true,
+    "hyperPower": 12000,
+    "hyperKeywords": ["tBreaker"],
+    "hyperOnAttack": { "type": "untapAlly" },
+    "hyperOnTargeted": { "type": "breakAttackerShields", "amount": 3 },
     "autoEffect": {
       "trigger": "play", "type": "steps",
       "steps": [

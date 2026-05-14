@@ -134,7 +134,7 @@ function extractFromBattle(battle, uid) {
 }
 
 function getEffectivePower(card, ownerState, allOwnBattle) {
-  let power = card.power || 0;
+  let power = (card.hyperMode && card.hyperPower != null) ? card.hyperPower : (card.power || 0);
   if (card.selfPowerBoostGrave) {
     const { civFilter, perCard } = card.selfPowerBoostGrave;
     const count = (ownerState.grave || []).filter(c => getCardCivs(c).includes(civFilter)).length;
@@ -1409,6 +1409,57 @@ function EvolutionSelectModal({ eligible, card, onSelect, onCancel }) {
 }
 
 // ===========================
+// HYPER MODE MODALS
+// ===========================
+function HyperUntapModal({ modal, onSelect, onSkip }) {
+  const [selected, setSelected] = useState(null);
+  const { allies } = modal;
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:415, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"linear-gradient(160deg,#1a0800,#08080f)", border:"2px solid #ffcc00", borderRadius:14, padding:20, maxWidth:420, width:"100%", boxShadow:"0 0 30px #ffcc0066" }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#ffcc00", fontSize:13, fontWeight:900, marginBottom:4, letterSpacing:2 }}>HYPER MODE</div>
+        <div style={{ fontSize:11, color:"#aaa", marginBottom:12 }}>攻撃時：自分の他のクリーチャーを1体アンタップする</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+          {allies.map(c => (
+            <CardFace key={c.uid} card={c} small selected={selected===c.uid} onClick={() => setSelected(s => s===c.uid ? null : c.uid)} />
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={() => selected && onSelect(selected)} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:selected?"linear-gradient(135deg,#ffcc0055,#ffcc0022)":"#111", border:`1px solid ${selected?"#ffcc00":"#333"}`, color:selected?"#ffcc00":"#444", cursor:selected?"pointer":"not-allowed", fontFamily:"'Cinzel',serif" }}>
+            UNTAP
+          </button>
+          <button onClick={onSkip} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
+            スキップ
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HyperTargetedModal({ modal, attackerShields, onUse, onSkip }) {
+  const { amount } = modal;
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:415, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"linear-gradient(160deg,#1a0800,#08080f)", border:"2px solid #ffcc00", borderRadius:14, padding:20, maxWidth:380, width:"100%", boxShadow:"0 0 30px #ffcc0066" }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#ffcc00", fontSize:13, fontWeight:900, marginBottom:4, letterSpacing:2 }}>HYPER MODE</div>
+        <div style={{ fontSize:11, color:"#ccc", marginBottom:6 }}>相手がこのクリーチャーを選んだ時：</div>
+        <div style={{ fontSize:12, fontWeight:700, color:"#ffcc00", marginBottom:4 }}>相手のシールドを{amount}つブレイクしてもよい</div>
+        <div style={{ fontSize:10, color:"#666", marginBottom:14 }}>相手シールド残り: {attackerShields}枚</div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={onUse} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:"linear-gradient(135deg,#ffcc0055,#ffcc0022)", border:"1px solid #ffcc00", color:"#ffcc00", cursor:"pointer", fontFamily:"'Cinzel',serif" }}>
+            {Math.min(amount, attackerShields)}枚 BREAK
+          </button>
+          <button onClick={onSkip} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
+            使わない
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
 // PLAYER BOARD
 // ===========================
 function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack}){
@@ -1943,6 +1994,8 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [activeSteps,setActiveSteps]=useState(null);
   const [effectQueue,setEffectQueue]=useState([]);
   const [gStrikeModal,setGStrikeModal]=useState(null);
+  const [hyperUntapModal,setHyperUntapModal]=useState(null);
+  const [hyperTargetedModal,setHyperTargetedModal]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const showCutIn=useCallback(data=>setCutin(data),[]);
@@ -2077,12 +2130,19 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     });
     addLog(`🌟 ファイナル革命！${selected.length}枚をバトルゾーンへ`);
   };
-  const handleStartAttack=uid=>{setAttackingUid(uid);const card=activeState.battle.find(c=>c.uid===uid);addLog(`${active}: ${card?.name} 攻撃宣言`);setMessage("攻撃対象を選択");};
-  const handleAttackCreature=targetUid=>{
-    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
-    const target=otherState.battle.find(c=>c.uid===targetUid);
-    if(!attacker||!target)return;
-    setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
+  const handleStartAttack=uid=>{
+    setAttackingUid(uid);
+    const card=activeState.battle.find(c=>c.uid===uid);
+    addLog(`${active}: ${card?.name} 攻撃宣言`);
+    setMessage("攻撃対象を選択");
+    // ハイパーモード攻撃時効果：自分の他クリーチャーを1体アンタップ
+    if(card?.hyperMode&&card.hyperOnAttack?.type==="untapAlly"){
+      const allies=activeState.battle.filter(c=>c.uid!==uid);
+      if(allies.length>0) setHyperUntapModal({attackerUid:uid,allies});
+    }
+  };
+  const resolveAttackCreature=(attacker,target,targetUid)=>{
+    setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:true}:c)}));
     const aEff=getEffectivePower(attacker,activeState,activeState.battle);
     const dEff=getEffectivePower(target,otherState,otherState.battle);
     addLog(`⚔ ${attacker.name}(${aEff}) vs ${target.name}(${dEff})`);
@@ -2093,18 +2153,29 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       addLog(`✅ ${target.name} 破壊`);
     }
     if(dWin){
-      const {newBattle:nb2,extracted:ex2}=extractFromBattle(activeState.battle,attackingUid);
+      const {newBattle:nb2,extracted:ex2}=extractFromBattle(activeState.battle,attacker.uid);
       setActiveState(s=>({...s,battle:nb2,grave:[...s.grave,...ex2]}));
       addLog(`💔 ${attacker.name} 破壊`);
     }
     setAttackingUid(null);
   };
+  const handleAttackCreature=targetUid=>{
+    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
+    const target=otherState.battle.find(c=>c.uid===targetUid);
+    if(!attacker||!target)return;
+    // ハイパーモード：相手に選ばれた時、相手シールドをブレイクしてもよい
+    if(target.hyperMode&&target.hyperOnTargeted?.type==="breakAttackerShields"){
+      setHyperTargetedModal({targetUid,attackerUid:attacker.uid,amount:target.hyperOnTargeted.amount});
+      return;
+    }
+    resolveAttackCreature(attacker,target,targetUid);
+  };
   const handleAttackShield=shieldIdx=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
     const effectiveSA=computeGrantedKeywords(attacker,activeState.battle).includes("speedAttacker");
-    const effectiveTBreaker=attacker.keywords?.includes("tBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("tBreaker");
-    const effectiveWBreaker=attacker.keywords?.includes("wBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("wBreaker");
+    const effectiveTBreaker=attacker.keywords?.includes("tBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("tBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("tBreaker"));
+    const effectiveWBreaker=(!effectiveTBreaker)&&(attacker.keywords?.includes("wBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("wBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("wBreaker")));
     const breakCount=effectiveTBreaker?3:effectiveWBreaker?2:1;
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
     let shields=[...otherState.shields];const broken=[];
@@ -2187,6 +2258,26 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
+      {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
+      {hyperTargetedModal&&<HyperTargetedModal modal={hyperTargetedModal} attackerShields={activeState.shields.length} onUse={()=>{
+        const {targetUid,attackerUid,amount}=hyperTargetedModal;
+        const target=otherState.battle.find(c=>c.uid===targetUid);
+        const n=Math.min(amount,activeState.shields.length);
+        if(n>0){
+          const broken=activeState.shields.slice(0,n);
+          setActiveState(s=>({...s,shields:s.shields.slice(n),hand:[...s.hand,...broken.map(c=>({...c,tapped:false}))]}));
+          addLog(`${target?.name} ハイパーモード: 相手シールドを${n}枚ブレイク`);
+        }
+        setHyperTargetedModal(null);
+        const attacker=activeState.battle.find(c=>c.uid===attackerUid);
+        if(attacker&&target) resolveAttackCreature(attacker,target,targetUid);
+      }} onSkip={()=>{
+        const {targetUid,attackerUid}=hyperTargetedModal;
+        setHyperTargetedModal(null);
+        const attacker=activeState.battle.find(c=>c.uid===attackerUid);
+        const target=otherState.battle.find(c=>c.uid===targetUid);
+        if(attacker&&target) resolveAttackCreature(attacker,target,targetUid);
+      }}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066",letterSpacing:3}}>DUEL MASTERS</div>
         <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
