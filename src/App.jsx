@@ -650,11 +650,13 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   );
 }
 
-function CardBack({small,onClick,label}){
+function CardBack({small,tiny,onClick,label}){
+  const w=tiny?32:small?52:74;
+  const h=tiny?44:small?72:106;
   return(
-    <div onClick={onClick} style={{width:small?52:74,height:small?72:106,borderRadius:7,border:"2px solid #2a2a4a",flexShrink:0,background:"linear-gradient(135deg,#080814,#111830,#080814)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",userSelect:"none",gap:3,position:"relative",overflow:"hidden",boxShadow:"inset 0 0 12px rgba(100,100,255,0.08)"}}>
+    <div onClick={onClick} style={{width:w,height:h,borderRadius:7,border:"2px solid #2a2a4a",flexShrink:0,background:"linear-gradient(135deg,#080814,#111830,#080814)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",userSelect:"none",gap:3,position:"relative",overflow:"hidden",boxShadow:"inset 0 0 12px rgba(100,100,255,0.08)"}}>
       <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.015) 8px,rgba(255,255,255,0.015) 9px)"}}/>
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,fontSize:small?9:11,color:"#2a2a5a",letterSpacing:2,textTransform:"uppercase",zIndex:1}}>DM</div>
+      <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,fontSize:tiny?7:small?9:11,color:"#2a2a5a",letterSpacing:2,textTransform:"uppercase",zIndex:1}}>DM</div>
       {label&&<span style={{fontSize:8,color:"#3a3a6a",zIndex:1}}>{label}</span>}
     </div>
   );
@@ -1622,24 +1624,41 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
           onCancel={()=>setEvolutionSelectModal(null)}
         />
       )}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap",flexShrink:0}}>
-        <span style={{fontWeight:700,color,fontSize:13}}><span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,marginRight:4}}>{pid==="p1"?"P1":"P2"}</span>{label}{isActive&&<span style={{fontSize:9,color:"#ffe066",marginLeft:6,fontFamily:"'Cinzel',serif",letterSpacing:1}}>◆ ACTIVE</span>}</span>
-        <span style={{fontSize:10,color:"#444"}}>手札:{state.hand.length} BZ:{state.battle.length} <span onClick={()=>setGraveModal(true)} style={{cursor:"pointer",color:"#a8f",textDecoration:"underline dotted"}}>墓地:{state.grave.length}</span> 山:{state.deck.length}</span>
-        <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield} style={{marginLeft:"auto"}}/>
+      {/* Header: PID label + DECK/墓地 boxes + Shield */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap",flexShrink:0}}>
+        <span style={{fontWeight:700,color,fontSize:13}}>
+          <span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,marginRight:4}}>{pid==="p1"?"P1":"P2"}</span>
+          {label}{isActive&&<span style={{fontSize:9,color:"#ffe066",marginLeft:6,fontFamily:"'Cinzel',serif",letterSpacing:1}}>◆ ACTIVE</span>}
+        </span>
+        <div style={{display:"flex",gap:4,marginLeft:"auto",alignItems:"center"}}>
+          <div style={{background:"#0d1a2e",border:"1px solid #2255aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36}}>
+            <div style={{fontSize:9,color:"#5588aa"}}>DECK</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#7af",lineHeight:1.1}}>{state.deck.length}</div>
+          </div>
+          <div onClick={()=>setGraveModal(true)} style={{background:"#150a2e",border:"1px solid #7755aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36,cursor:"pointer"}}>
+            <div style={{fontSize:9,color:"#9966bb"}}>墓地</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#b8f",lineHeight:1.1}}>{state.grave.length}</div>
+          </div>
+        </div>
+        <div style={{border:"1px solid #3498dbaa",background:"rgba(52,152,219,0.10)",borderRadius:7,padding:"3px 6px"}}>
+          <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield}/>
+        </div>
       </div>
-      <div style={{marginBottom:8,flexShrink:0}}>
-        <div style={{fontSize:10,color:"#333",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
+      {/* BZ with red border */}
+      <div style={{border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6,flexShrink:0}}>
+        <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
         <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",minHeight:36}}>
           {(()=>{
             const getGranted=c=>computeGrantedKeywords(c,state.battle);
-            return state.battle.map(c=><CardFace key={c.uid} card={c} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
+            return state.battle.map(c=><CardFace key={c.uid} card={c} small selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
         </div>
       </div>
+      {/* Mana + Hand row */}
       <div style={{display:"flex",gap:6,flex:1,overflow:"hidden",minHeight:0}}>
-        <div onClick={()=>setManaModal(true)} style={{flex:"0 0 100px",cursor:"pointer",border:"1px solid #44aa6633",borderRadius:6,background:"rgba(40,180,80,0.03)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          <div style={{fontSize:9,color:"#4a8",fontWeight:700,padding:"3px 6px",borderBottom:"1px solid #44aa6622"}}>マナ ({state.mana.length})</div>
+        <div onClick={()=>setManaModal(true)} style={{flex:"0 0 100px",cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length})</div>
           <div style={{flex:1,overflow:"hidden",padding:"2px 4px",display:"flex",flexDirection:"column",gap:1}}>
             {state.mana.slice(0,10).map((c,i)=>{
               const civs=getCardCivs(c);
@@ -1649,10 +1668,10 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
             {state.mana.length>10&&<div style={{fontSize:8,color:"#4a8",textAlign:"center"}}>+{state.mana.length-10}</div>}
           </div>
         </div>
-        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          <div style={{fontSize:10,color:"#333",marginBottom:4}}>手札</div>
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
+          <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4}}>手札</div>
           <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1}}>
-            {state.hand.map((c,i)=>pid==="p2"&&!isActive?<CardBack key={c.uid} small onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
+            {state.hand.map((c,i)=>pid==="p2"&&!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
             {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
           </div>
         </div>
