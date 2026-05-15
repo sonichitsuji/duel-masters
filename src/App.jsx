@@ -1553,16 +1553,9 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
     setRevChangeTarget(null);
   };
 
-  const civCounts={};
-  state.mana.forEach(c=>{
-    const civKey=getCardCivs(c)[0];
-    if(!civCounts[civKey])civCounts[civKey]={total:0,available:0};
-    civCounts[civKey].total++;
-    if(!c.tapped)civCounts[civKey].available++;
-  });
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
-    <div style={{background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
+    <div style={{height:"100%",display:"flex",flexDirection:"column",overflow:"hidden",background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
       {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
       {revChangeTarget&&(
         <AttackTriggerModal
@@ -1658,46 +1651,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
             {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
           </div>
         </div>
-      </>)}
-      {/* Active player layout */}
-      {isActive&&(<>
-        <div style={{border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6}}>
-          <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
-          <div style={{display:"flex",gap:5,flexWrap:"wrap",minHeight:36}}>
-            {(()=>{const getGranted=c=>computeGrantedKeywords(c,state.battle);return state.battle.map(c=><CardFace key={c.uid} card={c} small selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);})()}
-            {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
-          </div>
-        </div>
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <div style={{width:84,flexShrink:0,border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,padding:"5px 7px"}}>
-            <div style={{fontSize:10,fontWeight:400,color:"#4c8",marginBottom:3}}>
-              マナ: <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>{availMana}</span>
-              <span style={{fontSize:10,color:"#333"}}>/{state.mana.length}</span>
-            </div>
-            <div style={{display:"flex",gap:2,flexWrap:"wrap",marginBottom:3}}>
-              {Object.entries(civCounts).map(([civ,cnt])=>{const c=CIV[civ];if(!c)return null;return(
-                <div key={civ} style={{display:"flex",alignItems:"center",gap:1,background:`${c.color}18`,border:`1px solid ${c.color}44`,borderRadius:3,padding:"1px 4px"}}>
-                  <span style={{fontSize:8,fontWeight:900,color:c.textColor,fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
-                  <span style={{fontSize:9,fontWeight:700,color:cnt.available>0?c.textColor:"#333"}}>{cnt.available}</span>
-                  {cnt.total>cnt.available&&<span style={{fontSize:8,color:"#333"}}>/{cnt.total}</span>}
-                </div>
-              );})}
-            </div>
-            <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
-              {state.mana.map(c=>{const cv=CIV[getCardCivs(c)[0]];return(
-                <div key={c.uid} title={c.name} style={{width:14,height:14,borderRadius:2,background:c.tapped?"#111":cv?.color,border:`1px solid ${c.tapped?"#222":cv?.color}`,opacity:c.tapped?0.3:1,boxShadow:c.tapped?"none":`0 0 3px ${cv?.glow}55`}}/>
-              );})}
-            </div>
-          </div>
-          <div style={{flex:1,border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
-            <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4}}>手札</div>
-            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              {state.hand.map((c,i)=><CardFace key={c.uid} card={c} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
-              {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
-            </div>
-          </div>
-        </div>
-      </>)}
+      </div>
       {selectedCard&&(
         <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
