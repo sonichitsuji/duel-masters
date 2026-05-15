@@ -650,11 +650,13 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   );
 }
 
-function CardBack({small,onClick,label}){
+function CardBack({small,tiny,onClick,label}){
+  const w=tiny?32:small?52:74;
+  const h=tiny?44:small?72:106;
   return(
-    <div onClick={onClick} style={{width:small?52:74,height:small?72:106,borderRadius:7,border:"2px solid #2a2a4a",flexShrink:0,background:"linear-gradient(135deg,#080814,#111830,#080814)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",userSelect:"none",gap:3,position:"relative",overflow:"hidden",boxShadow:"inset 0 0 12px rgba(100,100,255,0.08)"}}>
+    <div onClick={onClick} style={{width:w,height:h,borderRadius:7,border:"2px solid #2a2a4a",flexShrink:0,background:"linear-gradient(135deg,#080814,#111830,#080814)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",userSelect:"none",gap:3,position:"relative",overflow:"hidden",boxShadow:"inset 0 0 12px rgba(100,100,255,0.08)"}}>
       <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.015) 8px,rgba(255,255,255,0.015) 9px)"}}/>
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,fontSize:small?9:11,color:"#2a2a5a",letterSpacing:2,textTransform:"uppercase",zIndex:1}}>DM</div>
+      <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,fontSize:tiny?7:small?9:11,color:"#2a2a5a",letterSpacing:2,textTransform:"uppercase",zIndex:1}}>DM</div>
       {label&&<span style={{fontSize:8,color:"#3a3a6a",zIndex:1}}>{label}</span>}
     </div>
   );
@@ -1551,6 +1553,13 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
     setRevChangeTarget(null);
   };
 
+  const civCounts={};
+  state.mana.forEach(c=>{
+    const civKey=getCardCivs(c)[0];
+    if(!civCounts[civKey])civCounts[civKey]={total:0,available:0};
+    civCounts[civKey].total++;
+    if(!c.tapped)civCounts[civKey].available++;
+  });
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
     <div style={{background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
@@ -1598,29 +1607,85 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
           onCancel={()=>setEvolutionSelectModal(null)}
         />
       )}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-        <span style={{fontWeight:700,color,fontSize:13}}><span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,marginRight:4}}>{pid==="p1"?"P1":"P2"}</span>{label}{isActive&&<span style={{fontSize:9,color:"#ffe066",marginLeft:6,fontFamily:"'Cinzel',serif",letterSpacing:1}}>◆ ACTIVE</span>}</span>
-        <span style={{fontSize:10,color:"#444"}}>手札:{state.hand.length} BZ:{state.battle.length} 墓地:{state.grave.length} 山:{state.deck.length}</span>
-        <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield} style={{marginLeft:"auto"}}/>
-      </div>
-      <div style={{marginBottom:8}}><ManaDisplay mana={state.mana}/></div>
-      <div style={{marginBottom:8}}>
-        <div style={{fontSize:10,color:"#333",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",minHeight:36}}>
-          {(()=>{
-            const getGranted=c=>computeGrantedKeywords(c,state.battle);
-            return state.battle.map(c=><CardFace key={c.uid} card={c} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
-          })()}
-          {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+      {/* Header: PID label + DECK/墓地 boxes + Shield */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+        <span style={{fontWeight:700,color,fontSize:13}}>
+          <span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,marginRight:4}}>{pid==="p1"?"P1":"P2"}</span>
+          {label}{isActive&&<span style={{fontSize:9,color:"#ffe066",marginLeft:6,fontFamily:"'Cinzel',serif",letterSpacing:1}}>◆ ACTIVE</span>}
+        </span>
+        <div style={{display:"flex",gap:4,marginLeft:"auto",alignItems:"center"}}>
+          <div style={{background:"#0d1a2e",border:"1px solid #2255aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36}}>
+            <div style={{fontSize:9,color:"#5588aa"}}>DECK</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#7af",lineHeight:1.1}}>{state.deck.length}</div>
+          </div>
+          <div style={{background:"#150a2e",border:"1px solid #7755aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36}}>
+            <div style={{fontSize:9,color:"#9966bb"}}>墓地</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#b8f",lineHeight:1.1}}>{state.grave.length}</div>
+          </div>
+        </div>
+        <div style={{border:"1px solid #3498dbaa",background:"rgba(52,152,219,0.10)",borderRadius:7,padding:"3px 6px"}}>
+          <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield}/>
         </div>
       </div>
-      <div style={{marginBottom:8}}>
-        <div style={{fontSize:10,color:"#333",marginBottom:4}}>手札</div>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-          {state.hand.map((c,i)=>pid==="p2"&&!isActive?<CardBack key={c.uid} small onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
-          {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+      {/* Inactive player layout */}
+      {!isActive&&(<>
+        <div style={{border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,padding:"5px 7px",marginBottom:6}}>
+          <ManaDisplay mana={state.mana}/>
         </div>
-      </div>
+        <div style={{border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6}}>
+          <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",minHeight:36}}>
+            {(()=>{const getGranted=c=>computeGrantedKeywords(c,state.battle);return state.battle.map(c=><CardFace key={c.uid} card={c} small selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);})()}
+            {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+          </div>
+        </div>
+        <div style={{border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
+          <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4}}>手札</div>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {state.hand.map((c,i)=>pid==="p2"&&!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} small selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
+            {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+          </div>
+        </div>
+      </>)}
+      {/* Active player layout */}
+      {isActive&&(<>
+        <div style={{border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6}}>
+          <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",minHeight:36}}>
+            {(()=>{const getGranted=c=>computeGrantedKeywords(c,state.battle);return state.battle.map(c=><CardFace key={c.uid} card={c} small selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);})()}
+            {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <div style={{width:84,flexShrink:0,border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,padding:"5px 7px"}}>
+            <div style={{fontSize:10,fontWeight:400,color:"#4c8",marginBottom:3}}>
+              マナ: <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>{availMana}</span>
+              <span style={{fontSize:10,color:"#333"}}>/{state.mana.length}</span>
+            </div>
+            <div style={{display:"flex",gap:2,flexWrap:"wrap",marginBottom:3}}>
+              {Object.entries(civCounts).map(([civ,cnt])=>{const c=CIV[civ];if(!c)return null;return(
+                <div key={civ} style={{display:"flex",alignItems:"center",gap:1,background:`${c.color}18`,border:`1px solid ${c.color}44`,borderRadius:3,padding:"1px 4px"}}>
+                  <span style={{fontSize:8,fontWeight:900,color:c.textColor,fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
+                  <span style={{fontSize:9,fontWeight:700,color:cnt.available>0?c.textColor:"#333"}}>{cnt.available}</span>
+                  {cnt.total>cnt.available&&<span style={{fontSize:8,color:"#333"}}>/{cnt.total}</span>}
+                </div>
+              );})}
+            </div>
+            <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+              {state.mana.map(c=>{const cv=CIV[getCardCivs(c)[0]];return(
+                <div key={c.uid} title={c.name} style={{width:14,height:14,borderRadius:2,background:c.tapped?"#111":cv?.color,border:`1px solid ${c.tapped?"#222":cv?.color}`,opacity:c.tapped?0.3:1,boxShadow:c.tapped?"none":`0 0 3px ${cv?.glow}55`}}/>
+              );})}
+            </div>
+          </div>
+          <div style={{flex:1,border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
+            <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4}}>手札</div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {state.hand.map((c,i)=><CardFace key={c.uid} card={c} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
+              {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+            </div>
+          </div>
+        </div>
+      </>)}
       {selectedCard&&(
         <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
