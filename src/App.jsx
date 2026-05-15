@@ -1555,7 +1555,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
 
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
-    <div style={{height:"100%",display:"flex",flexDirection:"column",overflow:"hidden",background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
+    <div style={{display:"flex",flexDirection:"column",overflowY:"auto",background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
       {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
       {revChangeTarget&&(
         <AttackTriggerModal
@@ -1632,7 +1632,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         </div>
       </div>
       {/* Mana + Hand row */}
-      <div style={{display:"flex",gap:6,flex:1,overflow:"hidden",minHeight:0}}>
+      <div style={{display:"flex",gap:6,marginBottom:6}}>
         <div onClick={()=>setManaModal(true)} style={{flex:"0 0 100px",cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length})</div>
           <div style={{flex:1,overflow:"hidden",padding:"2px 4px",display:"flex",flexDirection:"column",gap:1}}>
@@ -1644,10 +1644,10 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
             {state.mana.length>10&&<div style={{fontSize:8,color:"#4a8",textAlign:"center"}}>+{state.mana.length-10}</div>}
           </div>
         </div>
-        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
+        <div style={{flex:1,border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
           <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4}}>手札</div>
-          <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1}}>
-            {state.hand.map((c,i)=>pid==="p2"&&!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {state.hand.map((c,i)=>!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} small selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
             {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
           </div>
         </div>
