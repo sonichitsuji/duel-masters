@@ -5,11 +5,11 @@ const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttac
 const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー", zRush:"Zラッシュ" };
 
 const CIV = {
-  fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", icon:"🔥", textColor:"#ff8877" },
-  water:    { label:"水", color:"#3498db", glow:"#4488ff", bg:"#020a1a", icon:"💧", textColor:"#77aaff" },
-  darkness: { label:"闇", color:"#9b59b6", glow:"#aa44ff", bg:"#0a0010", icon:"💀", textColor:"#bb88ff" },
-  nature:   { label:"自", color:"#27ae60", glow:"#44ff88", bg:"#021008", icon:"🌿", textColor:"#88ff99" },
-  light:    { label:"光", color:"#f1c40f", glow:"#ffcc44", bg:"#101005", icon:"✨", textColor:"#ffdd66" },
+  fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", textColor:"#ff8877" },
+  water:    { label:"水", color:"#3498db", glow:"#4488ff", bg:"#020a1a", textColor:"#77aaff" },
+  darkness: { label:"闇", color:"#9b59b6", glow:"#aa44ff", bg:"#0a0010", textColor:"#bb88ff" },
+  nature:   { label:"自", color:"#27ae60", glow:"#44ff88", bg:"#021008", textColor:"#88ff99" },
+  light:    { label:"光", color:"#f1c40f", glow:"#ffcc44", bg:"#101005", textColor:"#ffdd66" },
 };
 const CIVS = Object.keys(CIV);
 
@@ -201,7 +201,7 @@ function CutIn({cutin,onDone}){
   return(
     <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",background:visible?`radial-gradient(ellipse at center,${c.glow}22 0%,transparent 70%)`:"transparent",transition:"background 0.3s"}}>
       <div style={{transform:visible?"scale(1) translateY(0)":"scale(0.6) translateY(30px)",opacity:visible?1:0,transition:"all 0.25s cubic-bezier(0.34,1.56,0.64,1)",display:"flex",flexDirection:"column",alignItems:"center",background:`linear-gradient(135deg,${c.bg}ee,#08080fee)`,border:`3px solid ${c.color}`,borderRadius:16,padding:"18px 40px",boxShadow:`0 0 40px ${c.glow}88,0 0 80px ${c.glow}44`,minWidth:240}}>
-        <div style={{fontSize:40,marginBottom:6}}>{cutin.icon||c.icon}</div>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:30,fontWeight:900,color:c.color,textShadow:`0 0 16px ${c.glow}`,marginBottom:6,letterSpacing:2}}>{c.label}</div>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:22,fontWeight:900,color:c.color,textShadow:`0 0 16px ${c.glow}`,letterSpacing:2,marginBottom:4,textAlign:"center"}}>{cutin.title}</div>
         {cutin.cardName&&<div style={{marginTop:8,padding:"4px 12px",borderRadius:4,background:`${c.color}22`,border:`1px solid ${c.color}55`,fontSize:12,color:c.textColor,fontWeight:700}}>{cutin.cardName}</div>}
       </div>
@@ -583,18 +583,18 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
       if (!target || !self) break;
       const sEff = getEffectivePower(self, selfState, selfState.battle);
       const tEff = getEffectivePower(target, otherState, otherState.battle);
-      addLog(`⚔ ${self.name}(${sEff}) vs ${target.name}(${tEff}) [ETBバトル]`);
+      addLog(`[VS] ${self.name}(${sEff}) vs ${target.name}(${tEff}) [ETBバトル]`);
       const sWin = sEff >= tEff;
       const tWin = tEff >= sEff;
       if (tWin) {
         const { newBattle: nb1, extracted: ex1 } = extractFromBattle(selfState.battle, self.uid);
         setSelf(s => ({ ...s, battle: nb1, grave: [...s.grave, ...ex1] }));
-        addLog(`💔 ${self.name} 破壊（ETBバトル）`);
+        addLog(`[LOST] ${self.name} 破壊（ETBバトル）`);
       }
       if (sWin) {
         const { newBattle: nb2, extracted: ex2 } = extractFromBattle(otherState.battle, target.uid);
         setOther(s => ({ ...s, battle: nb2, grave: [...s.grave, ...ex2] }));
-        addLog(`✅ ${target.name} 破壊（ETBバトル）`);
+        addLog(`[WIN] ${target.name} 破壊（ETBバトル）`);
         ctx.etbBattleWon = true;
       }
       break;
@@ -605,7 +605,7 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
       const shield = otherState.shields.find(c => c.uid === uid);
       if (!shield) break;
       setOther(s => ({ ...s, shields: s.shields.filter(c => c.uid !== uid), hand: [...s.hand, { ...shield, tapped: false }] }));
-      addLog(`💥 ${srcCard?.name}: シールドブレイク「${shield.name}」`);
+      addLog(`[BREAK] ${srcCard?.name}: シールドブレイク「${shield.name}」`);
       break;
     }
     default: addLog(`[未実装ステップ] ${step.type}`);
@@ -625,7 +625,7 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
     <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:card.tapped?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:1}}>
         <span style={{background:c.color,color:"#fff",fontWeight:700,fontSize:small?8:10,borderRadius:3,padding:"0 3px",lineHeight:"15px"}}>{card.cost}</span>
-        <div style={{display:"flex",gap:1}}>{civs.map(cv=><span key={cv} style={{fontSize:small?9:11}}>{CIV[cv]?.icon}</span>)}</div>
+        <div style={{display:"flex",gap:1}}>{civs.map(cv=>{const cv_=CIV[cv];return cv_?<span key={cv} style={{fontSize:small?6:8,fontWeight:900,color:cv_.textColor,background:`${cv_.color}44`,borderRadius:2,padding:"0 2px",lineHeight:"13px",fontFamily:"'Noto Sans JP',sans-serif"}}>{cv_.label}</span>:null;})}</div>
       </div>
       <div style={{color:"#fff",fontSize:small?6.5:8.5,fontWeight:700,lineHeight:1.2,textAlign:"center",flex:1,overflow:"hidden",wordBreak:"break-all",margin:"2px 0",textShadow:`0 0 5px ${c.glow}`}}>{card.name.length>13?card.name.slice(0,12)+"…":card.name}</div>
       {/* Race */}
@@ -680,7 +680,7 @@ function ManaDisplay({mana}){
         <span style={{fontSize:10,color:"#333"}}>/ {mana.length}</span>
         {Object.entries(civCounts).map(([civ,cnt])=>{const c=CIV[civ];if(!c)return null;return(
           <div key={civ} style={{display:"flex",alignItems:"center",gap:2,background:`${c.color}18`,border:`1px solid ${c.color}44`,borderRadius:4,padding:"1px 5px"}}>
-            <span style={{fontSize:11}}>{c.icon}</span>
+            <span style={{fontSize:9,fontWeight:900,color:c.textColor,fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
             <span style={{fontSize:11,fontWeight:700,color:cnt.available>0?c.textColor:"#333"}}>{cnt.available}</span>
             {cnt.total>cnt.available&&<span style={{fontSize:9,color:"#333"}}>/{cnt.total}</span>}
           </div>
@@ -688,7 +688,7 @@ function ManaDisplay({mana}){
       </div>
       <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
         {mana.map(c=>{const cv=CIV[getCardCivs(c)[0]];return(
-          <div key={c.uid} title={c.name} style={{width:18,height:18,borderRadius:3,background:c.tapped?"#111":cv?.color,border:`1px solid ${c.tapped?"#222":cv?.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,opacity:c.tapped?0.3:1,transition:"all 0.2s",boxShadow:c.tapped?"none":`0 0 4px ${cv?.glow}66`}}>{c.tapped?"":cv?.icon}</div>
+          <div key={c.uid} title={c.name} style={{width:18,height:18,borderRadius:3,background:c.tapped?"#111":cv?.color,border:`1px solid ${c.tapped?"#222":cv?.color}`,opacity:c.tapped?0.3:1,transition:"all 0.2s",boxShadow:c.tapped?"none":`0 0 4px ${cv?.glow}66`}}/>
         );})}
       </div>
     </div>
@@ -709,7 +709,7 @@ function Log({entries}){
   const ref=useRef();
   useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight;},[entries]);
   return(
-    <div ref={ref} style={{height:90,overflowY:"auto",padding:"6px 10px",background:"rgba(0,0,0,0.6)",borderRadius:8,border:"1px solid #141428",fontSize:11,color:"#888"}}>
+    <div ref={ref} style={{height:"100%",overflowY:"auto",padding:"6px 10px",background:"rgba(0,0,0,0.6)",fontSize:11,color:"#888"}}>
       {entries.map((e,i)=><div key={i} style={{color:i===entries.length-1?"#ddd":"#555",marginBottom:2}}>{e}</div>)}
     </div>
   );
@@ -744,7 +744,7 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
               {/* Cost badge */}
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                 <div style={{width:28,height:28,borderRadius:"50%",background:c.color,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:15,color:"#fff",boxShadow:`0 0 8px ${c.glow}`}}>{card.cost}</div>
-                {c2&&<div style={{width:24,height:24,borderRadius:"50%",background:c2.color,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:12,color:"#fff"}}>{c2.icon}</div>}
+                {c2&&<div style={{width:24,height:24,borderRadius:"50%",background:c2.color,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:10,color:"#fff",fontFamily:"'Noto Sans JP',sans-serif"}}>{c2.label}</div>}
               </div>
               {/* Name */}
               <div style={{fontWeight:900,color:"#fff",fontSize:15,lineHeight:1.2,textShadow:`0 0 8px ${c.glow}`}}>{card.name}</div>
@@ -752,7 +752,7 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
               {card.race&&<div style={{fontSize:11,color:c.textColor,marginTop:2,fontStyle:"italic"}}>{card.race}</div>}
             </div>
             {/* Civ icons */}
-            <div style={{display:"flex",gap:4,fontSize:22}}>{civs.map(cv=><span key={cv}>{CIV[cv]?.icon}</span>)}</div>
+            <div style={{display:"flex",gap:4}}>{civs.map(cv=>{const cv_=CIV[cv];return cv_?<span key={cv} style={{fontSize:14,fontWeight:900,color:cv_.textColor,background:`${cv_.color}33`,border:`1px solid ${cv_.color}66`,borderRadius:4,padding:"2px 8px",fontFamily:"'Noto Sans JP',sans-serif",textShadow:`0 0 8px ${cv_.glow}`}}>{cv_.label}</span>:null;})}</div>
           </div>
         </div>
 
@@ -1022,7 +1022,7 @@ function FinalRevolutionModal({ selfState, onConfirm, onSkip }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:365, display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflowY:"auto" }}>
       <div style={{ background:"linear-gradient(160deg,#021a08,#08080f)", border:"2px solid #44ff88", borderRadius:14, padding:20, maxWidth:400, width:"100%", boxShadow:"0 0 30px #44ff8866" }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:"#44ff88", fontSize:14, fontWeight:900, marginBottom:4 }}>🌟 ファイナル革命</div>
+        <div style={{ fontFamily:"'Cinzel',serif", color:"#44ff88", fontSize:14, fontWeight:900, marginBottom:4 }}>[FINAL] ファイナル革命</div>
         <div style={{ fontSize:11, color:"#888", marginBottom:8 }}>
           合計コスト6以下の多色クリーチャーを選んでバトルゾーンへ。<br/>
           <span style={{ color: totalCost > 6 ? "#f84" : "#44ff88", fontWeight:700 }}>合計コスト: {totalCost} / 6</span>
@@ -1123,7 +1123,7 @@ function ManaPayModal({ card, mana, selfBattle, onConfirm, onCancel }) {
         <div>
           <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900 }}>マナを選択</div>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5 }}>
-            <span style={{ fontSize:12, color:"#ccc" }}>{cardCivs.map(cv=>CIV[cv]?.icon).join("")} {card.name}</span>
+            <span style={{ fontSize:12, color:"#ccc" }}>{cardCivs.map(cv=>CIV[cv]?.label).join("")} {card.name}</span>
             <span style={{ fontSize:11, color:"#666" }}>コスト {needed}</span>
           </div>
         </div>
@@ -1134,7 +1134,7 @@ function ManaPayModal({ card, mana, selfBattle, onConfirm, onCancel }) {
             const ok = selected.some(s => s.assignedCiv === civ);
             return (
               <div key={civ} style={{ display:"flex", alignItems:"center", gap:3, padding:"2px 8px", borderRadius:6, fontSize:11, fontWeight:700, background:ok?`${CIV[civ]?.color}22`:"rgba(255,80,80,0.08)", border:`1px solid ${ok?CIV[civ]?.color:"#f84"}`, color:ok?CIV[civ]?.textColor:"#f84" }}>
-                {ok?"✓":"✗"} {CIV[civ]?.icon} {CIV[civ]?.label}
+                {ok?"✓":"✗"} {CIV[civ]?.label}
               </div>
             );
           })}
@@ -1150,7 +1150,7 @@ function ManaPayModal({ card, mana, selfBattle, onConfirm, onCancel }) {
             <div style={{ display:"flex", gap:6 }}>
               {civPicker.civs.map(civ => (
                 <button key={civ} onClick={() => handleCivChoice(civ)} style={{ padding:"6px 14px", borderRadius:6, fontWeight:700, fontSize:12, background:`${CIV[civ]?.color}33`, border:`1px solid ${CIV[civ]?.color}`, color:CIV[civ]?.textColor, cursor:"pointer" }}>
-                  {CIV[civ]?.icon} {CIV[civ]?.label}
+                  {CIV[civ]?.label}
                 </button>
               ))}
               <button onClick={() => setCivPicker(null)} style={{ padding:"6px 10px", borderRadius:6, background:"#111", border:"1px solid #444", color:"#666", cursor:"pointer", fontSize:12 }}>
@@ -1204,7 +1204,7 @@ function EffectConfirmModal({ modal, onConfirm, onSkip }) {
       <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:340, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
         <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4, letterSpacing:1 }}>効果発動確認</div>
         <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:4 }}>
-          {civs.map(cv=><span key={cv}>{CIV[cv]?.icon}</span>)} {srcCard?.name || "不明"}
+          {civs.map(cv=>{const cv_=CIV[cv];return cv_?<span key={cv} style={{fontSize:11,fontWeight:900,color:cv_.textColor,background:`${cv_.color}33`,borderRadius:2,padding:"0 3px",marginRight:2}}>{cv_.label}</span>:null;})} {srcCard?.name || "不明"}
         </div>
         <div style={{ fontSize:11, color:"#aaa", marginBottom:14, padding:"8px 10px", background:"rgba(0,0,0,0.4)", borderRadius:6, border:`1px solid ${c.color}33` }}>
           {label}
@@ -1624,7 +1624,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       {selectedCard&&(
         <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.icon).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}</span></div>
+            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}</span></div>
             <div style={{fontSize:10,color:civCheck?.ok?"#4f8":"#f84",fontWeight:700}}>{civCheck?.ok?`✓ プレイ可 (${availMana}マナ)`:`✗ ${civCheck?.reason}`}</div>
           </div>
           <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}>{selectedCard.effect}</div>
@@ -1707,7 +1707,7 @@ function CardEditor({card, onSave, onCancel}){
           <label style={{fontSize:11,color:"#888"}}>文明
             <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
               {CIVS.map(civ=>{const c=CIV[civ];return(
-                <button key={civ} onClick={()=>set("civ",civ)} style={{padding:"5px 10px",borderRadius:5,border:`2px solid ${form.civ===civ?c.color:"#333"}`,background:form.civ===civ?`${c.color}22`:"#0a0a14",color:form.civ===civ?c.textColor:"#555",cursor:"pointer",fontSize:11,fontWeight:700}}>{c.icon} {c.label}</button>
+                <button key={civ} onClick={()=>set("civ",civ)} style={{padding:"5px 10px",borderRadius:5,border:`2px solid ${form.civ===civ?c.color:"#333"}`,background:form.civ===civ?`${c.color}22`:"#0a0a14",color:form.civ===civ?c.textColor:"#555",cursor:"pointer",fontSize:11,fontWeight:700}}>{c.label}</button>
               );})}
             </div>
           </label>
@@ -1867,7 +1867,7 @@ function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="カード名検索" style={{flex:1,minWidth:120,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 8px",fontSize:12}}/>
         <select value={civFilter} onChange={e=>setCivFilter(e.target.value)} style={{background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 6px",fontSize:11}}>
           <option value="all">全文明</option>
-          {CIVS.map(c=><option key={c} value={c}>{CIV[c].icon} {CIV[c].label}</option>)}
+          {CIVS.map(c=><option key={c} value={c}>{CIV[c].label}</option>)}
         </select>
         <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={{background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 6px",fontSize:11}}>
           <option value="all">全種類</option>
@@ -1881,7 +1881,7 @@ function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
           const cnt=counts[card.id]||0;const c=CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]||CIV.fire;
           return(
             <div key={card.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:8,border:`1px solid ${cnt>0?c.color+"44":"#1a1a2a"}`}}>
-              <span style={{fontSize:15}}>{c.icon}</span>
+              <span style={{fontSize:11,fontWeight:900,color:c.textColor,background:`${c.color}33`,borderRadius:3,padding:"1px 4px",fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</div>
                 <div style={{fontSize:10,color:"#555"}}>コスト:{card.cost} {card.type==="creature"?`/ P:${card.power}`:"/ 呪文"}{card.keywords?.includes("sTrigger")&&<span style={{color:"#ff8",marginLeft:4}}>ST</span>}</div>
@@ -1950,13 +1950,13 @@ function CardManager({cardDb,setCardDb,onClose}){
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="カード名検索" style={{flex:1,minWidth:120,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 8px",fontSize:12}}/>
         <select value={civFilter} onChange={e=>setCivFilter(e.target.value)} style={{background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"4px 6px",fontSize:11}}>
           <option value="all">全文明</option>
-          {CIVS.map(c=><option key={c} value={c}>{CIV[c].icon} {CIV[c].label}</option>)}
+          {CIVS.map(c=><option key={c} value={c}>{CIV[c].label}</option>)}
         </select>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"8px 12px",display:"flex",flexDirection:"column",gap:5}}>
         {filtered.map(card=>{const c=CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]||CIV.fire;return(
           <div key={card.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1a1a2a"}}>
-            <span style={{fontSize:15}}>{c.icon}</span>
+            <span style={{fontSize:11,fontWeight:900,color:c.textColor,background:`${c.color}33`,borderRadius:3,padding:"1px 4px",fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{card.name}</div>
               <div style={{fontSize:10,color:"#555"}}>コスト:{card.cost} {card.type==="creature"?`/ P:${card.power}`:"/ 呪文"} {card.keywords?.map(k=><span key={k} style={{color:c.textColor,marginRight:3}}>{KEYWORD_LABELS[k]||k}</span>)}</div>
@@ -2044,7 +2044,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName,srcCardOverride)=>{
     if(!effect) return;
     const srcCard=srcCardOverride||cardDb.find(c=>c.name===sourceName)||{name:sourceName};
-    showCutIn({title:"効果発動！",cardName:sourceName,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire",icon:CIV[Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"]?.icon});
+    showCutIn({title:"効果発動！",cardName:sourceName,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
     if(effect.type==="steps"){
       startStepEffect(effect.steps, ownerPid, srcCard);
     } else {
@@ -2086,7 +2086,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
       addLog(`${active}: ${card.name}(${effectiveSide.power||card.power}) 召喚！`);
-      showCutIn({title:"召喚！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ,icon:CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]?.icon});
+      showCutIn({title:"召喚！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
     }else{
       const isCharger=effectiveSide.keywords?.includes("charger");
@@ -2110,7 +2110,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       battle:newBattle,
       hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}),
     }));
-    addLog(`⚡ 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
+    addLog(`[REV] 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
     if(handCard.autoEffect) triggerEffect(handCard.autoEffect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,{...handCard,uid:handCard.uid});
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     setAttackingUid(handCard.uid);
@@ -2128,7 +2128,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const newCards=[...fromHand,...fromMana].map(c=>({...c,tapped:false,summonedThisTurn:false}));
       return{...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]};
     });
-    addLog(`🌟 ファイナル革命！${selected.length}枚をバトルゾーンへ`);
+    addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
   };
   const handleStartAttack=uid=>{
     setAttackingUid(uid);
@@ -2145,17 +2145,17 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:true}:c)}));
     const aEff=getEffectivePower(attacker,activeState,activeState.battle);
     const dEff=getEffectivePower(target,otherState,otherState.battle);
-    addLog(`⚔ ${attacker.name}(${aEff}) vs ${target.name}(${dEff})`);
+    addLog(`[VS] ${attacker.name}(${aEff}) vs ${target.name}(${dEff})`);
     const aWin=aEff>=dEff;const dWin=dEff>=aEff;
     if(aWin){
       const {newBattle:nb1,extracted:ex1}=extractFromBattle(otherState.battle,targetUid);
       setOtherState(s=>({...s,battle:nb1,grave:[...s.grave,...ex1]}));
-      addLog(`✅ ${target.name} 破壊`);
+      addLog(`[WIN] ${target.name} 破壊`);
     }
     if(dWin){
       const {newBattle:nb2,extracted:ex2}=extractFromBattle(activeState.battle,attacker.uid);
       setActiveState(s=>({...s,battle:nb2,grave:[...s.grave,...ex2]}));
-      addLog(`💔 ${attacker.name} 破壊`);
+      addLog(`[LOST] ${attacker.name} 破壊`);
     }
     setAttackingUid(null);
   };
@@ -2184,14 +2184,14 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const gStrikeCards=broken.filter(c=>c.keywords?.includes("gStrike"));
     const sTriggers=broken.filter(c=>c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
     const normal=broken.filter(c=>!c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
-    if(isBolmetheus){setOtherState(s=>({...s,shields,grave:[...s.grave,...broken]}));addLog(`☠ ボルメテウス効果`);}
+    if(isBolmetheus){setOtherState(s=>({...s,shields,grave:[...s.grave,...broken]}));addLog(`[BURN] ボルメテウス効果`);}
     else{
       // シールドから手札に入るときtappedをリセット
       const toHand=[...normal,...sTriggers,...gStrikeCards].map(c=>({...c,tapped:false}));
       setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand]}));
       sTriggers.forEach(c=>{addLog(`ST 「${c.name}」`);showCutIn({title:"S-TRIGGER!",cardName:c.name,civ:c.civ});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
       if(gStrikeCards.length>0){
-        gStrikeCards.forEach(c=>addLog(`⚡ G・ストライク「${c.name}」`));
+        gStrikeCards.forEach(c=>addLog(`[GS] G・ストライク「${c.name}」`));
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
       }
     }
@@ -2203,17 +2203,17 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(zAll.length>0){
         if(zActive.length>0)setActiveState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
         if(zOther.length>0)setOtherState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
-        zAll.forEach(c=>addLog(`⚡ Zラッシュ: ${c.name} ハイパーモード解放！`));
+        zAll.forEach(c=>addLog(`[ZR] Zラッシュ: ${c.name} ハイパーモード解放！`));
         setHyperModeCutIn(zAll[0]);
       }
     }
-    addLog(`🔥 ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
+    addLog(`[BREAK] ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
     if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
     setAttackingUid(null);
   };
   const handleDirectAttack=()=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
-    addLog(`💥 ${attacker?.name??""} ダイレクトアタック！${active.toUpperCase()} の勝利！`);
+    addLog(`[DIRECT] ${attacker?.name??""} ダイレクトアタック！${active.toUpperCase()} の勝利！`);
     setAttackingUid(null);
     setWinner(active.toUpperCase());
   };
@@ -2238,13 +2238,13 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
+    <div style={{height:"100vh",overflow:"hidden",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}::-webkit-scrollbar{width:4px;background:#111;}::-webkit-scrollbar-thumb{background:#333;border-radius:4px;}`}</style>
       {cutin&&<CutIn cutin={cutin} onDone={()=>setCutin(null)}/>}
       {hyperModeCutIn&&<HyperModeCutIn creature={hyperModeCutIn} onDismiss={()=>setHyperModeCutIn(null)}/>}
       {winner&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:700}}>
-          <div style={{fontSize:72}}>🏆</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:72,fontWeight:900,color:"#ffe066",textShadow:"0 0 40px #ffe066aa",lineHeight:1,letterSpacing:4}}>✦</div>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:48,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066",marginTop:12}}>{winner} WIN!</div>
           <div style={{display:"flex",gap:12,marginTop:32}}>
             <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(false);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: ドローしてください");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
@@ -2257,7 +2257,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
-      {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`⚡ G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
+      {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
       {hyperTargetedModal&&<HyperTargetedModal modal={hyperTargetedModal} attackerShields={activeState.shields.length} onUse={()=>{
         const {targetUid,attackerUid,amount}=hyperTargetedModal;
@@ -2284,19 +2284,22 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         <button onClick={onBackToMenu} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>← メニュー</button>
       </div>
       <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>{message}</div>
-      <div style={{flex:1,overflowY:"auto",padding:"8px 10px",display:"flex",flexDirection:"column",gap:8}}>
-        {(active==="p1"
-          ? [
-              <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
-              <Log key="log" entries={logs}/>,
-              <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
-            ]
-          : [
-              <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
-              <Log key="log" entries={logs}/>,
-              <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>,
-            ]
-        )}
+      <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 88px 1fr",minHeight:0}}>
+        <div style={{overflowY:"auto",padding:"6px 10px",borderBottom:"1px solid #1a1a2a"}}>
+          {active==="p1"
+            ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+            : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+          }
+        </div>
+        <div style={{overflow:"hidden"}}>
+          <Log entries={logs}/>
+        </div>
+        <div style={{overflowY:"auto",padding:"6px 10px",borderTop:"1px solid #1a1a2a"}}>
+          {active==="p1"
+            ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+            : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+          }
+        </div>
       </div>
     </div>
   );
