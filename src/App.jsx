@@ -888,7 +888,7 @@ function ExceptionPanel({pid,state,setState,otherState,setOtherState,addLog}){
   const doShuffle=()=>{setState(s=>({...s,deck:shuffle([...s.deck])}));addLog(`[${label}例外] 山札シャッフル`);};
   const addShield=()=>{if(state.shields.length>=5||state.deck.length===0)return;setState(s=>({...s,shields:[...s.shields,s.deck[0]],deck:s.deck.slice(1)}));addLog(`[${label}例外] シールド追加`);};
   const Btn=({children,onClick,col="#aaa"})=>(<button onClick={onClick} style={{padding:"6px 10px",borderRadius:5,border:`1px solid ${col}33`,background:"rgba(255,255,255,0.03)",color:col,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{children}</button>);
-  if(!open) return(<button onClick={()=>setOpen(true)} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${color}44`,background:`${color}11`,color,cursor:"pointer",fontSize:11,fontWeight:700}}>{label} 例外処理</button>);
+  if(!open) return(<button onClick={()=>setOpen(true)} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${color}44`,background:"rgb(6,6,15)",color,cursor:"pointer",fontSize:11,fontWeight:700}}>{label} 例外処理</button>);
   return(
     <div style={{background:"#07071a",border:`1px solid ${color}44`,borderRadius:12,padding:14,fontSize:11}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
