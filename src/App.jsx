@@ -887,13 +887,13 @@ function ExceptionPanel({pid,state,setState,otherState,setOtherState,addLog}){
   const doDrawN=()=>{const n=Math.min(drawN,state.deck.length);if(n===0)return;setState(s=>({...s,hand:[...s.hand,...s.deck.slice(0,n)],deck:s.deck.slice(n)}));addLog(`[${label}例外] ${n}枚ドロー`);};
   const doShuffle=()=>{setState(s=>({...s,deck:shuffle([...s.deck])}));addLog(`[${label}例外] 山札シャッフル`);};
   const addShield=()=>{if(state.shields.length>=5||state.deck.length===0)return;setState(s=>({...s,shields:[...s.shields,s.deck[0]],deck:s.deck.slice(1)}));addLog(`[${label}例外] シールド追加`);};
-  const Btn=({children,onClick,col="#aaa"})=>(<button onClick={onClick} style={{padding:"6px 10px",borderRadius:5,border:"1px solid #1a1a2a",background:"#06060f",color:"#333",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{children}</button>);
-  if(!open) return(<button onClick={()=>setOpen(true)} style={{padding:"5px 12px",borderRadius:6,border:"1px solid #1a1a2a",background:"#04040c",color:"#2a2a3a",cursor:"pointer",fontSize:11,fontWeight:600}}>{label} 例外処理</button>);
+  const Btn=({children,onClick,col="#aaa"})=>(<button onClick={onClick} style={{padding:"6px 10px",borderRadius:5,border:`1px solid ${col}33`,background:"rgba(255,255,255,0.03)",color:col,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{children}</button>);
+  if(!open) return(<button onClick={()=>setOpen(true)} style={{padding:"6px 14px",borderRadius:6,border:`1px solid ${color}44`,background:"#06060f",color,cursor:"pointer",fontSize:11,fontWeight:700}}>{label} 例外処理</button>);
   return(
-    <div style={{background:"#03030a",border:"1px solid #111122",borderRadius:12,padding:14,fontSize:11}}>
+    <div style={{background:"#07071a",border:`1px solid ${color}44`,borderRadius:12,padding:14,fontSize:11}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <span style={{color:"#2a2a3a",fontWeight:700,fontSize:13}}>{label} 例外処理パネル</span>
-        <button onClick={()=>{setOpen(false);clearSel();}} style={{padding:"3px 10px",borderRadius:4,background:"#06060f",border:"1px solid #1a1a2a",color:"#333",cursor:"pointer",fontSize:11}}>✕</button>
+        <span style={{color,fontWeight:700,fontSize:13}}>{label} 例外処理パネル</span>
+        <button onClick={()=>{setOpen(false);clearSel();}} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>✕</button>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
         {ZONES.map(z=>(
@@ -906,17 +906,17 @@ function ExceptionPanel({pid,state,setState,otherState,setOtherState,addLog}){
           </div>
         ))}
       </div>
-      <div style={{background:"rgba(255,255,255,0.01)",border:"1px solid #111122",borderRadius:6,padding:"6px 10px",marginBottom:10,minHeight:28}}>
-        <span style={{color:"#2a2a3a",fontSize:10,fontWeight:600}}>選択中 {selCards.length}枚: {selCards.map(x=>(state[x.zone]||[]).find(c=>c.uid===x.uid)?.name).filter(Boolean).join(", ")||"なし"}</span>
-        {selCards.length>0&&<button onClick={clearSel} style={{marginLeft:8,fontSize:9,color:"#333",background:"none",border:"none",cursor:"pointer"}}>クリア</button>}
+      <div style={{background:"rgba(255,224,102,0.06)",border:"1px solid #ffe06622",borderRadius:6,padding:"6px 10px",marginBottom:10,minHeight:28}}>
+        <span style={{color:"#ffe066",fontSize:10,fontWeight:600}}>選択中 {selCards.length}枚: {selCards.map(x=>(state[x.zone]||[]).find(c=>c.uid===x.uid)?.name).filter(Boolean).join(", ")||"なし"}</span>
+        {selCards.length>0&&<button onClick={clearSel} style={{marginLeft:8,fontSize:9,color:"#555",background:"none",border:"none",cursor:"pointer"}}>クリア</button>}
       </div>
       <div style={{marginBottom:10}}>
-        <div style={{color:"#222",fontSize:10,marginBottom:4}}>移動先:</div>
+        <div style={{color:"#444",fontSize:10,marginBottom:4}}>移動先:</div>
         <div style={{display:"flex",gap:4,marginBottom:6}}>
-          {["self","other"].map(p=><button key={p} onClick={()=>setTargetPid(p)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",border:`1px solid ${targetPid===p?"#2a2a3a":"#111122"}`,background:"#05050e",color:targetPid===p?"#444":"#222"}}>{p==="self"?"自分":"相手"}</button>)}
+          {["self","other"].map(p=><button key={p} onClick={()=>setTargetPid(p)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",border:`1px solid ${targetPid===p?color:"#333"}`,background:targetPid===p?`${color}22`:"#0a0a14",color:targetPid===p?color:"#555"}}>{p==="self"?"自分":"相手"}</button>)}
         </div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-          {ZONES.map(z=><button key={z} onClick={()=>setTargetZone(z)} style={{padding:"4px 10px",borderRadius:4,fontSize:10,fontWeight:600,cursor:"pointer",border:`1px solid ${targetZone===z?"#2a2a3a":"#111122"}`,background:"#05050e",color:targetZone===z?"#444":"#222"}}>{ZONE_LABELS[z]}</button>)}
+          {ZONES.map(z=><button key={z} onClick={()=>setTargetZone(z)} style={{padding:"4px 10px",borderRadius:4,fontSize:10,fontWeight:600,cursor:"pointer",border:`1px solid ${targetZone===z?"#ffe066":"#222"}`,background:targetZone===z?"rgba(255,224,102,0.1)":"#0a0a14",color:targetZone===z?"#ffe066":"#555"}}>{ZONE_LABELS[z]}</button>)}
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,marginBottom:10}}>
