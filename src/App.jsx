@@ -2320,8 +2320,8 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {isPC?(
         /* ===== PC: 左右分割レイアウト ===== */
         <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"row",minHeight:0}}>
-          {/* 左：ターンプレイヤー (62%) */}
-          <div style={{flex:"0 0 62%",display:"flex",flexDirection:"column",borderRight:"1px solid #2a1a4a",overflow:"hidden"}}>
+          {/* 左：ターンプレイヤー (50%) */}
+          <div style={{flex:"0 0 50%",display:"flex",flexDirection:"column",borderRight:"1px solid #2a1a4a",overflow:"hidden"}}>
             <div style={{fontSize:9,color:"#4af",background:"rgba(10,30,80,0.35)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>◆ ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
@@ -2330,8 +2330,8 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
               }
             </div>
           </div>
-          {/* 右：非ターンプレイヤー (38%) */}
-          <div style={{flex:"0 0 38%",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          {/* 右：非ターンプレイヤー (50%) */}
+          <div style={{flex:"0 0 50%",display:"flex",flexDirection:"column",overflow:"hidden"}}>
             <div style={{fontSize:9,color:"#f84",background:"rgba(80,15,10,0.25)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>非ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
