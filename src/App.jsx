@@ -1236,12 +1236,12 @@ function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance,
   const step = steps[stepIdx];
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const otherState = ownerPid === "p1" ? p2 : p1;
-  const { candidates, isAuto } = getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard);
+  const { candidates, isAuto, maxSelect: dynMaxSelect } = getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard);
 
   const civs = getCardCivs(srcCard || {});
   const c = CIV[civs[0]] || CIV.fire;
 
-  const maxSel = step.maxSelect ?? 1;
+  const maxSel = step.maxSelect ?? dynMaxSelect ?? 1;
   const toggleSelect = uid => {
     setSelected(s => s.includes(uid) ? s.filter(u => u !== uid) : s.length < maxSel ? [...s, uid] : maxSel === 1 ? [uid] : s);
   };
