@@ -707,12 +707,12 @@ function ShieldPile({shields,canClick,onBreak}){
   );
 }
 
-function Log({entries}){
-  const ref=useRef();
-  useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight;},[entries]);
+function StepIndicator({drewThisTurn,attackingUid}){
+  const step=!drewThisTurn?"ターン開始ステップ":attackingUid?"攻撃ステップ":"メインステップ";
+  const color=!drewThisTurn?"#4af":attackingUid?"#f74":"#8f4";
   return(
-    <div ref={ref} style={{height:"100%",overflowY:"auto",padding:"6px 10px",background:"rgba(0,0,0,0.6)",fontSize:11,color:"#888"}}>
-      {entries.map((e,i)=><div key={i} style={{color:i===entries.length-1?"#ddd":"#555",marginBottom:2}}>{e}</div>)}
+    <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",borderTop:"1px solid #1a1a2a",borderBottom:"1px solid #1a1a2a"}}>
+      <span style={{fontSize:15,fontWeight:700,color,letterSpacing:3}}>{step}</span>
     </div>
   );
 }
@@ -2343,7 +2343,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         </div>
       ):(
         /* ===== モバイル: 上下3分割レイアウト ===== */
-        <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 88px 1fr",minHeight:0}}>
+        <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 22px 1fr",minHeight:0}}>
           <div style={{overflowY:"auto",padding:"6px 10px",borderBottom:"1px solid #1a1a2a"}}>
             {active==="p1"
               ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
@@ -2351,7 +2351,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             }
           </div>
           <div style={{overflow:"hidden"}}>
-            <Log entries={logs}/>
+            <StepIndicator drewThisTurn={drewThisTurn} attackingUid={attackingUid}/>
           </div>
           <div style={{overflowY:"auto",padding:"6px 10px",borderTop:"1px solid #1a1a2a"}}>
             {active==="p1"
