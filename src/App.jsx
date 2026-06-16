@@ -2008,11 +2008,11 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb));
   const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb));
   const [active,setActive]=useState("p1");
-  const [drewThisTurn,setDrewThisTurn]=useState(false);
+  const [drewThisTurn,setDrewThisTurn]=useState(true);
   const [chargedThisTurn,setChargedThisTurn]=useState(false);
   const [attackingUid,setAttackingUid]=useState(null);
   const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
-  const [message,setMessage]=useState("P1: カードをドローしてください");
+  const [message,setMessage]=useState("P1: マナチャージorカードをプレイ");
   const [winner,setWinner]=useState(null);
   const [handoff,setHandoff]=useState(null);
   const [turn,setTurn]=useState(1);
@@ -2090,7 +2090,6 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   const handleDraw=()=>{
     if(drewThisTurn)return;
-    if(isFirstTurn){ setDrewThisTurn(true); addLog("P1: 先行1ターン目のためドローなし"); setMessage("P1: マナチャージorカードをプレイ"); return; }
     if(activeState.deck.length===0){setWinner(otherPid==="p1"?"P1":"P2");return;}
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
@@ -2280,7 +2279,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           <div style={{fontFamily:"'Cinzel',serif",fontSize:72,fontWeight:900,color:"#ffe066",textShadow:"0 0 40px #ffe066aa",lineHeight:1,letterSpacing:4}}>✦</div>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:48,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066",marginTop:12}}>{winner} WIN!</div>
           <div style={{display:"flex",gap:12,marginTop:32}}>
-            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(false);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: ドローしてください");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
+            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
             <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
           </div>
         </div>
