@@ -621,6 +621,9 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   const c=CIV[civs[0]]||CIV.fire;
   const w=small?52:74;const h=small?72:106;
   const hyper=card.hyperMode;
+  const effPower=(hyper&&card.hyperPower!=null)?card.hyperPower:card.power;
+  const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
+  const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
   return(
     <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:card.tapped?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:1}}>
@@ -631,14 +634,14 @@ function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${card.power}`:card.type==="twinpact"?"TWIN":"SPELL"}</div>
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${effPower}`:card.type==="twinpact"?"TWIN":"SPELL"}</div>
       {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}
         {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SA</span>}
         {card.keywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#8888ff",letterSpacing:0}}>BK</span>}
-        {card.keywords?.includes("wBreaker")&&<span style={{fontSize:7}}>✦✦</span>}
-        {card.keywords?.includes("tBreaker")&&<span style={{fontSize:7}}>✦✦✦</span>}
+        {!(card.keywords?.includes("tBreaker")||hyperTBreaker)&&(card.keywords?.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:7}}>✦✦</span>}
+        {(card.keywords?.includes("tBreaker")||hyperTBreaker)&&<span style={{fontSize:7}}>✦✦✦</span>}
         {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
         {card.keywords?.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
         {card.keywords?.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
@@ -729,8 +732,12 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
   const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":!drewThisTurn?"ドロー前":null;
 
   // Parse effect text: lines starting with known keywords get bold styling
-  const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカー","T・ブレイカー","ブロッカー","S・トリガー"];
+  const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカー","T・ブレイカー","ブロッカー","S・トリガー","ハイパーモード"];
   const effectLines = card.effect?.split("\n")||[];
+  const hyper=card.hyperMode;
+  const effPower=(hyper&&card.hyperPower!=null)?card.hyperPower:card.power;
+  const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
+  const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
@@ -777,13 +784,13 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
         {card.type==="creature"&&(
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 14px 10px"}}>
             <div style={{display:"flex",alignItems:"baseline",gap:4}}>
-              <span style={{fontSize:28,fontWeight:900,color:"#fff",textShadow:`0 0 10px ${c.glow}`,fontFamily:"'Cinzel',serif"}}>{card.power}</span>
+              <span style={{fontSize:28,fontWeight:900,color:"#fff",textShadow:`0 0 10px ${c.glow}`,fontFamily:"'Cinzel',serif"}}>{effPower}</span>
               <span style={{fontSize:12,color:c.textColor,fontWeight:600}}>POWER</span>
             </div>
             <div style={{display:"flex",gap:4}}>
               {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#ff440022",border:"1px solid #ff4444",color:"#ff8877"}}>SA</span>}
-              {card.keywords?.includes("wBreaker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>W.BRK</span>}
-              {card.keywords?.includes("tBreaker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>T.BRK</span>}
+              {!(card.keywords?.includes("tBreaker")||hyperTBreaker)&&(card.keywords?.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>W.BRK</span>}
+              {(card.keywords?.includes("tBreaker")||hyperTBreaker)&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>T.BRK</span>}
               {card.keywords?.includes("blocker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#4444ff22",border:"1px solid #4444ff",color:"#8888ff"}}>BLK</span>}
             </div>
           </div>
@@ -1236,12 +1243,12 @@ function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance,
   const step = steps[stepIdx];
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const otherState = ownerPid === "p1" ? p2 : p1;
-  const { candidates, isAuto } = getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard);
+  const { candidates, isAuto, maxSelect: dynMaxSelect } = getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard);
 
   const civs = getCardCivs(srcCard || {});
   const c = CIV[civs[0]] || CIV.fire;
 
-  const maxSel = step.maxSelect ?? 1;
+  const maxSel = step.maxSelect ?? dynMaxSelect ?? 1;
   const toggleSelect = uid => {
     setSelected(s => s.includes(uid) ? s.filter(u => u !== uid) : s.length < maxSel ? [...s, uid] : maxSel === 1 ? [uid] : s);
   };
@@ -1621,9 +1628,9 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         </div>
       </div>
       {/* BZ with red border */}
-      <div style={{border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6,flexShrink:0}}>
-        <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
-        <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",minHeight:large?106:36}}>
+      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6}}>
+        <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4,flexShrink:0}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
+        <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"center"}}>
           {(()=>{
             const getGranted=c=>computeGrantedKeywords(c,state.battle);
             return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
@@ -1632,7 +1639,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         </div>
       </div>
       {/* Mana + Hand row */}
-      <div style={{display:"flex",gap:6,marginBottom:6}}>
+      <div style={{display:"flex",gap:6,flexShrink:0,height:large?128:96}}>
         <div onClick={()=>setManaModal(true)} style={{flex:`0 0 ${large?130:100}px`,cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length})</div>
           <div style={{flex:1,overflow:"hidden",padding:"2px 4px",display:"flex",flexDirection:"column",gap:1}}>
@@ -1644,9 +1651,9 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
             {state.mana.length>(large?14:10)&&<div style={{fontSize:8,color:"#4a8",textAlign:"center"}}>+{state.mana.length-(large?14:10)}</div>}
           </div>
         </div>
-        <div style={{flex:1,border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
-          <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4}}>手札</div>
-          <div style={{display:"flex",gap:large?6:4,flexWrap:"wrap"}}>
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
+          <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4,flexShrink:0}}>手札</div>
+          <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"flex-end"}}>
             {state.hand.map((c,i)=>!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} small={!large} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
             {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
           </div>
@@ -2259,9 +2266,10 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         }
       });
     });
-    // cantAttackThisTurn / hyperModeリセット + 通常アンタップ
-    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false,cantAttackThisTurn:false,hyperMode:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
-    setOtherState(s=>({...s,battle:s.battle.map(c=>({...c,cantAttackThisTurn:false}))}));
+    // 終了するプレイヤー: このターン限定のフラグのみリセット（タップ状態は自分の次のターン開始時まで維持）
+    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,cantAttackThisTurn:false}))}));
+    // 次に開始するプレイヤー: 自分のターン開始時のアンタップ処理
+    setOtherState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false,cantAttackThisTurn:false,hyperMode:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
     setAttackingUid(null);setUsedFinalRevThisTurn(false);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
