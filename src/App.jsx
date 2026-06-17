@@ -126,11 +126,18 @@ function getEffectiveCost(card, selfBattle) {
   return Math.max(cost, getCardCivs(card).length);
 }
 
+function extractManyFromBattle(battle, uids) {
+  const uidSet = new Set(uids);
+  const extracted = [];
+  battle.forEach(card => {
+    if (!uidSet.has(card.uid)) return;
+    extracted.push(...[card, ...(card.evolutionBase || [])].map(({evolutionBase, ...c}) => c));
+  });
+  return { newBattle: battle.filter(c => !uidSet.has(c.uid)), extracted };
+}
+
 function extractFromBattle(battle, uid) {
-  const card = battle.find(c => c.uid === uid);
-  if (!card) return { newBattle: battle, extracted: [] };
-  const extracted = [card, ...(card.evolutionBase || [])].map(({evolutionBase, ...c}) => c);
-  return { newBattle: battle.filter(c => c.uid !== uid), extracted };
+  return extractManyFromBattle(battle, [uid]);
 }
 
 function getEffectivePower(card, ownerState, allOwnBattle) {
@@ -250,9 +257,9 @@ function processEffect(effect,ownerPid,selfState,setSelf,otherState,setOther,add
     case"destroyUnder":{
       const tgt=effect.target==="opponent"?otherState:selfState;
       const st=effect.target==="opponent"?setOther:setSelf;
-      const d=tgt.battle.filter(c=>c.power<=effect.threshold);
-      st(s=>({...s,battle:s.battle.filter(c=>c.power>effect.threshold),grave:[...s.grave,...d]}));
-      addLog(`${pid}: パワー${effect.threshold}以下 ${d.length}体破壊`);break;
+      const deadUids=tgt.battle.filter(c=>c.power<=effect.threshold).map(c=>c.uid);
+      st(s=>{const{newBattle,extracted}=extractManyFromBattle(s.battle,deadUids);return{...s,battle:newBattle,grave:[...s.grave,...extracted]};});
+      addLog(`${pid}: パワー${effect.threshold}以下 ${deadUids.length}体破壊`);break;
     }
     case"tapAll":{
       const st2=effect.target==="opponent"?setOther:setSelf;
@@ -434,8 +441,8 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
       if (selectedUids.length > 0) {
         const uid = selectedUids[0];
         let owner = null;
-        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (c) { owner = "p1"; return { ...s, battle: s.battle.filter(x => x.uid !== uid), grave: [...s.grave, c] }; } return s; });
-        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (c) { owner = "p2"; return { ...s, battle: s.battle.filter(x => x.uid !== uid), grave: [...s.grave, c] }; } return s; });
+        setP1(s => { const {newBattle,extracted} = extractFromBattle(s.battle, uid); if (extracted.length) { owner = "p1"; return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; } return s; });
+        setP2(s => { const {newBattle,extracted} = extractFromBattle(s.battle, uid); if (extracted.length) { owner = "p2"; return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; } return s; });
         const card = [...p1.battle, ...p2.battle].find(c => c.uid === uid);
         ctx.destroyedCreatureOwner = card ? (p1.battle.includes(card) ? "p1" : "p2") : null;
         if (card) addLog(`${pid}: ${card.name} 破壊`);
@@ -465,8 +472,8 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
     case "destroyNonColor": {
       const col = step.color;
       const colMatch = c => getCardCivs(c).includes(col);
-      setP1(s => { const dead = s.battle.filter(c => !colMatch(c)); return { ...s, battle: s.battle.filter(colMatch), grave: [...s.grave, ...dead] }; });
-      setP2(s => { const dead = s.battle.filter(c => !colMatch(c)); return { ...s, battle: s.battle.filter(colMatch), grave: [...s.grave, ...dead] }; });
+      setP1(s => { const deadUids = s.battle.filter(c => !colMatch(c)).map(c=>c.uid); const {newBattle,extracted} = extractManyFromBattle(s.battle, deadUids); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
+      setP2(s => { const deadUids = s.battle.filter(c => !colMatch(c)).map(c=>c.uid); const {newBattle,extracted} = extractManyFromBattle(s.battle, deadUids); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
       const total = [...p1.battle, ...p2.battle].filter(c => !colMatch(c)).length;
       addLog(`${pid}: ${col}以外のクリーチャーを${total}体破壊`);
       break;
@@ -494,7 +501,7 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
         const setTgt = step.target === "opponent" ? setOther : setSelf;
         const tgtState = step.target === "opponent" ? otherState : selfState;
         const card = tgtState.battle.find(c => c.uid === uid);
-        if (card) { setTgt(s => ({ ...s, battle: s.battle.filter(c => c.uid !== uid), mana: [...s.mana, { ...card, tapped: true }] })); addLog(`${pid}: ${card.name} → マナ`); }
+        if (card) { setTgt(s => { const {newBattle,extracted} = extractFromBattle(s.battle, uid); return { ...s, battle: newBattle, mana: [...s.mana, ...extracted.map(c=>({...c,tapped:true}))] }; }); addLog(`${pid}: ${card.name} → マナ`); }
       }
       break;
     }
@@ -527,8 +534,8 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
     case "bounceMaxCost": {
       if (selectedUids.length > 0) {
         const uid = selectedUids[0];
-        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P1手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }] }; });
-        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P2手札`); return { ...s, battle: s.battle.filter(x => x.uid !== uid), hand: [...s.hand, { ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }] }; });
+        setP1(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P1手札`); const {newBattle,extracted} = extractFromBattle(s.battle, uid); return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c=>({ ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }))] }; });
+        setP2(s => { const c = s.battle.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} → P2手札`); const {newBattle,extracted} = extractFromBattle(s.battle, uid); return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c=>({ ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false }))] }; });
       }
       break;
     }
@@ -724,6 +731,7 @@ function StepIndicator({drewThisTurn,attackingUid}){
 // CREATURE DETAIL PANEL
 // ===========================
 function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone}){
+  const [showStack,setShowStack]=useState(false);
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
@@ -802,6 +810,26 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
           {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>召喚酔い</div>}
         </div>
 
+        {/* Evolution base viewer */}
+        {card.evolutionBase?.length>0&&(
+          <div style={{padding:"0 12px 8px"}}>
+            <button onClick={()=>setShowStack(v=>!v)} style={{width:"100%",padding:"6px 10px",borderRadius:6,background:"#111",border:`1px solid ${c.color}66`,color:c.textColor,cursor:"pointer",fontSize:11,fontWeight:700}}>
+              {showStack?"進化元を隠す":`進化元を見る (${card.evolutionBase.length}枚)`}
+            </button>
+            {showStack&&(
+              <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap",background:"rgba(0,0,0,0.4)",border:`1px solid ${c.color}33`,borderRadius:6,padding:8}}>
+                {card.evolutionBase.map((bc,i)=>(
+                  <div key={bc.uid||i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <CardFace card={bc} small/>
+                    <div style={{fontSize:8,color:"#aaa",textAlign:"center",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{i+1}. {bc.name}</div>
+                    {bc.race&&<div style={{fontSize:7,color:"#777",textAlign:"center"}}>{bc.race}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Buttons */}
         <div style={{display:"flex",gap:8,padding:"8px 12px 12px"}}>
           {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>{canAtk?"ATTACK":`攻撃不可 (${reason})`}</button>}
@@ -838,9 +866,9 @@ function EffectModal({modal,p1State,setP1,p2State,setP2,onClose,addLog}){
       const st=modal.type==="handDestroy"&&modal.target==="opponent"?otherState:ownerState;
       setT(s=>({...s,hand:s.hand.filter(c=>!selected.includes(c.uid)),grave:[...s.grave,...s.hand.filter(c=>selected.includes(c.uid))]}));
       addLog(`${modal.pid}: ${selected.length}枚捨て`);
-    }else if(modal.type==="destroy"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const d=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),grave:[...s.grave,...d]}));addLog(`${modal.pid}: ${d.length}体破壊`);}
-    else if(modal.type==="sendToMana"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const m=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),mana:[...s.mana,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: ${m.length}体マナへ`);}
-    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>({...s,battle:s.battle.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...b.map(c=>({...c,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}))]}));addLog(`${modal.pid}: ${b.length}体手札へ`);}
+    }else if(modal.type==="destroy"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const d=st.battle.filter(c=>selected.includes(c.uid));setT(s=>{const{newBattle,extracted}=extractManyFromBattle(s.battle,selected);return{...s,battle:newBattle,grave:[...s.grave,...extracted]};});addLog(`${modal.pid}: ${d.length}体破壊`);}
+    else if(modal.type==="sendToMana"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const m=st.battle.filter(c=>selected.includes(c.uid));setT(s=>{const{newBattle,extracted}=extractManyFromBattle(s.battle,selected);return{...s,battle:newBattle,mana:[...s.mana,...extracted.map(c=>({...c,tapped:false}))]};});addLog(`${modal.pid}: ${m.length}体マナへ`);}
+    else if(modal.type==="bounce"){const setT=modal.target==="opponent"?setOther:setOwner;const st=modal.target==="opponent"?otherState:ownerState;const b=st.battle.filter(c=>selected.includes(c.uid));setT(s=>{const{newBattle,extracted}=extractManyFromBattle(s.battle,selected);return{...s,battle:newBattle,hand:[...s.hand,...extracted.map(c=>({...c,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}))]};});addLog(`${modal.pid}: ${b.length}体手札へ`);}
     else if(modal.type==="manaReturn"){const m=ownerState.mana.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,mana:s.mana.filter(c=>!selected.includes(c.uid)),hand:[...s.hand,...m.map(c=>({...c,tapped:false}))]}));addLog(`${modal.pid}: マナ${m.length}枚手札へ`);}
     else if(modal.type==="deckSearch"){const m=ownerState.deck.filter(c=>selected.includes(c.uid));setOwner(s=>({...s,deck:shuffle(s.deck.filter(c=>!selected.includes(c.uid))),hand:[...s.hand,...m]}));addLog(`${modal.pid}: デッキ${m.length}枚→手札`);}
     onClose();
@@ -1662,7 +1690,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       {selectedCard&&(
         <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}</span></div>
+            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}{selectedCard.race&&` / 種族:${selectedCard.race}`}</span></div>
             <div style={{fontSize:10,color:civCheck?.ok?"#4f8":"#f84",fontWeight:700}}>{civCheck?.ok?`✓ プレイ可 (${availMana}マナ)`:`✗ ${civCheck?.reason}`}</div>
           </div>
           <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}>{selectedCard.effect}</div>
