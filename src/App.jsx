@@ -710,12 +710,12 @@ function ShieldPile({shields,canClick,onBreak}){
   );
 }
 
-function Log({entries}){
-  const ref=useRef();
-  useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight;},[entries]);
+function StepIndicator({drewThisTurn,attackingUid}){
+  const step=!drewThisTurn?"ターン開始ステップ":attackingUid?"攻撃ステップ":"メインステップ";
+  const color=!drewThisTurn?"#4af":attackingUid?"#f74":"#8f4";
   return(
-    <div ref={ref} style={{height:"100%",overflowY:"auto",padding:"6px 10px",background:"rgba(0,0,0,0.6)",fontSize:11,color:"#888"}}>
-      {entries.map((e,i)=><div key={i} style={{color:i===entries.length-1?"#ddd":"#555",marginBottom:2}}>{e}</div>)}
+    <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",borderTop:"1px solid #1a1a2a",borderBottom:"1px solid #1a1a2a"}}>
+      <span style={{fontSize:15,fontWeight:700,color,letterSpacing:3}}>{step}</span>
     </div>
   );
 }
@@ -1469,37 +1469,15 @@ function HyperTargetedModal({ modal, attackerShields, onUse, onSkip }) {
 }
 
 // ===========================
-// ZONE DETAIL MODAL
-// ===========================
-function ZoneDetailModal({title, cards, onClose}) {
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:600}} onClick={onClose}>
-      <div style={{background:"#0a0a1a",border:"1px solid #334",borderRadius:12,padding:16,maxWidth:700,width:"90vw",maxHeight:"80vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:15,color:"#ffe066",fontWeight:900}}>{title} ({cards.length}枚)</div>
-          <button onClick={onClose} style={{background:"none",border:"1px solid #444",borderRadius:4,color:"#888",cursor:"pointer",padding:"2px 8px",fontSize:12}}>✕</button>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {cards.map((c,i)=><CardFace key={c.uid||i} card={c}/>)}
-          {cards.length===0&&<span style={{color:"#555",fontSize:12}}>なし</span>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ===========================
 // PLAYER BOARD
 // ===========================
-function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack}){
+function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack,large}){
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
   const [revChangeTarget,setRevChangeTarget]=useState(null);
   const [manaPayModal,setManaPayModal]=useState(null);
   const [twinPactModal,setTwinPactModal]=useState(null);
   const [evolutionSelectModal,setEvolutionSelectModal]=useState(null);
-  const [manaModal,setManaModal]=useState(false);
-  const [graveModal,setGraveModal]=useState(false);
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
@@ -1584,9 +1562,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
 
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
-    <div style={{height:"100%",display:"flex",flexDirection:"column",overflow:"hidden",background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
-      {manaModal&&<ZoneDetailModal title="マナゾーン" cards={state.mana} onClose={()=>setManaModal(false)}/>}
-      {graveModal&&<ZoneDetailModal title="墓地" cards={state.grave} onClose={()=>setGraveModal(false)}/>}
+    <div style={{display:"flex",flexDirection:"column",overflowY:"auto",background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
       {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
       {revChangeTarget&&(
         <AttackTriggerModal
@@ -1654,37 +1630,37 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       {/* BZ with red border */}
       <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6}}>
         <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4,flexShrink:0}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
-        <div style={{display:"flex",gap:6,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"center"}}>
+        <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"center"}}>
           {(()=>{
             const getGranted=c=>computeGrantedKeywords(c,state.battle);
-            return state.battle.map(c=><CardFace key={c.uid} card={c} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
+            return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
         </div>
       </div>
       {/* Mana + Hand row */}
-      <div style={{display:"flex",gap:6,flexShrink:0,height:128}}>
-        <div onClick={()=>setManaModal(true)} style={{flex:"0 0 100px",cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",gap:6,flexShrink:0,height:large?128:96}}>
+        <div onClick={()=>setManaModal(true)} style={{flex:`0 0 ${large?130:100}px`,cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length})</div>
           <div style={{flex:1,overflow:"hidden",padding:"2px 4px",display:"flex",flexDirection:"column",gap:1}}>
-            {state.mana.slice(0,10).map((c,i)=>{
+            {state.mana.slice(0,large?14:10).map((c,i)=>{
               const civs=getCardCivs(c);
               const cv=CIV[civs[0]];
-              return <div key={c.uid||i} style={{height:14,borderRadius:3,background:c.tapped?`${cv?.color}33`:`${cv?.color}88`,border:`1px solid ${cv?.color}55`,fontSize:7,color:"#fff",padding:"1px 3px",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{c.tapped?"":"▶"}{c.name}</div>;
+              return <div key={c.uid||i} style={{height:large?16:14,borderRadius:3,background:c.tapped?`${cv?.color}33`:`${cv?.color}88`,border:`1px solid ${cv?.color}55`,fontSize:large?8:7,color:"#fff",padding:"1px 3px",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{c.tapped?"":"▶"}{c.name}</div>;
             })}
-            {state.mana.length>10&&<div style={{fontSize:8,color:"#4a8",textAlign:"center"}}>+{state.mana.length-10}</div>}
+            {state.mana.length>(large?14:10)&&<div style={{fontSize:8,color:"#4a8",textAlign:"center"}}>+{state.mana.length-(large?14:10)}</div>}
           </div>
         </div>
         <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
           <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4,flexShrink:0}}>手札</div>
           <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"flex-end"}}>
-            {state.hand.map((c,i)=>pid==="p2"&&!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
+            {state.hand.map((c,i)=>!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} small={!large} selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
             {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
           </div>
         </div>
       </div>
       {selectedCard&&(
-        <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8,flexShrink:0}}>
+        <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}</span></div>
             <div style={{fontSize:10,color:civCheck?.ok?"#4f8":"#f84",fontWeight:700}}>{civCheck?.ok?`✓ プレイ可 (${availMana}マナ)`:`✗ ${civCheck?.reason}`}</div>
@@ -1693,13 +1669,13 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         </div>
       )}
       {attackingUid&&!isActive&&(
-        <div style={{background:"rgba(255,80,0,0.08)",border:"1px dashed #f8444488",borderRadius:6,padding:"6px 10px",marginBottom:8,flexShrink:0}}>
+        <div style={{background:"rgba(255,80,0,0.08)",border:"1px dashed #f8444488",borderRadius:6,padding:"6px 10px",marginBottom:8}}>
           <div style={{fontSize:11,color:"#f84",marginBottom:4,fontFamily:"'Cinzel',serif",letterSpacing:1}}>攻撃対象を選択</div>
           <ShieldPile shields={state.shields} canClick onBreak={onAttackShield}/>
         </div>
       )}
       {isActive&&(
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,flexShrink:0}}>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
           {!drewThisTurn&&<Btn onClick={onDraw} col="#44ff88">DRAW</Btn>}
           {drewThisTurn&&!chargedThisTurn&&selHand!==null&&<Btn onClick={handleCharge} col="#8888ff">CHARGE</Btn>}
           {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>PLAY</Btn>}
@@ -2039,11 +2015,11 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb));
   const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb));
   const [active,setActive]=useState("p1");
-  const [drewThisTurn,setDrewThisTurn]=useState(false);
+  const [drewThisTurn,setDrewThisTurn]=useState(true);
   const [chargedThisTurn,setChargedThisTurn]=useState(false);
   const [attackingUid,setAttackingUid]=useState(null);
   const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
-  const [message,setMessage]=useState("P1: カードをドローしてください");
+  const [message,setMessage]=useState("P1: マナチャージorカードをプレイ");
   const [winner,setWinner]=useState(null);
   const [handoff,setHandoff]=useState(null);
   const [turn,setTurn]=useState(1);
@@ -2060,6 +2036,8 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [hyperTargetedModal,setHyperTargetedModal]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
+  const [isPC,setIsPC]=useState(()=>window.innerWidth>=768);
+  useEffect(()=>{const fn=()=>setIsPC(window.innerWidth>=768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn);},[]);
   const showCutIn=useCallback(data=>setCutin(data),[]);
   const openEffectModal=useCallback(m=>setEffectModal(m),[]);
 
@@ -2119,7 +2097,6 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   const handleDraw=()=>{
     if(drewThisTurn)return;
-    if(isFirstTurn){ setDrewThisTurn(true); addLog("P1: 先行1ターン目のためドローなし"); setMessage("P1: マナチャージorカードをプレイ"); return; }
     if(activeState.deck.length===0){setWinner(otherPid==="p1"?"P1":"P2");return;}
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
@@ -2310,7 +2287,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           <div style={{fontFamily:"'Cinzel',serif",fontSize:72,fontWeight:900,color:"#ffe066",textShadow:"0 0 40px #ffe066aa",lineHeight:1,letterSpacing:4}}>✦</div>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:48,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066",marginTop:12}}>{winner} WIN!</div>
           <div style={{display:"flex",gap:12,marginTop:32}}>
-            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(false);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: ドローしてください");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
+            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
             <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
           </div>
         </div>
@@ -2347,23 +2324,50 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         <button onClick={onBackToMenu} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>← メニュー</button>
       </div>
       <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>{message}</div>
-      <div style={{flex:1,overflow:"hidden",display:"flex",minHeight:0,gap:0}}>
-        <div style={{flex:"0 0 56%",overflow:"hidden",display:"flex",flexDirection:"column",borderRight:"1px solid #1a1a2a",padding:"6px 10px"}}>
-          {active==="p1"
-            ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-            : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-          }
+      {isPC?(
+        /* ===== PC: 左右分割レイアウト ===== */
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"row",minHeight:0}}>
+          {/* 左：ターンプレイヤー (50%) */}
+          <div style={{flex:"0 0 50%",display:"flex",flexDirection:"column",borderRight:"1px solid #2a1a4a",overflow:"hidden"}}>
+            <div style={{fontSize:9,color:"#4af",background:"rgba(10,30,80,0.35)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>◆ ターンプレイヤー</div>
+            <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
+              {active==="p1"
+                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+              }
+            </div>
+          </div>
+          {/* 右：非ターンプレイヤー (50%) */}
+          <div style={{flex:"0 0 50%",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{fontSize:9,color:"#f84",background:"rgba(80,15,10,0.25)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>非ターンプレイヤー</div>
+            <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
+              {active==="p1"
+                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+              }
+            </div>
+          </div>
         </div>
-        <div style={{flex:"0 0 160px",overflow:"hidden",borderRight:"1px solid #1a1a2a"}}>
-          <Log entries={logs}/>
+      ):(
+        /* ===== モバイル: 上下3分割レイアウト ===== */
+        <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 22px 1fr",minHeight:0}}>
+          <div style={{overflowY:"auto",padding:"6px 10px",borderBottom:"1px solid #1a1a2a"}}>
+            {active==="p1"
+              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+            }
+          </div>
+          <div style={{overflow:"hidden"}}>
+            <StepIndicator drewThisTurn={drewThisTurn} attackingUid={attackingUid}/>
+          </div>
+          <div style={{overflowY:"auto",padding:"6px 10px",borderTop:"1px solid #1a1a2a"}}>
+            {active==="p1"
+              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+            }
+          </div>
         </div>
-        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",padding:"6px 10px"}}>
-          {active==="p1"
-            ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-            : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-          }
-        </div>
-      </div>
+      )}
     </div>
   );
 }
