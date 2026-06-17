@@ -1667,7 +1667,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
         </div>
       </div>
       {/* Mana + Hand row */}
-      <div style={{display:"flex",gap:6,flexShrink:0,height:large?100:96}}>
+      <div style={{display:"flex",gap:6,flexShrink:0,height:large?112:96}}>
         <div onClick={()=>setManaModal(true)} style={{flex:`0 0 ${large?130:100}px`,cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length})</div>
           <div style={{flex:1,overflow:"hidden",padding:"2px 4px",display:"flex",flexDirection:"column",gap:1}}>
