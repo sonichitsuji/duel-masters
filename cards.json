@@ -884,5 +884,164 @@
         { "type": "breakOpponentShieldChoice", "optional": true, "label": "バトル勝利：相手のシールドを1つブレイクしてもよい" }
       ]
     }
+  },
+  {
+    "id": 64,
+    "name": "ミラクル1 ドレミ24",
+    "type": "creature",
+    "civ": ["light", "water"],
+    "race": "エンジェル・ドラゴン/革命軍/ドレミ団",
+    "cost": 5,
+    "power": 4000,
+    "keywords": ["revolutionChange"],
+    "effect": "革命チェンジ―光または水のクリーチャー\nこのクリーチャーが出た時、光または水の、コスト3以下の呪文を1枚、コストを支払わずに自分の手札から唱えてもよい。",
+    "revolutionChangeCond": { "civs": ["light", "water"] },
+    "autoEffect": {
+      "trigger": "play", "type": "steps",
+      "steps": [
+        { "type": "castFilteredSpellFromHand", "filter": { "civs": ["light", "water"], "maxCost": 3 }, "optional": true, "label": "光または水の、コスト3以下の呪文を1枚、コストを支払わずに唱えてもよい" }
+      ]
+    }
+  },
+  {
+    "id": 65,
+    "name": "ホーリー・出す・バナナ",
+    "type": "spell",
+    "civ": "light",
+    "race": null,
+    "cost": 2,
+    "power": 0,
+    "keywords": ["sTrigger"],
+    "effect": "S・トリガー（このカードを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\n自分のクリーチャーを1体アンタップする。次の自分のターンのはじめまで、そのクリーチャーのパワーを+4000し、「ブロッカー」を与える。",
+    "autoEffect": {
+      "trigger": "cast", "type": "steps",
+      "steps": [
+        { "type": "untapSelectCreature", "tempBuff": { "power": 4000, "keywords": ["blocker"], "expires": "ownTurnStart" }, "label": "自分のクリーチャーを1体アンタップする" }
+      ]
+    }
+  },
+  {
+    "id": 66,
+    "name": "時の団長 ミラダンテ槍",
+    "type": "creature",
+    "civ": ["light", "water"],
+    "race": "エンジェル・コマンド・ドラゴン/革命軍/ハムカツ団",
+    "cost": 8,
+    "power": 13500,
+    "keywords": ["revolutionChange", "tBreaker", "escape"],
+    "effect": "革命チェンジ―光または水の、パワー8000以上のクリーチャー\nT・ブレイカー\nエスケープ（このクリーチャーが破壊される時、墓地に置くかわりに自分のシールドをひとつ手札に加えてもよい。ただし、その「S・トリガー」は使えない）[例外処理]\n相手のクリーチャーが出た時またはアンタップした時、次の自分のターンのはじめまで、そのクリーチャーは攻撃できない。\nファイナル革命―このクリーチャーが「革命チェンジ」によって出た時、そのターンに他の「ファイナル革命」を使っていなければ、相手のクリーチャーをすべてタップする。その後、相手のタップしているクリーチャー1体につき、カードを1枚引いてもよい。",
+    "revolutionChangeCond": { "civs": ["light", "water"], "minPower": 8000 },
+    "reactivePassive": { "type": "cantAttackUntilControllerTurn" },
+    "finalRevolution": {
+      "effect": { "type": "steps", "steps": [ { "type": "tapAllOpponent" }, { "type": "drawCardsPerTappedOpponent" } ] }
+    },
+    "autoEffect": null
+  },
+  {
+    "id": 67,
+    "name": "未来の法皇 ミラダンテSF",
+    "type": "creature",
+    "civ": ["light", "water"],
+    "race": "エンジェル・コマンド・ドラゴン/革命軍/ドレミ団",
+    "cost": 8,
+    "power": 12500,
+    "keywords": ["revolutionChange", "tBreaker"],
+    "effect": "革命チェンジ―光または水のコスト5以上のドラゴン（自分の光または水のコスト5以上のドラゴンが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）\nT・ブレイカー\nファイナル革命―このクリーチャーが「革命チェンジ」によって出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、カードを1枚引いてもよい。そうしたら、光か水のコスト6以下の呪文を1枚、自分の手札からコストを支払わずに唱えてもよい。",
+    "revolutionChangeCond": { "civs": ["light", "water"], "race": "ドラゴン", "minCost": 5 },
+    "finalRevolution": {
+      "effect": { "type": "steps", "steps": [ { "type": "drawCards", "amount": 1 }, { "type": "castFilteredSpellFromHand", "filter": { "civs": ["light", "water"], "maxCost": 6 }, "optional": true } ] }
+    },
+    "autoEffect": null
+  },
+  {
+    "id": 68,
+    "name": "ロジック・サークル",
+    "type": "spell",
+    "civ": "light",
+    "race": null,
+    "cost": 1,
+    "power": 0,
+    "keywords": ["sTrigger"],
+    "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてもよい）\n自分の山札を見る。その中から呪文を1枚選び、相手に見せてもよい。その後、自分の山札をシャッフルし、その呪文を山札の一番上に置く。",
+    "autoEffect": {
+      "trigger": "cast", "type": "steps",
+      "steps": [
+        { "type": "searchSpellToTop", "optional": true, "label": "山札を見て呪文を1枚選び、山札の一番上に置く" }
+      ]
+    }
+  },
+  {
+    "id": 69,
+    "name": "瞬閃と疾駆と双撃の決断",
+    "type": "spell",
+    "civ": "fire",
+    "race": null,
+    "cost": 3,
+    "power": 0,
+    "keywords": [],
+    "effect": "次の中から2回選ぶ。（同じものを選んでもよい）\n▶コスト3以下のクリーチャーを1体、自分の手札から出す。\n▶このターン、自分のクリーチャー1体に「スピードアタッカー」を与える。\n▶自分のクリーチャーを1体選ぶ。このターン、そのクリーチャーの最初の攻撃の終わりに、そのクリーチャーをアンタップする。",
+    "autoEffect": {
+      "trigger": "cast", "type": "chooseTimes", "count": 2,
+      "templates": [
+        { "label": "コスト3以下のクリーチャーを1体、自分の手札から出す。", "steps": [ { "type": "putFilteredFromHand", "filter": { "maxCost": 3 } } ] },
+        { "label": "このターン、自分のクリーチャー1体に「スピードアタッカー」を与える。", "steps": [ { "type": "grantTempBuffToSelf", "keywords": ["speedAttacker"], "expires": "endOfTurn" } ] },
+        { "label": "自分のクリーチャーを1体選ぶ。このターン、最初の攻撃の終わりにアンタップする。", "steps": [ { "type": "setUntapAfterAttack" } ] }
+      ]
+    }
+  },
+  {
+    "id": 70,
+    "name": "調律師ピーカプ／「♪音速で 本番中に チューニング」",
+    "type": "twinpact",
+    "civ": "fire",
+    "race": "マジック・マシン・イーター",
+    "cost": 4,
+    "power": 4000,
+    "keywords": ["speedAttacker"],
+    "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）\nメガ・ラスト・バースト（このクリーチャーが離れて、手札、マナゾーン、または墓地に置かれた時、このカードの呪文側をコストを支払わずに唱えてもよい）[例外処理]",
+    "autoEffect": null,
+    "spellSide": {
+      "name": "♪音速で 本番中に チューニング",
+      "cost": 3,
+      "civ": "fire",
+      "subtype": "マジック・ソング",
+      "effect": "このターン、自分のクリーチャー1体に「スピードアタッカー」を与え、そのクリーチャーの最初の攻撃の終わりにそのクリーチャーをアンタップする。",
+      "autoEffect": {
+        "trigger": "cast", "type": "steps",
+        "steps": [ { "type": "grantSAUntapAfterAttack" } ]
+      }
+    }
+  },
+  {
+    "id": 71,
+    "name": "忍式の聖沌 y4kk0",
+    "type": "creature",
+    "civ": "light",
+    "race": "メカ・デル・ステラ/シノビ",
+    "cost": 1,
+    "power": 1000,
+    "keywords": [],
+    "effect": "",
+    "autoEffect": null
+  },
+  {
+    "id": 72,
+    "name": "炎氷渦と鎮魂禍の決断",
+    "type": "spell",
+    "civ": ["water", "darkness", "fire"],
+    "race": null,
+    "cost": 6,
+    "power": 0,
+    "keywords": [],
+    "effect": "自分の墓地にカードが6枚以上あれば、この呪文を[水/闇/火(4)]支払って唱えてもよい。\n次の中から2回選ぶ。同じものを選んでもよい。\n▶自分の手札をすべて捨て、その枚数より1枚多くカードを引く。\n▶相手のエレメントを1つ選び、持ち主の手札に戻す。[例外処理：エレメントカードが存在しないため対象なし]その後、相手の手札を1枚見ないで選び、捨てさせる。\n▶コスト5以下のクリーチャーを1体、自分の墓地から出す。そのクリーチャーに「スピードアタッカー」を与え、このターンの終わりに破壊する。",
+    "alternateCost": { "cost": 4, "civs": ["water", "darkness", "fire"], "condition": { "type": "graveCountAtLeast", "amount": 6 } },
+    "autoEffect": {
+      "trigger": "cast", "type": "chooseTimes", "count": 2,
+      "templates": [
+        { "label": "自分の手札をすべて捨て、その枚数より1枚多くカードを引く。", "steps": [ { "type": "discardHandDrawPlusOne" } ] },
+        { "label": "相手の手札を1枚見ないで選び、捨てさせる。（エレメントを戻す効果は対象不在のため[例外処理]）", "steps": [ { "type": "randomDiscardOpponent" } ] },
+        { "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す。スピードアタッカーを与え、このターンの終わりに破壊する。", "steps": [ { "type": "reviveFilteredFromGrave", "filter": { "maxCost": 5 } } ] }
+      ]
+    }
   }
 ]
