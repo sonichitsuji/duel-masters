@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import INITIAL_CARD_DB from "../public/cards.json";
 
-const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush"];
-const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー", zRush:"Zラッシュ" };
+const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape"];
+const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー", zRush:"Zラッシュ", escape:"エスケープ" };
 
 const CIV = {
   fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", textColor:"#ff8877" },
@@ -142,6 +142,7 @@ function extractFromBattle(battle, uid) {
 
 function getEffectivePower(card, ownerState, allOwnBattle) {
   let power = (card.hyperMode && card.hyperPower != null) ? card.hyperPower : (card.power || 0);
+  power += card.tempBuff?.power || 0;
   if (card.selfPowerBoostGrave) {
     const { civFilter, perCard } = card.selfPowerBoostGrave;
     const count = (ownerState.grave || []).filter(c => getCardCivs(c).includes(civFilter)).length;
@@ -164,8 +165,8 @@ function getEffectivePower(card, ownerState, allOwnBattle) {
 }
 
 function computeGrantedKeywords(card, battleZone) {
-  if (!battleZone) return [];
-  const granted = [];
+  const granted = [...(card.tempBuff?.keywords || [])];
+  if (!battleZone) return granted;
   for (const granter of battleZone) {
     if (!granter.grantKeywords) continue;
     for (const rule of granter.grantKeywords) {
@@ -365,6 +366,26 @@ function getStepCandidates(step, selfState, otherState, context, p1, p2, srcCard
     case "breakOpponentShieldChoice": {
       return { candidates: otherState.shields, isAuto: false, maxSelect: 1, optional: true };
     }
+    case "untapSelectCreature": case "grantTempBuffToSelf": case "setUntapAfterAttack": case "grantSAUntapAfterAttack": {
+      return { candidates: selfState.battle, isAuto: selfState.battle.length === 0, maxSelect: 1 };
+    }
+    case "castFilteredSpellFromHand": {
+      let cards = selfState.hand.filter(c => c.type === "spell");
+      if (step.filter?.civs?.length) cards = cards.filter(c => getCardCivs(c).some(cv => step.filter.civs.includes(cv)));
+      if (step.filter?.maxCost != null) cards = cards.filter(c => c.cost <= step.filter.maxCost);
+      return { candidates: cards, isAuto: cards.length === 0, maxSelect: 1 };
+    }
+    case "searchSpellToTop": {
+      const cards = selfState.deck.filter(c => c.type === "spell");
+      return { candidates: cards, isAuto: cards.length === 0, maxSelect: 1 };
+    }
+    case "reviveFilteredFromGrave": {
+      let cards = selfState.grave.filter(c => c.type === "creature");
+      if (step.filter?.maxCost != null) cards = cards.filter(c => c.cost <= step.filter.maxCost);
+      return { candidates: cards, isAuto: cards.length === 0, maxSelect: 1 };
+    }
+    case "randomDiscardOpponent": case "discardHandDrawPlusOne": case "drawCardsPerTappedOpponent": case "drawCards":
+      return { candidates: [], isAuto: true };
     default:
       return { candidates: [], isAuto: true };
   }
@@ -615,6 +636,109 @@ function executeStepAction(step, selectedUids, context, ownerPid, p1, setP1, p2,
       addLog(`[BREAK] ${srcCard?.name}: シールドブレイク「${shield.name}」`);
       break;
     }
+    case "untapSelectCreature": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const tb = step.tempBuff;
+        const card = selfState.battle.find(c => c.uid === uid);
+        setSelf(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tapped: false, tempBuff: tb ? { ...tb } : c.tempBuff } : c) }));
+        if (card) addLog(`${pid}: ${card.name} をアンタップ${tb ? "・効果付与" : ""}`);
+      }
+      break;
+    }
+    case "castFilteredSpellFromHand": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const spellCard = selfState.hand.find(c => c.uid === uid);
+        if (spellCard) {
+          setSelf(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), grave: [...s.grave, spellCard] }));
+          addLog(`${pid}: 「${spellCard.name}」をコストを支払わずに唱えた`);
+          ctx.castSpell = { card: spellCard, ownerPid };
+        }
+      }
+      break;
+    }
+    case "grantTempBuffToSelf": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.battle.find(c => c.uid === uid);
+        setSelf(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tempBuff: { power: step.power, keywords: step.keywords, expires: step.expires || "endOfTurn" } } : c) }));
+        if (card) addLog(`${pid}: ${card.name} に「${(step.keywords || []).map(k => KEYWORD_LABELS[k] || k).join("/")}」を付与`);
+      }
+      break;
+    }
+    case "setUntapAfterAttack": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.battle.find(c => c.uid === uid);
+        setSelf(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, untapAfterAttack: true } : c) }));
+        if (card) addLog(`${pid}: ${card.name} は最初の攻撃の終わりにアンタップする`);
+      }
+      break;
+    }
+    case "grantSAUntapAfterAttack": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.battle.find(c => c.uid === uid);
+        setSelf(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tempBuff: { keywords: ["speedAttacker"], expires: "endOfTurn" }, untapAfterAttack: true } : c) }));
+        if (card) addLog(`${pid}: ${card.name} に「スピードアタッカー」を付与し、最初の攻撃の終わりにアンタップする`);
+      }
+      break;
+    }
+    case "searchSpellToTop": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.deck.find(c => c.uid === uid);
+        if (card) {
+          setSelf(s => ({ ...s, deck: [card, ...shuffle(s.deck.filter(c => c.uid !== uid))] }));
+          addLog(`${pid}: 「${card.name}」を山札の一番上に置いた`);
+        }
+      } else {
+        setSelf(s => ({ ...s, deck: shuffle(s.deck) }));
+        addLog(`${pid}: 山札をシャッフル`);
+      }
+      break;
+    }
+    case "reviveFilteredFromGrave": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.grave.find(c => c.uid === uid);
+        if (card) {
+          setSelf(s => ({ ...s, grave: s.grave.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: false, tempBuff: { keywords: ["speedAttacker"], expires: "endOfTurn" }, endOfTurnEffect: { type: "destroySelf" } }] }));
+          addLog(`${pid}: ${card.name} を墓地からBZへ（スピードアタッカー付与、ターン終了時に破壊）`);
+        }
+      }
+      break;
+    }
+    case "randomDiscardOpponent": {
+      if (otherState.hand.length > 0) {
+        const idx = Math.floor(Math.random() * otherState.hand.length);
+        const card = otherState.hand[idx];
+        setOther(s => ({ ...s, hand: s.hand.filter((_, i) => i !== idx), grave: [...s.grave, card] }));
+        addLog(`${pid}: 相手の手札を見ないで1枚選び、捨てさせた`);
+      }
+      break;
+    }
+    case "discardHandDrawPlusOne": {
+      const n = selfState.hand.length;
+      const drawN = Math.min(n + 1, selfState.deck.length);
+      setSelf(s => ({ ...s, hand: s.deck.slice(0, drawN), grave: [...s.grave, ...s.hand], deck: s.deck.slice(drawN) }));
+      addLog(`${pid}: 手札${n}枚を捨て、${drawN}枚ドロー`);
+      break;
+    }
+    case "drawCardsPerTappedOpponent": {
+      const tappedCount = otherState.battle.filter(c => c.tapped).length;
+      const n = Math.min(tappedCount, selfState.deck.length);
+      if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
+      addLog(`${pid}: 相手のタップしているクリーチャー${tappedCount}体につき、${n}枚ドロー`);
+      break;
+    }
+    case "drawCards": {
+      const n = Math.min(step.amount ?? 1, selfState.deck.length);
+      if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
+      addLog(`${pid}: ${n}枚ドロー`);
+      break;
+    }
     default: addLog(`[未実装ステップ] ${step.type}`);
   }
   return ctx;
@@ -728,6 +852,29 @@ function StepIndicator({drewThisTurn,attackingUid}){
 }
 
 // ===========================
+// EFFECT TEXT (bullet-point display)
+// ===========================
+const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカー","T・ブレイカー","ブロッカー","S・トリガー","ハイパーモード","エスケープ","革命チェンジ","ファイナル革命","メガ・ラスト・バースト"];
+function EffectText({text,civColor}){
+  const lines = text?.split("\n")||[];
+  return (
+    <>
+      {lines.map((line,i)=>{
+        const isKw=KEYWORD_PATTERNS.some(k=>line.startsWith(k));
+        const isSTrigger=line.startsWith("S・トリガー");
+        return (
+          <div key={i} style={{
+            fontSize:11,lineHeight:1.6,marginBottom:isKw?2:0,
+            color: isSTrigger?"#ffcc44":isKw?(civColor||"#ccc"):"#ccc",
+            fontWeight: isKw?700:400,
+          }}>{line}</div>
+        );
+      })}
+    </>
+  );
+}
+
+// ===========================
 // CREATURE DETAIL PANEL
 // ===========================
 function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone}){
@@ -736,12 +883,9 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
   const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[]).includes("speedAttacker");
-  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn;
-  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":!drewThisTurn?"ドロー前":null;
+  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
+  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
-  // Parse effect text: lines starting with known keywords get bold styling
-  const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカー","T・ブレイカー","ブロッカー","S・トリガー","ハイパーモード"];
-  const effectLines = card.effect?.split("\n")||[];
   const hyper=card.hyperMode;
   const effPower=(hyper&&card.hyperPower!=null)?card.hyperPower:card.power;
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
@@ -775,17 +919,7 @@ function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battle
 
         {/* Effect text box - official style */}
         <div style={{margin:"10px 12px",background:"rgba(0,0,0,0.5)",border:`1px solid ${c.color}44`,borderRadius:6,padding:"10px 12px",minHeight:80}}>
-          {effectLines.map((line,i)=>{
-            const isKw=KEYWORD_PATTERNS.some(k=>line.startsWith(k));
-            const isSTrigger=line.startsWith("S・トリガー");
-            return(
-              <div key={i} style={{
-                fontSize:11,lineHeight:1.6,marginBottom:isKw?2:0,
-                color: isSTrigger?"#ffcc44":isKw?c.textColor:"#ccc",
-                fontWeight: isKw?700:400,
-              }}>{line}</div>
-            );
-          })}
+          <EffectText text={card.effect} civColor={c.textColor}/>
         </div>
 
         {/* Power - big and prominent */}
@@ -990,9 +1124,10 @@ function AttackTriggerModal({ attacker, hand, battle, onRevChange, onSkip }) {
     const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
     const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => attacker.race?.includes(r)) : attacker.race?.includes(cond.race);
     const costMatch = !cond.minCost || attacker.cost >= cond.minCost;
+    const powerMatch = !cond.minPower || attacker.power >= cond.minPower;
     const nameMatch = !cond.nameContains || attacker.name?.includes(cond.nameContains);
     const multiColorMatch = !cond.multiColor || (Array.isArray(attacker.civ) && attacker.civ.length >= 2);
-    return civMatch && raceMatch && costMatch && nameMatch && multiColorMatch;
+    return civMatch && raceMatch && costMatch && powerMatch && nameMatch && multiColorMatch;
   });
 
   if (revChangeable.length === 0) return null;
@@ -1349,6 +1484,34 @@ function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance,
 }
 
 // ===========================
+// TEMPLATE CHOICE MODAL (chooseTimes)
+// ===========================
+function TemplateChoiceModal({ modal, onChoose, onAbandon }) {
+  if (!modal) return null;
+  const { templates, srcCard, count } = modal;
+  const civs = getCardCivs(srcCard || {});
+  const c = CIV[civs[0]] || CIV.fire;
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:385, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:440, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4, letterSpacing:1 }}>{srcCard?.name || ""}</div>
+        <div style={{ fontSize:11, color:"#aaa", marginBottom:12 }}>残り{count}回選択（同じものを選んでもよい）</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+          {templates.map((tpl, i) => (
+            <button key={i} onClick={() => onChoose(i)} style={{ padding:"12px 14px", borderRadius:8, background:`${c.color}14`, border:`1px solid ${c.color}55`, cursor:"pointer", textAlign:"left", fontSize:12, color:"#fff" }}>
+              {tpl.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={onAbandon} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+          残りを放棄（例外処理）
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
 // TWIN PACT CHOICE MODAL
 // ===========================
 function TwinPactChoiceModal({ card, onSelectCreature, onSelectSpell, onCancel }) {
@@ -1367,7 +1530,38 @@ function TwinPactChoiceModal({ card, onSelectCreature, onSelectSpell, onCancel }
           <button onClick={onSelectSpell} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(100,180,255,0.1)", border:"1px solid #44aaff55", cursor:"pointer", textAlign:"left" }}>
             <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>呪文として唱える</div>
             <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.spellSide?.cost} / {card.spellSide?.name}</div>
-            <div style={{ fontSize:10, color:"#666", marginTop:2 }}>{card.spellSide?.effect}</div>
+            {card.spellSide?.subtype&&<div style={{ fontSize:10, color:"#88aacc", marginTop:1, fontStyle:"italic" }}>{card.spellSide.subtype}</div>}
+            <div style={{ fontSize:10, color:"#666", marginTop:2 }}><EffectText text={card.spellSide?.effect}/></div>
+          </button>
+        </div>
+        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+          キャンセル
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===========================
+// ALTERNATE COST MODAL
+// ===========================
+function AlternateCostModal({ card, onSelectNormal, onSelectAlternate, onCancel }) {
+  const civs = getCardCivs(card);
+  const c = CIV[civs[0]] || CIV.fire;
+  const altCivLabel = (card.alternateCost.civs || []).map(cv => CIV[cv]?.label || cv).join("/");
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:395, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:380, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
+        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4, letterSpacing:2 }}>代替コスト</div>
+        <div style={{ fontSize:12, color:"#ccc", marginBottom:14 }}>{card.name} をどちらのコストで唱えますか？</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+          <button onClick={onSelectNormal} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(255,180,0,0.1)", border:"1px solid #ffbb0055", cursor:"pointer", textAlign:"left" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>通常コストで唱える</div>
+            <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.cost}</div>
+          </button>
+          <button onClick={onSelectAlternate} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(100,180,255,0.1)", border:"1px solid #44aaff55", cursor:"pointer", textAlign:"left" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>代替コストで唱える</div>
+            <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト [{altCivLabel}({card.alternateCost.cost})]</div>
           </button>
         </div>
         <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
@@ -1506,11 +1700,19 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
   const [manaPayModal,setManaPayModal]=useState(null);
   const [twinPactModal,setTwinPactModal]=useState(null);
   const [evolutionSelectModal,setEvolutionSelectModal]=useState(null);
+  const [altCostModal,setAltCostModal]=useState(null);
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
   const selectedCard=selHand!==null?state.hand[selHand]:null;
-  const civCheck=selectedCard?(selectedCard.type==="twinpact"?(canPayCost(state.mana,selectedCard,state.battle).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state.battle).ok?{ok:true}:canPayCost(state.mana,selectedCard,state.battle)):canPayCost(state.mana,selectedCard,state.battle)):null;
+  const altCostAvailable=selectedCard?.alternateCost&&selectedCard.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=selectedCard.alternateCost.condition.amount;
+  const civCheck=selectedCard?(
+    selectedCard.type==="twinpact"
+      ?(canPayCost(state.mana,selectedCard,state.battle).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state.battle).ok?{ok:true}:canPayCost(state.mana,selectedCard,state.battle))
+      :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state.battle).ok)
+        ?{ok:true}
+        :canPayCost(state.mana,selectedCard,state.battle)
+  ):null;
   // G-Zero check
   const gZeroOk=selectedCard?.gZero&&state.battle.some(c=>
     (!selectedCard.gZero.nameContains||c.name?.includes(selectedCard.gZero.nameContains))&&
@@ -1533,6 +1735,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       setEvolutionSelectModal({handIdx:selHand,card,eligible});
     }else if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
     else if(card.type==="twinpact"){setTwinPactModal({handIdx:selHand,card});}
+    else if(card.alternateCost&&card.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=card.alternateCost.condition.amount){setAltCostModal({handIdx:selHand,card});}
     else{setManaPayModal({handIdx:selHand,card});}
   };
   const handleManaConfirm=uids=>{
@@ -1569,9 +1772,10 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
       const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
       const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => card.race?.includes(r)) : card.race?.includes(cond.race);
       const costMatch = !cond.minCost || card.cost >= cond.minCost;
+      const powerMatch = !cond.minPower || card.power >= cond.minPower;
       const nameMatch = !cond.nameContains || card.name?.includes(cond.nameContains);
       const multiColorMatch = !cond.multiColor || (Array.isArray(card.civ) && card.civ.length >= 2);
-      return civMatch && raceMatch && costMatch && nameMatch && multiColorMatch;
+      return civMatch && raceMatch && costMatch && powerMatch && nameMatch && multiColorMatch;
     });
     if (hasRevChange) {
       setRevChangeTarget(card);
@@ -1616,6 +1820,14 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
           onSelectCreature={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card,twinpactSide:"creature"});}}
           onSelectSpell={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card:{...card,...card.spellSide,uid:card.uid,grantKeywords:card.grantKeywords},twinpactSide:"spell"});}}
           onCancel={()=>setTwinPactModal(null)}
+        />
+      )}
+      {altCostModal&&(
+        <AlternateCostModal
+          card={altCostModal.card}
+          onSelectNormal={()=>{const{handIdx,card}=altCostModal;setAltCostModal(null);setManaPayModal({handIdx,card});}}
+          onSelectAlternate={()=>{const{handIdx,card}=altCostModal;setAltCostModal(null);setManaPayModal({handIdx,card:{...card,cost:card.alternateCost.cost,civ:card.alternateCost.civs}});}}
+          onCancel={()=>setAltCostModal(null)}
         />
       )}
       {evolutionSelectModal&&(
@@ -1693,7 +1905,7 @@ function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attac
             <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}{selectedCard.race&&` / 種族:${selectedCard.race}`}</span></div>
             <div style={{fontSize:10,color:civCheck?.ok?"#4f8":"#f84",fontWeight:700}}>{civCheck?.ok?`✓ プレイ可 (${availMana}マナ)`:`✗ ${civCheck?.reason}`}</div>
           </div>
-          <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}>{selectedCard.effect}</div>
+          <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}><EffectText text={selectedCard.effect}/></div>
         </div>
       )}
       {attackingUid&&!isActive&&(
@@ -2062,6 +2274,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [gStrikeModal,setGStrikeModal]=useState(null);
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
   const [hyperTargetedModal,setHyperTargetedModal]=useState(null);
+  const [templateChoiceModal,setTemplateChoiceModal]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const [isPC,setIsPC]=useState(()=>window.innerWidth>=768);
@@ -2087,6 +2300,17 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveSteps(prev => {
       if (!prev) return null;
       const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
+      if (updatedCtx.castSpell) {
+        const { card: castCard, ownerPid: castOwnerPid } = updatedCtx.castSpell;
+        delete updatedCtx.castSpell;
+        if (castCard.autoEffect) {
+          const selfSnap = castOwnerPid === "p1" ? p1 : p2;
+          const setSelfFn = castOwnerPid === "p1" ? setP1 : setP2;
+          const otherSnap = castOwnerPid === "p1" ? p2 : p1;
+          const setOtherFn = castOwnerPid === "p1" ? setP2 : setP1;
+          setTimeout(() => triggerEffect(castCard.autoEffect, castOwnerPid, selfSnap, setSelfFn, otherSnap, setOtherFn, castCard.name, castCard), 0);
+        }
+      }
       let nextIdx = prev.stepIdx + 1;
       // Skip conditional steps when their precondition is not met
       while (nextIdx < prev.steps.length && (
@@ -2115,9 +2339,26 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     showCutIn({title:"効果発動！",cardName:sourceName,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
     if(effect.type==="steps"){
       startStepEffect(effect.steps, ownerPid, srcCard);
+    } else if(effect.type==="chooseTimes"){
+      setTemplateChoiceModal({count:effect.count,templates:effect.templates,ownerPid,srcCard});
     } else {
       setEffectConfirmModal({effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,srcCard});
     }
+  };
+
+  const handleTemplateChoose=(tplIdx)=>{
+    if(!templateChoiceModal)return;
+    const {templates,ownerPid,srcCard,count}=templateChoiceModal;
+    const tpl=templates[tplIdx];
+    setTemplateChoiceModal(count>1?{...templateChoiceModal,count:count-1}:null);
+    startStepEffect(tpl.steps, ownerPid, srcCard);
+  };
+
+  // 相手の常時能力(reactivePassive)を考慮し、新たにBZに出たクリーチャーへcantAttackUntilMyTurnを付与
+  const maybeFlagCantAttack=(newUids,setSelf,opponentBattle)=>{
+    if(!opponentBattle.some(c=>c.reactivePassive?.type==="cantAttackUntilControllerTurn"))return;
+    setSelf(s=>({...s,battle:s.battle.map(c=>newUids.includes(c.uid)?{...c,cantAttackUntilMyTurn:true}:c)}));
+    addLog(`[反応] 相手の常時能力により、出たクリーチャーは次の自分のターンまで攻撃できない`);
   };
 
   // 先行1ターン目はドロー不要（マナチャージから開始）
@@ -2154,6 +2395,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
       addLog(`${active}: ${card.name}(${effectiveSide.power||card.power}) 召喚！`);
       showCutIn({title:"召喚！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
+      maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
     }else{
       const isCharger=effectiveSide.keywords?.includes("charger");
@@ -2178,8 +2420,13 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}),
     }));
     addLog(`[REV] 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
+    maybeFlagCantAttack([handCard.uid],setActiveState,otherState.battle);
     if(handCard.autoEffect) triggerEffect(handCard.autoEffect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,{...handCard,uid:handCard.uid});
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
+    else if(handCard.finalRevolution&&!usedFinalRevThisTurn){
+      setUsedFinalRevThisTurn(true);
+      triggerEffect(handCard.finalRevolution.effect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,handCard);
+    }
     setAttackingUid(handCard.uid);
     setMessage("攻撃対象を選択");
   };
@@ -2187,15 +2434,14 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setUsedFinalRevThisTurn(true);
     setFinalRevModal(false);
     if(selected.length===0) return;
-    setActiveState(s=>{
-      const handUids=selected.filter(x=>x.from==="hand").map(x=>x.uid);
-      const manaUids=selected.filter(x=>x.from==="mana").map(x=>x.uid);
-      const fromHand=s.hand.filter(c=>handUids.includes(c.uid));
-      const fromMana=s.mana.filter(c=>manaUids.includes(c.uid));
-      const newCards=[...fromHand,...fromMana].map(c=>({...c,tapped:false,summonedThisTurn:false}));
-      return{...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]};
-    });
+    const handUids=selected.filter(x=>x.from==="hand").map(x=>x.uid);
+    const manaUids=selected.filter(x=>x.from==="mana").map(x=>x.uid);
+    const fromHand=activeState.hand.filter(c=>handUids.includes(c.uid));
+    const fromMana=activeState.mana.filter(c=>manaUids.includes(c.uid));
+    const newCards=[...fromHand,...fromMana].map(c=>({...c,tapped:false,summonedThisTurn:false}));
+    setActiveState(s=>({...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]}));
     addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
+    maybeFlagCantAttack(newCards.map(c=>c.uid),setActiveState,otherState.battle);
   };
   const handleStartAttack=uid=>{
     setAttackingUid(uid);
@@ -2223,6 +2469,9 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const {newBattle:nb2,extracted:ex2}=extractFromBattle(activeState.battle,attacker.uid);
       setActiveState(s=>({...s,battle:nb2,grave:[...s.grave,...ex2]}));
       addLog(`[LOST] ${attacker.name} 破壊`);
+    }else if(attacker.untapAfterAttack){
+      setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:false,untapAfterAttack:false}:c)}));
+      addLog(`${attacker.name}: 攻撃後にアンタップ`);
     }
     setAttackingUid(null);
   };
@@ -2276,6 +2525,10 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }
     addLog(`[BREAK] ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
     if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
+    if(attacker.untapAfterAttack){
+      setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:false,untapAfterAttack:false}:c)}));
+      addLog(`${attacker.name}: 攻撃後にアンタップ`);
+    }
     setAttackingUid(null);
   };
   const handleDirectAttack=()=>{
@@ -2292,12 +2545,39 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           pss(s=>({...s,battle:s.battle.map(b=>b.uid===c.uid?b:{...b,tapped:false})}));
           addLog(`${c.name}: 自分の他のクリーチャーをアンタップ`);
         }
+        if(c.endOfTurnEffect?.type==="destroySelf"){
+          pss(s=>{
+            const {newBattle,extracted}=extractFromBattle(s.battle,c.uid);
+            return extracted.length?{...s,battle:newBattle,grave:[...s.grave,...extracted]}:s;
+          });
+          addLog(`${c.name}: ターン終了時に破壊`);
+        }
       });
     });
-    // 終了するプレイヤー: このターン限定のフラグのみリセット（タップ状態は自分の次のターン開始時まで維持）
-    setActiveState(s=>({...s,battle:s.battle.map(c=>({...c,cantAttackThisTurn:false}))}));
-    // 次に開始するプレイヤー: 自分のターン開始時のアンタップ処理
-    setOtherState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:false,summonedThisTurn:false,cantAttackThisTurn:false,hyperMode:false})),mana:s.mana.map(c=>({...c,tapped:false}))}));
+    // 終了するプレイヤー: このターン限定のフラグのみリセット（タップ状態・cantAttackUntilMyTurnは自分の次のターン開始時まで維持）
+    setActiveState(s=>({...s,battle:s.battle.map(c=>({
+      ...c,
+      cantAttackThisTurn:false,
+      untapAfterAttack:false,
+      tempBuff:c.tempBuff?.expires==="endOfTurn"?null:c.tempBuff,
+    }))}));
+    // 相手の常時能力(cantAttackUntilControllerTurn)を考慮し、次に開始するプレイヤーのクリーチャーをアンタップ
+    const reactiveCreature=activeState.battle.find(c=>c.reactivePassive?.type==="cantAttackUntilControllerTurn");
+    const tappedOtherUids=new Set(otherState.battle.filter(c=>c.tapped).map(c=>c.uid));
+    setOtherState(s=>({...s,battle:s.battle.map(c=>({
+      ...c,
+      tapped:false,
+      summonedThisTurn:false,
+      cantAttackThisTurn:false,
+      hyperMode:false,
+      untapAfterAttack:false,
+      tempBuff:c.tempBuff?.expires==="ownTurnStart"?null:c.tempBuff,
+      cantAttackUntilMyTurn:!!(reactiveCreature&&tappedOtherUids.has(c.uid)),
+    })),mana:s.mana.map(c=>({...c,tapped:false}))}));
+    if(reactiveCreature){
+      const affected=otherState.battle.filter(c=>tappedOtherUids.has(c.uid));
+      if(affected.length>0) addLog(`[反応] ${reactiveCreature.name}: アンタップした${affected.map(c=>c.name).join("、")}は次の自分のターンまで攻撃できない`);
+    }
     setAttackingUid(null);setUsedFinalRevThisTurn(false);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
@@ -2324,6 +2604,7 @@ function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {effectModal&&<EffectModal modal={effectModal} p1State={p1} setP1={setP1} p2State={p2} setP2={setP2} onClose={()=>setEffectModal(null)} addLog={addLog}/>}
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
+      {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
