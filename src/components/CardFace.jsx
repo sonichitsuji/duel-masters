@@ -9,7 +9,7 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   const c=CIV[civs[0]]||CIV.fire;
   const w=small?52:74;const h=small?72:106;
   const hyper=card.hyperMode;
-  const effPower=(hyper&&card.hyperPower!=null)?card.hyperPower:card.power;
+  const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
   const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
   return(
