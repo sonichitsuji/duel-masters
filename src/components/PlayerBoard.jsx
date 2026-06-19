@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { EffectText } from "./EffectText";
@@ -94,7 +94,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
       const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => card.race?.includes(r)) : card.race?.includes(cond.race);
       const costMatch = !cond.minCost || card.cost >= cond.minCost;
-      const powerMatch = !cond.minPower || card.power >= cond.minPower;
+      const powerMatch = !cond.minPower || getEffectivePower(card, state, state.battle) >= cond.minPower;
       const nameMatch = !cond.nameContains || card.name?.includes(cond.nameContains);
       const multiColorMatch = !cond.multiColor || (Array.isArray(card.civ) && card.civ.length >= 2);
       return civMatch && raceMatch && costMatch && powerMatch && nameMatch && multiColorMatch;
@@ -123,6 +123,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           attacker={revChangeTarget}
           hand={state.hand}
           battle={state.battle}
+          ownerState={state}
           onRevChange={handleRevChange}
           onSkip={()=>{ onStartAttack(revChangeTarget.uid); setRevChangeTarget(null); }}
         />
