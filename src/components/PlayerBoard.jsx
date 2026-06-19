@@ -1,0 +1,252 @@
+import { useState, useEffect } from "react";
+import { CIV } from "../constants";
+import { getCardCivs, canPayCost, computeGrantedKeywords } from "../gameLogic";
+import { CardFace, CardBack } from "./CardFace";
+import { ShieldPile } from "./BoardWidgets";
+import { EffectText } from "./EffectText";
+import { CreatureDetailPanel } from "./CreatureDetailPanel";
+import { ExceptionPanel } from "./ExceptionPanel";
+import { AttackTriggerModal } from "./modals/AttackTriggerModal";
+import { ManaPayModal } from "./modals/ManaPayModal";
+import { TwinPactChoiceModal } from "./modals/TwinPactChoiceModal";
+import { AlternateCostModal } from "./modals/AlternateCostModal";
+import { EvolutionSelectModal } from "./modals/EvolutionSelectModal";
+
+// ===========================
+// PLAYER BOARD
+// ===========================
+export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack,large}){
+  const [selHand,setSelHand]=useState(null);
+  const [selBattle,setSelBattle]=useState(null);
+  const [revChangeTarget,setRevChangeTarget]=useState(null);
+  const [manaPayModal,setManaPayModal]=useState(null);
+  const [twinPactModal,setTwinPactModal]=useState(null);
+  const [evolutionSelectModal,setEvolutionSelectModal]=useState(null);
+  const [altCostModal,setAltCostModal]=useState(null);
+  const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
+  const availMana=state.mana.filter(c=>!c.tapped).length;
+  useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
+  const selectedCard=selHand!==null?state.hand[selHand]:null;
+  const altCostAvailable=selectedCard?.alternateCost&&selectedCard.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=selectedCard.alternateCost.condition.amount;
+  const civCheck=selectedCard?(
+    selectedCard.type==="twinpact"
+      ?(canPayCost(state.mana,selectedCard,state.battle).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state.battle).ok?{ok:true}:canPayCost(state.mana,selectedCard,state.battle))
+      :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state.battle).ok)
+        ?{ok:true}
+        :canPayCost(state.mana,selectedCard,state.battle)
+  ):null;
+  // G-Zero check
+  const gZeroOk=selectedCard?.gZero&&state.battle.some(c=>
+    (!selectedCard.gZero.nameContains||c.name?.includes(selectedCard.gZero.nameContains))&&
+    (!selectedCard.gZero.raceContains||c.race?.includes(selectedCard.gZero.raceContains))
+  );
+  const selBattleCard=selBattle?state.battle.find(c=>c.uid===selBattle):null;
+  const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
+  const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
+  const handleCharge=()=>{if(selHand===null)return;onChargeMana(selHand);setSelHand(null);};
+  const handlePlay=()=>{
+    if(selHand===null||!civCheck?.ok)return;
+    const card=state.hand[selHand];
+    if(card.type==="evo_creature"){
+      // Evolution flow
+      const eligible=state.battle.filter(c=>
+        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
+        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
+      );
+      if(eligible.length===0)return;
+      setEvolutionSelectModal({handIdx:selHand,card,eligible});
+    }else if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
+    else if(card.type==="twinpact"){setTwinPactModal({handIdx:selHand,card});}
+    else if(card.alternateCost&&card.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=card.alternateCost.condition.amount){setAltCostModal({handIdx:selHand,card});}
+    else{setManaPayModal({handIdx:selHand,card});}
+  };
+  const handleManaConfirm=uids=>{
+    if(!manaPayModal)return;
+    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUid||null);
+    if(ok!==false)setSelHand(null);
+    setManaPayModal(null);
+  };
+  const handleGZeroPlay=()=>{
+    if(!gZeroOk||selHand===null)return;
+    const card=state.hand[selHand];
+    if(card.type==="evo_creature"){
+      const eligible=state.battle.filter(c=>
+        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
+        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
+      );
+      if(eligible.length===0)return;
+      setEvolutionSelectModal({handIdx:selHand,card,eligible,gZero:true});
+    }else{
+      const ok=onPlayCard(selHand,[],null,null);
+      if(ok!==false)setSelHand(null);
+    }
+  };
+
+  // 攻撃宣言: 革命チェンジ可能かチェック
+  const handleAttackWithTriggerCheck = (uid) => {
+    const card = state.battle.find(c => c.uid === uid);
+    if (!card) return;
+    // 革命チェンジ可能なカードが手札にあるかチェック
+    const hasRevChange = state.hand.some(c => {
+      if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
+      const cond = c.revolutionChangeCond;
+      const attackerCivs = getCardCivs(card);
+      const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
+      const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => card.race?.includes(r)) : card.race?.includes(cond.race);
+      const costMatch = !cond.minCost || card.cost >= cond.minCost;
+      const powerMatch = !cond.minPower || card.power >= cond.minPower;
+      const nameMatch = !cond.nameContains || card.name?.includes(cond.nameContains);
+      const multiColorMatch = !cond.multiColor || (Array.isArray(card.civ) && card.civ.length >= 2);
+      return civMatch && raceMatch && costMatch && powerMatch && nameMatch && multiColorMatch;
+    });
+    if (hasRevChange) {
+      setRevChangeTarget(card);
+      setSelBattle(null);
+    } else {
+      onStartAttack(uid);
+    }
+  };
+
+  // 革命チェンジ実行
+  const handleRevChange = (handCard) => {
+    if (!revChangeTarget) return;
+    onRevChange(handCard, revChangeTarget);
+    setRevChangeTarget(null);
+  };
+
+  const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
+  return(
+    <div style={{display:"flex",flexDirection:"column",overflowY:"auto",minHeight:large?"100%":undefined,background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
+      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
+      {revChangeTarget&&(
+        <AttackTriggerModal
+          attacker={revChangeTarget}
+          hand={state.hand}
+          battle={state.battle}
+          onRevChange={handleRevChange}
+          onSkip={()=>{ onStartAttack(revChangeTarget.uid); setRevChangeTarget(null); }}
+        />
+      )}
+      {manaPayModal&&(
+        <ManaPayModal
+          card={manaPayModal.card}
+          mana={state.mana}
+          selfBattle={state.battle}
+          onConfirm={handleManaConfirm}
+          onCancel={()=>setManaPayModal(null)}
+        />
+      )}
+      {twinPactModal&&(
+        <TwinPactChoiceModal
+          card={twinPactModal.card}
+          onSelectCreature={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card,twinpactSide:"creature"});}}
+          onSelectSpell={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card:{...card,...card.spellSide,uid:card.uid,grantKeywords:card.grantKeywords},twinpactSide:"spell"});}}
+          onCancel={()=>setTwinPactModal(null)}
+        />
+      )}
+      {altCostModal&&(
+        <AlternateCostModal
+          card={altCostModal.card}
+          onSelectNormal={()=>{const{handIdx,card}=altCostModal;setAltCostModal(null);setManaPayModal({handIdx,card});}}
+          onSelectAlternate={()=>{const{handIdx,card}=altCostModal;setAltCostModal(null);setManaPayModal({handIdx,card:{...card,cost:card.alternateCost.cost,civ:card.alternateCost.civs}});}}
+          onCancel={()=>setAltCostModal(null)}
+        />
+      )}
+      {evolutionSelectModal&&(
+        <EvolutionSelectModal
+          eligible={evolutionSelectModal.eligible}
+          card={evolutionSelectModal.card}
+          onSelect={baseUid=>{
+            const{handIdx,card,gZero}=evolutionSelectModal;
+            setEvolutionSelectModal(null);
+            if(gZero){
+              const ok=onPlayCard(handIdx,[],null,baseUid);
+              if(ok!==false)setSelHand(null);
+            }else{
+              setManaPayModal({handIdx,card,evolutionBaseUid:baseUid});
+            }
+          }}
+          onCancel={()=>setEvolutionSelectModal(null)}
+        />
+      )}
+      {/* Header: PID label + DECK/墓地 boxes + Shield */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap",flexShrink:0}}>
+        <span style={{fontWeight:700,color,fontSize:13}}>
+          <span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,marginRight:4}}>{pid==="p1"?"P1":"P2"}</span>
+          {label}{isActive&&<span style={{fontSize:9,color:"#ffe066",marginLeft:6,fontFamily:"'Cinzel',serif",letterSpacing:1}}>◆ ACTIVE</span>}
+        </span>
+        <div style={{display:"flex",gap:4,marginLeft:"auto",alignItems:"center"}}>
+          <div style={{background:"#0d1a2e",border:"1px solid #2255aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36}}>
+            <div style={{fontSize:9,color:"#5588aa"}}>DECK</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#7af",lineHeight:1.1}}>{state.deck.length}</div>
+          </div>
+          <div onClick={()=>setGraveModal(true)} style={{background:"#150a2e",border:"1px solid #7755aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36,cursor:"pointer"}}>
+            <div style={{fontSize:9,color:"#9966bb"}}>墓地</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#b8f",lineHeight:1.1}}>{state.grave.length}</div>
+          </div>
+        </div>
+        <div style={{border:"1px solid #3498dbaa",background:"rgba(52,152,219,0.10)",borderRadius:7,padding:"3px 6px"}}>
+          <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield}/>
+        </div>
+      </div>
+      {/* BZ with red border */}
+      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",border:"1px solid #e74c3caa",background:"rgba(231,76,60,0.12)",borderRadius:7,padding:"5px 7px",marginBottom:6}}>
+        <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4,flexShrink:0}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
+        <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"center"}}>
+          {(()=>{
+            const getGranted=c=>computeGrantedKeywords(c,state.battle);
+            return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
+          })()}
+          {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+        </div>
+      </div>
+      {/* Mana + Hand row */}
+      <div style={{display:"flex",gap:6,flexShrink:0,height:large?112:96}}>
+        <div onClick={()=>setManaModal(true)} style={{flex:`0 0 ${large?130:100}px`,cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length})</div>
+          <div style={{flex:1,overflow:"hidden",padding:"2px 4px",display:"flex",flexDirection:"column",gap:1}}>
+            {state.mana.slice(0,large?14:10).map((c,i)=>{
+              const civs=getCardCivs(c);
+              const cv=CIV[civs[0]];
+              return <div key={c.uid||i} style={{height:large?16:14,borderRadius:3,background:c.tapped?`${cv?.color}33`:`${cv?.color}88`,border:`1px solid ${cv?.color}55`,fontSize:large?8:7,color:"#fff",padding:"1px 3px",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{c.tapped?"":"▶"}{c.name}</div>;
+            })}
+            {state.mana.length>(large?14:10)&&<div style={{fontSize:8,color:"#4a8",textAlign:"center"}}>+{state.mana.length-(large?14:10)}</div>}
+          </div>
+        </div>
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",border:"1px solid #f1c40faa",background:"rgba(241,196,15,0.10)",borderRadius:7,padding:"5px 7px"}}>
+          <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4,flexShrink:0}}>手札</div>
+          <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"flex-end"}}>
+            {state.hand.map((c,i)=>!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} small selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
+            {state.hand.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
+          </div>
+        </div>
+      </div>
+      {selectedCard&&(
+        <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}{selectedCard.race&&` / 種族:${selectedCard.race}`}</span></div>
+            <div style={{fontSize:10,color:civCheck?.ok?"#4f8":"#f84",fontWeight:700}}>{civCheck?.ok?`✓ プレイ可 (${availMana}マナ)`:`✗ ${civCheck?.reason}`}</div>
+          </div>
+          <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}><EffectText text={selectedCard.effect}/></div>
+        </div>
+      )}
+      {attackingUid&&!isActive&&(
+        <div style={{background:"rgba(255,80,0,0.08)",border:"1px dashed #f8444488",borderRadius:6,padding:"6px 10px",marginBottom:8}}>
+          <div style={{fontSize:11,color:"#f84",marginBottom:4,fontFamily:"'Cinzel',serif",letterSpacing:1}}>攻撃対象を選択</div>
+          <ShieldPile shields={state.shields} canClick onBreak={onAttackShield}/>
+        </div>
+      )}
+      {isActive&&(
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+          {!drewThisTurn&&<Btn onClick={onDraw} col="#44ff88">DRAW</Btn>}
+          {drewThisTurn&&!chargedThisTurn&&selHand!==null&&<Btn onClick={handleCharge} col="#8888ff">CHARGE</Btn>}
+          {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>PLAY</Btn>}
+          {drewThisTurn&&selHand!==null&&gZeroOk&&<Btn onClick={handleGZeroPlay} col="#ff44ff">G-ZERO</Btn>}
+          {drewThisTurn&&attackingUid&&otherState.shields.length===0&&<Btn onClick={onDirectAttack} col="#ff4444">DIRECT</Btn>}
+          {drewThisTurn&&<Btn onClick={onEndTurn} col="#ffaa44">END TURN</Btn>}
+        </div>
+      )}
+      <ExceptionPanel pid={pid} state={state} setState={setState} otherState={otherState} setOtherState={setOtherState} addLog={addLog}/>
+    </div>
+  );
+}
