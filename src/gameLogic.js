@@ -1,4 +1,4 @@
-import { CIV } from "./constants";
+import { CIV, CIVS } from "./constants";
 
 // ===========================
 // HELPERS
@@ -34,19 +34,30 @@ export function initPlayerState(deckIds, cardDb) {
 }
 
 // civs: 単色="fire" or 多色=["fire","nature"]
-export function getCardCivs(card){ return Array.isArray(card.civ)?card.civ:[card.civ]; }
+// 文明は常に正規順（光→水→闇→火→自然 = CIVS の順）に並べ替えて返す
+export function getCardCivs(card){
+  const arr = Array.isArray(card.civ) ? [...card.civ] : [card.civ];
+  return arr.sort((a,b)=>CIVS.indexOf(a)-CIVS.indexOf(b));
+}
 
 export function makeCardBg(civs) {
   const n = civs.length;
   if (n === 1) return `linear-gradient(180deg, ${CIV[civs[0]]?.bg || '#08080f'}, #08080f)`;
+  // 多色: \ 方向(左上→右下)の斜め線で色数ぶん等分。
+  // 各文明はベタ塗りの平坦域を持ち、境界付近だけ細くグラデーションで混ぜる(色はくっきり分かれる)。
+  // bg(ほぼ黒)では色差が出ず視認できないため鮮やかな color を使用し、文字が読めるよう少し暗く落とす。
+  const margin = 5; // 境界の混色域の半幅(%)。小さいほど色の境目がくっきりする。
   const stops = [];
   civs.forEach((civ, i) => {
-    const bg = CIV[civ]?.bg || '#08080f';
-    const pct1 = Math.round(100 * i / n);
-    const pct2 = Math.round(100 * (i + 1) / n);
-    stops.push(`${bg} ${pct1}%`, `${bg} ${pct2}%`);
+    const col = `color-mix(in srgb, ${CIV[civ]?.color || '#08080f'} 70%, #000)`;
+    const start = 100 * i / n;
+    const end = 100 * (i + 1) / n;
+    const p1 = i === 0 ? start : start + margin;
+    const p2 = i === n - 1 ? end : end - margin;
+    stops.push(`${col} ${Math.round(p1)}%`, `${col} ${Math.round(p2)}%`);
   });
-  return `linear-gradient(180deg, ${stops.join(', ')})`;
+  // 225deg = "to bottom left": 分割線が \ 方向、先頭色が上側・末尾色が下側
+  return `linear-gradient(225deg, ${stops.join(', ')})`;
 }
 
 export function canPayCost(mana,card,selfBattle){

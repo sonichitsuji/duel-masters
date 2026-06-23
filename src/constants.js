@@ -2,11 +2,11 @@ export const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","ca
 export const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー", zRush:"Zラッシュ", escape:"エスケープ" };
 
 export const CIV = {
-  fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", textColor:"#ff8877" },
+  light:    { label:"光", color:"#f1c40f", glow:"#ffcc44", bg:"#101005", textColor:"#ffdd66" },
   water:    { label:"水", color:"#3498db", glow:"#4488ff", bg:"#020a1a", textColor:"#77aaff" },
   darkness: { label:"闇", color:"#9b59b6", glow:"#aa44ff", bg:"#0a0010", textColor:"#bb88ff" },
+  fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", textColor:"#ff8877" },
   nature:   { label:"自", color:"#27ae60", glow:"#44ff88", bg:"#021008", textColor:"#88ff99" },
-  light:    { label:"光", color:"#f1c40f", glow:"#ffcc44", bg:"#101005", textColor:"#ffdd66" },
 };
 export const CIVS = Object.keys(CIV);
 
