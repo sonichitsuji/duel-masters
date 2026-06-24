@@ -1568,34 +1568,5 @@
         }
       }
     ]
-  },
-  {
-    "id": 84,
-    "name": "ヘブンズ・ゲート",
-    "type": "spell",
-    "civ": "light",
-    "race": null,
-    "cost": 6,
-    "power": 0,
-    "keywords": [
-      "sTrigger"
-    ],
-    "effect": "S・トリガー\nコスト6以下の「ブロッカー」を持つクリーチャーを、自分の手札から2体まで、バトルゾーンに出す。",
-    "autoEffect": {
-      "trigger": "cast",
-      "type": "steps",
-      "steps": [
-        {
-          "type": "putFilteredFromHand",
-          "filter": {
-            "keyword": "blocker",
-            "maxCost": 6
-          },
-          "amount": 2,
-          "optional": true,
-          "label": "コスト6以下のブロッカーを手札から2体まで出す"
-        }
-      ]
-    }
   }
 ]
