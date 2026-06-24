@@ -33,7 +33,7 @@ export function getStepCandidates(step, selfState, otherState, context, p1, p2, 
       if (step.filter?.civ)          cards = cards.filter(c => getCardCivs(c).includes(step.filter.civ));
       if (step.filter?.maxCost != null) cards = cards.filter(c => c.cost <= step.filter.maxCost);
       if (step.filter?.raceContains) cards = cards.filter(c => c.race && c.race.includes(step.filter.raceContains));
-      return { candidates: cards, isAuto: cards.length === 0 };
+      return { candidates: cards, isAuto: cards.length === 0, maxSelect: step.amount };
     }
     case "bzSelectToMana": {
       const tgt = step.target === "opponent" ? otherState : selfState;
