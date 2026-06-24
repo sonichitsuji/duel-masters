@@ -550,6 +550,7 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
       if (selectedUids.length > 0) {
         const uid = selectedUids[0];
         setSelf(s => { const sh = s.shields.find(x => x.uid === uid); if (!sh) return s; addLog(`${pid}: シールド「${sh.name}」を手札へ（S・トリガー不使用）`); return { ...s, shields: s.shields.filter(x => x.uid !== uid), hand: [...s.hand, { ...sh, tapped: false, faceUp: false }] }; });
+        ctx.shieldLeftFor = [...(ctx.shieldLeftFor || []), ownerPid];
       }
       break;
     }
