@@ -83,6 +83,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const stateRef=useRef({p1,p2});
   stateRef.current={p1,p2};
   const fireTriggerRef=useRef();
+  const onShieldLeaveRef=useRef();
   const [replacementModal,setReplacementModal]=useState(null);
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
@@ -116,6 +117,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         const pids = updatedCtx.discardedBy;
         delete updatedCtx.discardedBy;
         pids.forEach(pid => setTimeout(() => fireTriggerRef.current("opponentDiscard",{sourcePid:pid}), 0));
+      }
+      // ステップ内で自分のシールドが離れた時の zRush 解放＋shieldLeave を発火（ギガゲドー等）
+      if (updatedCtx.shieldLeftFor && updatedCtx.shieldLeftFor.length) {
+        const pids = [...new Set(updatedCtx.shieldLeftFor)];
+        delete updatedCtx.shieldLeftFor;
+        pids.forEach(pid => setTimeout(() => onShieldLeaveRef.current && onShieldLeaveRef.current(pid), 0));
       }
       if (updatedCtx.castSpell) {
         const { card: castCard, ownerPid: castOwnerPid } = updatedCtx.castSpell;
@@ -210,6 +217,20 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     });
   };
   fireTriggerRef.current=fireTrigger;
+
+  // シールドが離れた時の共通処理：その所有者の zRush クリーチャーのハイパーを解放し、shieldLeave を発火
+  const onShieldLeave=(ownerPid)=>{
+    const st=stateRef.current[ownerPid];
+    const setSelf=ownerPid==="p1"?setP1:setP2;
+    const zs=(st.battle||[]).filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
+    if(zs.length>0){
+      setSelf(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
+      zs.forEach(c=>addLog(`[ZR] Zラッシュ: ${c.name} ハイパーモード解放！（自分のシールドが離れた）`));
+      setHyperModeCutIn(zs[0]);
+    }
+    fireTrigger("shieldLeave",{sourcePid:ownerPid});
+  };
+  onShieldLeaveRef.current=onShieldLeave;
 
   const handleTemplateChoose=(tplIdx)=>{
     if(!templateChoiceModal)return;
@@ -372,7 +393,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           const setSt=v.ownerPid==="p1"?setP1:setP2;
           setSt(s=>{if(s.shields.length===0)return s;const sh=s.shields[0];return {...s,shields:s.shields.slice(1),hand:[...s.hand,{...sh,tapped:false,faceUp:false}]};});
           addLog(`[ESCAPE] ${v.card.name} エスケープ：シールド1枚を手札へ（破壊を回避）`);
-          setTimeout(()=>fireTrigger("shieldLeave",{sourcePid:v.ownerPid}),0);
+          setTimeout(()=>onShieldLeave(v.ownerPid),0);
           processVictims(victims,idx+1);
         },
         onCancel:()=>{
@@ -442,19 +463,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         gStrikeCards.forEach(c=>addLog(`[GS] G・ストライク「${c.name}」`));
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
       }
-      // Z-Rush: シールドが離れたらzRushクリーチャーのhyperModeを解放（攻撃ブレイク以外でも shieldLeave 経由で発火可）
+      // シールドが離れた所有者（防御側=otherPid）の zRush 解放＋shieldLeave 発火
       if(broken.length>0){
-        const zActive=activeState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
-        const zOther=otherState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
-        const zAll=[...zActive,...zOther];
-        if(zAll.length>0){
-          if(zActive.length>0)setActiveState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
-          if(zOther.length>0)setOtherState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
-          zAll.forEach(c=>addLog(`[ZR] Zラッシュ: ${c.name} ハイパーモード解放！`));
-          setHyperModeCutIn(zAll[0]);
-        }
-        // 汎用トリガー: カードがシールドゾーンを離れた時（防御側=otherPid のシールド）
-        setTimeout(()=>fireTrigger("shieldLeave",{sourcePid:otherPid}),0);
+        setTimeout(()=>onShieldLeave(otherPid),0);
       }
       addLog(`[BREAK] ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
       if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
@@ -620,6 +631,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           const broken=activeState.shields.slice(0,n);
           setActiveState(s=>({...s,shields:s.shields.slice(n),hand:[...s.hand,...broken.map(c=>({...c,tapped:false}))]}));
           addLog(`${target?.name} ハイパーモード: 相手シールドを${n}枚ブレイク`);
+          // 攻撃側（active）の自分のシールドが離れた → zRush 解放＋shieldLeave
+          setTimeout(()=>onShieldLeave(active),0);
         }
         setHyperTargetedModal(null);
         const attacker=activeState.battle.find(c=>c.uid===attackerUid);
