@@ -140,6 +140,10 @@ export function getStepCandidates(step, selfState, otherState, context, p1, p2, 
       const cards = selfState.hand.filter(c => (c.type === "creature" || c.type === "evo_creature") && getCardCivs(c).includes("light") && c.cost <= (step.maxCost ?? 4));
       return { candidates: cards, isAuto: cards.length === 0, maxSelect: 1 };
     }
+    case "scheduleReviveSubjectEndOfTurn": case "reviveSelfFromGrave":
+      return { candidates: [], isAuto: true };
+    case "shieldizeOpponentCreature":
+      return { candidates: otherState.battle, isAuto: otherState.battle.length === 0, maxSelect: 1 };
     default:
       return { candidates: [], isAuto: true };
   }
@@ -313,7 +317,7 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
       const tgtState = step.target === "opponent" ? otherState : selfState;
       const setTgt   = step.target === "opponent" ? setOther   : setSelf;
       const cards = tgtState.hand.filter(c => selectedUids.includes(c.uid));
-      if (cards.length > 0) { setTgt(s => ({ ...s, hand: s.hand.filter(c => !selectedUids.includes(c.uid)), grave: [...s.grave, ...cards] })); addLog(`${pid}: ${cards.map(c => c.name).join(", ")} 捨てる`); }
+      if (cards.length > 0) { setTgt(s => ({ ...s, hand: s.hand.filter(c => !selectedUids.includes(c.uid)), grave: [...s.grave, ...cards] })); addLog(`${pid}: ${cards.map(c => c.name).join(", ")} 捨てる`); ctx.discardedBy = [...(ctx.discardedBy || []), step.target === "opponent" ? (ownerPid === "p1" ? "p2" : "p1") : ownerPid]; }
       break;
     }
     case "bounceMaxCost": {
@@ -480,6 +484,7 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
         const card = otherState.hand[idx];
         setOther(s => ({ ...s, hand: s.hand.filter((_, i) => i !== idx), grave: [...s.grave, card] }));
         addLog(`${pid}: 相手の手札を見ないで1枚選び、捨てさせた`);
+        ctx.discardedBy = [...(ctx.discardedBy || []), ownerPid === "p1" ? "p2" : "p1"];
       }
       break;
     }
@@ -515,6 +520,8 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
           if (projected <= 0) {
             setOther(s => { const { newBattle, extracted } = extractFromBattle(s.battle, uid); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
             addLog(`${pid}: ${card.name} のパワーを-${amt}（パワー0以下のため破壊）`);
+            const oppPid = ownerPid === "p1" ? "p2" : "p1";
+            ctx.destroyedThisStep = [...(ctx.destroyedThisStep || []), { card, ownerPid: oppPid, viaBattle: false }];
           } else {
             setOther(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tempBuff: newBuff } : c) }));
             addLog(`${pid}: ${card.name} のパワーを-${amt}（このターン）`);
@@ -535,7 +542,8 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
       break;
     }
     case "shieldizeTopDeck": {
-      setSelf(s => { if (s.deck.length === 0) return s; const [top, ...rest] = s.deck; addLog(`${pid}: 山札の上から1枚をシールド化`); return { ...s, deck: rest, shields: [...s.shields, { ...top, tapped: false, faceUp: false }] }; });
+      setSelf(s => { if (s.deck.length === 0) return s; const [top, ...rest] = s.deck; addLog(`${pid}: 山札の上から1枚をシールド化`); return { ...s, deck: rest, shields: [...s.shields, { ...top, tapped: false, faceUp: false }], shieldAddedThisTurn: true }; });
+      ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), ownerPid];
       break;
     }
     case "returnShieldToHand": {
@@ -548,7 +556,8 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
     case "shieldizeFromHand": {
       if (selectedUids.length > 0) {
         const uid = selectedUids[0];
-        setSelf(s => { const c = s.hand.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} をシールド化`); return { ...s, hand: s.hand.filter(x => x.uid !== uid), shields: [...s.shields, { ...c, tapped: false, faceUp: false }] }; });
+        setSelf(s => { const c = s.hand.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} をシールド化`); return { ...s, hand: s.hand.filter(x => x.uid !== uid), shields: [...s.shields, { ...c, tapped: false, faceUp: false }], shieldAddedThisTurn: true }; });
+        ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), ownerPid];
       }
       break;
     }
@@ -608,6 +617,27 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
         const uid = selectedUids[0];
         const card = selfState.hand.find(c => c.uid === uid);
         if (card) { setSelf(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: true }] })); addLog(`${pid}: 光のクリーチャー「${card.name}」を手札から出した`); }
+      }
+      break;
+    }
+    case "scheduleReviveSubjectEndOfTurn": {
+      // 「そのクリーチャー」をこのターンの終わりに墓地から出す（pendingRevive へ予約）
+      const subj = context.subjectCard;
+      if (subj) { setSelf(s => ({ ...s, pendingRevive: [...(s.pendingRevive || []), subj] })); addLog(`${pid}: ${subj.name} をこのターンの終わりに墓地から出す（予約）`); }
+      break;
+    }
+    case "reviveSelfFromGrave": {
+      // 墓地にいるこのカード自身（srcCard）をバトルゾーンへ
+      const uid = srcCard?.uid;
+      const card = uid && selfState.grave.find(c => c.uid === uid);
+      if (card) { setSelf(s => ({ ...s, grave: s.grave.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: true }] })); addLog(`${pid}: ${card.name} を墓地からバトルゾーンへ`); }
+      break;
+    }
+    case "shieldizeOpponentCreature": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = otherState.battle.find(c => c.uid === uid);
+        if (card) { setOther(s => { const { newBattle, extracted } = extractFromBattle(s.battle, uid); return { ...s, battle: newBattle, shields: [...s.shields, ...extracted.map(c => ({ ...c, tapped: false, faceUp: false }))] }; }); addLog(`${pid}: 相手の${card.name} をシールド化`); ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), ownerPid === "p1" ? "p2" : "p1"]; }
       }
       break;
     }

@@ -7,7 +7,7 @@ import { CardFace } from "./CardFace";
 // ===========================
 // CREATURE DETAIL PANEL
 // ===========================
-export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone,ownerState}){
+export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone,ownerState,onHyperUnlock}){
   const [showStack,setShowStack]=useState(false);
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
@@ -97,6 +97,9 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
 
         {/* Buttons */}
         <div style={{display:"flex",gap:8,padding:"8px 12px 12px"}}>
+          {isActive&&drewThisTurn&&card.hyperUnlock&&!card.hyperMode&&onHyperUnlock&&(
+            <button onClick={()=>{onHyperUnlock(card.uid);onClose();}} style={{padding:"10px 12px",borderRadius:6,fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#ffcc0055,#ffcc0022)",border:"1px solid #ffcc00",color:"#ffcc00",cursor:"pointer",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>ハイパー化</button>
+          )}
           {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>{canAtk?"ATTACK":`攻撃不可 (${reason})`}</button>}
           <button onClick={onClose} style={{padding:"10px 16px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>閉じる</button>
         </div>

@@ -6,12 +6,12 @@ import { CardFace } from "../CardFace";
 // ===========================
 export function HyperUntapModal({ modal, onSelect, onSkip }) {
   const [selected, setSelected] = useState(null);
-  const { allies } = modal;
+  const { allies, desc, actionLabel } = modal;
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:415, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:"linear-gradient(160deg,#1a0800,#08080f)", border:"2px solid #ffcc00", borderRadius:14, padding:20, maxWidth:420, width:"100%", boxShadow:"0 0 30px #ffcc0066" }}>
         <div style={{ fontFamily:"'Cinzel',serif", color:"#ffcc00", fontSize:13, fontWeight:900, marginBottom:4, letterSpacing:2 }}>HYPER MODE</div>
-        <div style={{ fontSize:11, color:"#aaa", marginBottom:12 }}>攻撃時：自分の他のクリーチャーを1体アンタップする</div>
+        <div style={{ fontSize:11, color:"#aaa", marginBottom:12 }}>{desc || "攻撃時：自分の他のクリーチャーを1体アンタップする"}</div>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
           {allies.map(c => (
             <CardFace key={c.uid} card={c} small selected={selected===c.uid} onClick={() => setSelected(s => s===c.uid ? null : c.uid)} />
@@ -19,7 +19,7 @@ export function HyperUntapModal({ modal, onSelect, onSkip }) {
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={() => selected && onSelect(selected)} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:selected?"linear-gradient(135deg,#ffcc0055,#ffcc0022)":"#111", border:`1px solid ${selected?"#ffcc00":"#333"}`, color:selected?"#ffcc00":"#444", cursor:selected?"pointer":"not-allowed", fontFamily:"'Cinzel',serif" }}>
-            UNTAP
+            {actionLabel || "UNTAP"}
           </button>
           <button onClick={onSkip} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
             スキップ

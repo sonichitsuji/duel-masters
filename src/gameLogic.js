@@ -86,6 +86,7 @@ export function getEffectiveCost(card, selfBattle) {
     const { amount, filter, min } = c.costReduce;
     if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
     if (filter?.nameContains && !card.name?.includes(filter.nameContains)) continue;
+    if (filter?.civ && !getCardCivs(card).includes(filter.civ)) continue;
     cost = Math.max(min ?? 0, cost - amount);
   }
   return Math.max(cost, getCardCivs(card).length);
@@ -122,6 +123,7 @@ export function civicCount(state, civ){
 export function checkGrantCondition(cond, ownerState){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
+  if(cond.flag) return !!ownerState?.[cond.flag];
   return true;
 }
 
