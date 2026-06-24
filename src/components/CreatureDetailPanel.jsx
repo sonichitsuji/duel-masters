@@ -7,14 +7,15 @@ import { CardFace } from "./CardFace";
 // ===========================
 // CREATURE DETAIL PANEL
 // ===========================
-export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone}){
+export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone,ownerState}){
   const [showStack,setShowStack]=useState(false);
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
-  const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[]).includes("speedAttacker");
-  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
-  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
+  const isCreature=card.type==="creature"||card.type==="evo_creature";
+  const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[],ownerState).includes("speedAttacker");
+  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
+  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
   const hyper=card.hyperMode;
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);

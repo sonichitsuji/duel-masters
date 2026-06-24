@@ -37,11 +37,26 @@ export function ManaDisplay({mana}){
 }
 
 export function ShieldPile({shields,canClick,onBreak}){
+  const slots=Math.max(5,shields.length);
   return(
-    <div style={{display:"flex",gap:3}}>
-      {[0,1,2,3,4].map(i=>{const exists=!!shields[i];return(
-        <div key={i} onClick={()=>exists&&canClick&&onBreak(i)} style={{width:26,height:36,borderRadius:5,border:exists?(canClick?"2px solid #ffe066":"2px solid #4a6fa5"):"2px solid #1a1a2a",background:exists?(canClick?"linear-gradient(135deg,#2a2000,#443300)":"linear-gradient(135deg,#0d1b2a,#1b3a5c)"):"#080810",display:"flex",alignItems:"center",justifyContent:"center",opacity:exists?1:0.15,cursor:exists&&canClick?"pointer":"default",boxShadow:canClick&&exists?"0 0 10px #ffe066aa,inset 0 0 6px #ffe06633":"none",transition:"all 0.15s"}}></div>
-      );})}
+    <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+      {Array.from({length:slots}).map((_,i)=>{
+        const card=shields[i];const exists=!!card;
+        // 表向き(faceUp)のシールドは中身を見せる（G城など、種別非依存）
+        if(exists&&card.faceUp){
+          const cv=CIV[getCardCivs(card)[0]];
+          return(
+            <div key={card.uid||i} onClick={()=>canClick&&onBreak(i)} title={card.name} style={{width:26,height:36,borderRadius:5,border:`2px solid ${canClick?"#ffe066":cv?.color||"#4a6fa5"}`,background:`linear-gradient(135deg,${cv?.bg||"#0d1b2a"},#08080f)`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:canClick?"pointer":"default",boxShadow:canClick?"0 0 10px #ffe066aa":`0 0 5px ${cv?.glow||"#4a6fa5"}55`,transition:"all 0.15s",overflow:"hidden"}}>
+              <span style={{fontSize:7,fontWeight:900,color:cv?.textColor||"#fff",lineHeight:1}}>{cv?.label}</span>
+              <span style={{fontSize:5.5,color:"#ccc",lineHeight:1.05,textAlign:"center",padding:"0 1px"}}>{card.name.length>5?card.name.slice(0,5):card.name}</span>
+              <span style={{fontSize:5,color:"#ffe066"}}>▲表</span>
+            </div>
+          );
+        }
+        return(
+          <div key={card?.uid||i} onClick={()=>exists&&canClick&&onBreak(i)} style={{width:26,height:36,borderRadius:5,border:exists?(canClick?"2px solid #ffe066":"2px solid #4a6fa5"):"2px solid #1a1a2a",background:exists?(canClick?"linear-gradient(135deg,#2a2000,#443300)":"linear-gradient(135deg,#0d1b2a,#1b3a5c)"):"#080810",display:"flex",alignItems:"center",justifyContent:"center",opacity:exists?1:0.15,cursor:exists&&canClick?"pointer":"default",boxShadow:canClick&&exists?"0 0 10px #ffe066aa,inset 0 0 6px #ffe06633":"none",transition:"all 0.15s"}}></div>
+        );
+      })}
     </div>
   );
 }

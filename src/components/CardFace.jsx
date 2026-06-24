@@ -22,12 +22,17 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${effPower}`:card.type==="twinpact"?"TWIN":"SPELL"}</div>
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${effPower}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="castle"?"城":"SPELL"}</div>
       {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}
         {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SA</span>}
         {card.keywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#8888ff",letterSpacing:0}}>BK</span>}
+        {!card.keywords?.includes("blocker")&&grantedKeywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>BK</span>}
+        {card.keywords?.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#e066ff",letterSpacing:0}}>SL</span>}
+        {!card.keywords?.includes("slayer")&&grantedKeywords?.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SL</span>}
+        {!card.keywords?.includes("escape")&&grantedKeywords?.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>ES</span>}
+        {card.keywords?.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#66ddff",letterSpacing:0}}>ES</span>}
         {!(card.keywords?.includes("tBreaker")||hyperTBreaker)&&(card.keywords?.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:7}}>✦✦</span>}
         {(card.keywords?.includes("tBreaker")||hyperTBreaker)&&<span style={{fontSize:7}}>✦✦✦</span>}
         {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}

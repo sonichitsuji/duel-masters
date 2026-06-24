@@ -117,7 +117,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
     <div style={{display:"flex",flexDirection:"column",overflowY:"auto",minHeight:large?"100%":undefined,background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
-      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
+      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} ownerState={state} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
       {revChangeTarget&&(
         <AttackTriggerModal
           attacker={revChangeTarget}
@@ -195,7 +195,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
         <div style={{fontSize:10,fontWeight:400,color:"#f55",marginBottom:4,flexShrink:0}}>バトルゾーン <span style={{color:"#222",fontSize:9}}>(タップで詳細)</span></div>
         <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"center"}}>
           {(()=>{
-            const getGranted=c=>computeGrantedKeywords(c,state.battle);
+            const getGranted=c=>computeGrantedKeywords(c,state.battle,state);
             return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}

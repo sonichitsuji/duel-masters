@@ -105,6 +105,26 @@ export function extractFromBattle(battle, uid) {
   return extractManyFromBattle(battle, [uid]);
 }
 
+// 「エレメント」= クリーチャー(進化含む)またはタマシード
+export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed"; }
+
+// シビルカウント: 自分の指定文明の「クリーチャーまたはタマシード」の数
+// （バトルゾーン＋シールドゾーンの表向きカードを数える。種別非依存で faceUp を見る）
+export function civicCount(state, civ){
+  if(!state) return 0;
+  const match = c => isElement(c) && getCardCivs(c).includes(civ);
+  const inBattle = (state.battle || []).filter(match).length;
+  const inShield = (state.shields || []).filter(c => c.faceUp && match(c)).length;
+  return inBattle + inShield;
+}
+
+// grant規則やパワー強化に付く condition の評価
+export function checkGrantCondition(cond, ownerState){
+  if(!cond) return true;
+  if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
+  return true;
+}
+
 export function getEffectivePower(card, ownerState, allOwnBattle) {
   let power = (card.hyperMode && card.hyperPower != null) ? card.hyperPower : (card.power || 0);
   power += card.tempBuff?.power || 0;
@@ -113,9 +133,14 @@ export function getEffectivePower(card, ownerState, allOwnBattle) {
     const count = (ownerState.grave || []).filter(c => getCardCivs(c).includes(civFilter)).length;
     power += count * perCard;
   }
+  // 自身の条件付きパワー強化（例: シビルカウント5で +10000）
+  for (const cp of (card.condPower || [])) {
+    if (checkGrantCondition(cp.condition, ownerState)) power += cp.amount || 0;
+  }
   for (const ally of (allOwnBattle || [])) {
     if (!ally.grantPowerBoost || ally.uid === card.uid) continue;
-    const { amount, filter } = ally.grantPowerBoost;
+    const { amount, filter, condition } = ally.grantPowerBoost;
+    if (condition && !checkGrantCondition(condition, ownerState)) continue;
     if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
     power += amount;
   }
@@ -129,16 +154,24 @@ export function getEffectivePower(card, ownerState, allOwnBattle) {
   return power;
 }
 
-export function computeGrantedKeywords(card, battleZone) {
+// ownerState を渡すと condition(civicCount等) と表向きシールドの付与源も評価できる。
+// 後方互換: battleZone のみでも動作（その場合 condition は battle だけで評価、表向きシールド源は無し）。
+export function computeGrantedKeywords(card, battleZone, ownerState) {
   const granted = [...(card.tempBuff?.keywords || [])];
-  if (!battleZone) return granted;
-  for (const granter of battleZone) {
+  const zone = battleZone || ownerState?.battle;
+  if (!zone) return granted;
+  const evalState = ownerState || { battle: zone, shields: [] };
+  // 付与源: バトルゾーンの全カード＋シールドゾーンの表向きカード（種別非依存で faceUp を見る）
+  const granters = [...zone, ...((ownerState?.shields || []).filter(s => s.faceUp))];
+  for (const granter of granters) {
     if (!granter.grantKeywords) continue;
     for (const rule of granter.grantKeywords) {
+      if (rule.condition && !checkGrantCondition(rule.condition, evalState)) continue;
       if (rule.filter?.raceContains && !card.race?.includes(rule.filter.raceContains)) continue;
       if (rule.filter?.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) continue;
       if (rule.filter?.notSelf && granter.uid === card.uid) continue;
       if (rule.filter?.nameContains && !card.name?.includes(rule.filter.nameContains)) continue;
+      if (rule.filter?.elementOnly && !isElement(card)) continue;
       if (!granted.includes(rule.keyword)) granted.push(rule.keyword);
     }
   }

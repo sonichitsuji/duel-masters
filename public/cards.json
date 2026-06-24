@@ -1043,5 +1043,24 @@
         { "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す。スピードアタッカーを与え、このターンの終わりに破壊する。", "steps": [ { "type": "reviveFilteredFromGrave", "filter": { "maxCost": 5 } } ] }
       ]
     }
+  },
+  {
+    "id": 73,
+    "name": "旋略のS アドミラル・アレグル",
+    "type": "creature",
+    "civ": "water",
+    "race": "サイバー・ムーン/超化獣",
+    "cost": 2,
+    "power": 1000,
+    "keywords": ["blocker", "zRush"],
+    "effect": "ブロッカー\n相手のクリーチャーが出た時、自分はカードを1枚引いてもよい。\nZラッシュ（シールドが離れたら、次の自分のターンのはじめまで、このクリーチャーのハイパーモードを解放する）\n──ハイパーモード（パワー6000）──\nW・ブレイカー\nこのクリーチャーが攻撃する時、自分の手札の枚数以下のコストを持つ、クリーチャーではないカードを1枚、自分の手札からコストを支払わずに実行してもよい。",
+    "autoEffect": null,
+    "zRush": true,
+    "hyperPower": 6000,
+    "hyperKeywords": ["wBreaker"],
+    "triggers": [
+      { "on": "opponentCreaturePlay", "optional": true, "effect": { "type": "steps", "steps": [ { "type": "drawCards", "amount": 1, "optional": true, "label": "カードを1枚引いてもよい" } ] } },
+      { "on": "attack", "optional": true, "effect": { "type": "steps", "steps": [ { "type": "putFromHandFreeUnderHandCount", "optional": true, "label": "手札の枚数以下のコストを持つ、クリーチャーではないカードを1枚、コストを支払わず実行してもよい（ハイパーモード時）" } ] } }
+    ]
   }
 ]

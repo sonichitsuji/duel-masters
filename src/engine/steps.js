@@ -1,5 +1,5 @@
 import { KEYWORD_LABELS } from "../constants";
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement } from "../gameLogic";
 
 // ===========================
 // STEP EFFECT SYSTEM
@@ -112,6 +112,34 @@ export function getStepCandidates(step, selfState, otherState, context, p1, p2, 
     }
     case "randomDiscardOpponent": case "discardHandDrawPlusOne": case "drawCardsPerTappedOpponent": case "drawCards":
       return { candidates: [], isAuto: true };
+    // --- 新規ステップ型 (基盤フェーズ) ---
+    case "debuffOpponentPower":
+      return { candidates: otherState.battle, isAuto: otherState.battle.length === 0, maxSelect: 1 };
+    case "bounceElement": {
+      const cands = otherState.battle.filter(isElement);
+      return { candidates: cands, isAuto: cands.length === 0, maxSelect: 1 };
+    }
+    case "shieldizeTopDeck": case "drawPerFilter":
+      return { candidates: [], isAuto: true };
+    case "returnShieldToHand":
+      return { candidates: selfState.shields, isAuto: selfState.shields.length === 0, maxSelect: 1 };
+    case "shieldizeFromHand":
+      return { candidates: selfState.hand, isAuto: selfState.hand.length === 0, maxSelect: 1 };
+    case "putFromHandFreeUnderHandCount": {
+      const thr = selfState.hand.length;
+      const cards = selfState.hand.filter(c => c.type !== "creature" && c.type !== "evo_creature" && c.cost <= thr);
+      return { candidates: cards, isAuto: cards.length === 0, maxSelect: 1 };
+    }
+    case "castFreeSTriggerSpellFromHand": {
+      const cards = selfState.hand.filter(c => c.type === "spell" && c.keywords?.includes("sTrigger"));
+      return { candidates: cards, isAuto: cards.length === 0, maxSelect: 1 };
+    }
+    case "tapNoUntapNextTurn":
+      return { candidates: otherState.battle, isAuto: otherState.battle.length === 0, maxSelect: 1 };
+    case "playLightCreatureFromHand": {
+      const cards = selfState.hand.filter(c => (c.type === "creature" || c.type === "evo_creature") && getCardCivs(c).includes("light") && c.cost <= (step.maxCost ?? 4));
+      return { candidates: cards, isAuto: cards.length === 0, maxSelect: 1 };
+    }
     default:
       return { candidates: [], isAuto: true };
   }
@@ -473,6 +501,114 @@ export function executeStepAction(step, selectedUids, context, ownerPid, p1, set
       const n = Math.min(step.amount ?? 1, selfState.deck.length);
       if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
       addLog(`${pid}: ${n}枚ドロー`);
+      break;
+    }
+    // --- 新規ステップ型 (基盤フェーズ) ---
+    case "debuffOpponentPower": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const amt = step.amount ?? 0;
+        const card = otherState.battle.find(c => c.uid === uid);
+        if (card) {
+          const newBuff = { power: (card.tempBuff?.power || 0) - amt, keywords: card.tempBuff?.keywords, expires: "endOfTurn" };
+          const projected = getEffectivePower({ ...card, tempBuff: newBuff }, otherState, otherState.battle);
+          if (projected <= 0) {
+            setOther(s => { const { newBattle, extracted } = extractFromBattle(s.battle, uid); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
+            addLog(`${pid}: ${card.name} のパワーを-${amt}（パワー0以下のため破壊）`);
+          } else {
+            setOther(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tempBuff: newBuff } : c) }));
+            addLog(`${pid}: ${card.name} のパワーを-${amt}（このターン）`);
+          }
+        }
+      }
+      break;
+    }
+    case "bounceElement": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = otherState.battle.find(c => c.uid === uid);
+        if (card) {
+          setOther(s => { const { newBattle, extracted } = extractFromBattle(s.battle, uid); return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c => ({ ...c, tapped: false, summonedThisTurn: false, hyperMode: false, tempBuff: undefined }))] }; });
+          addLog(`${pid}: 相手の${card.name} を持ち主の手札に戻した`);
+        }
+      }
+      break;
+    }
+    case "shieldizeTopDeck": {
+      setSelf(s => { if (s.deck.length === 0) return s; const [top, ...rest] = s.deck; addLog(`${pid}: 山札の上から1枚をシールド化`); return { ...s, deck: rest, shields: [...s.shields, { ...top, tapped: false, faceUp: false }] }; });
+      break;
+    }
+    case "returnShieldToHand": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        setSelf(s => { const sh = s.shields.find(x => x.uid === uid); if (!sh) return s; addLog(`${pid}: シールド「${sh.name}」を手札へ（S・トリガー不使用）`); return { ...s, shields: s.shields.filter(x => x.uid !== uid), hand: [...s.hand, { ...sh, tapped: false, faceUp: false }] }; });
+      }
+      break;
+    }
+    case "shieldizeFromHand": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        setSelf(s => { const c = s.hand.find(x => x.uid === uid); if (!c) return s; addLog(`${pid}: ${c.name} をシールド化`); return { ...s, hand: s.hand.filter(x => x.uid !== uid), shields: [...s.shields, { ...c, tapped: false, faceUp: false }] }; });
+      }
+      break;
+    }
+    case "putFromHandFreeUnderHandCount": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.hand.find(c => c.uid === uid);
+        if (card) {
+          if (card.type === "spell") {
+            setSelf(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), grave: [...s.grave, card] }));
+            addLog(`${pid}: 「${card.name}」をコストを支払わず実行`);
+            ctx.castSpell = { card, ownerPid };
+          } else if (card.type === "castle") {
+            setSelf(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), shields: [...s.shields, { ...card, tapped: false, faceUp: true }] }));
+            addLog(`${pid}: 「${card.name}」を表向きシールド化`);
+          } else {
+            setSelf(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: false }] }));
+            addLog(`${pid}: 「${card.name}」をバトルゾーンへ`);
+          }
+        }
+      }
+      break;
+    }
+    case "castFreeSTriggerSpellFromHand": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.hand.find(c => c.uid === uid);
+        if (card) { setSelf(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), grave: [...s.grave, card] })); addLog(`${pid}: S・トリガー呪文「${card.name}」を無償で唱えた`); ctx.castSpell = { card, ownerPid }; }
+      }
+      break;
+    }
+    case "drawPerFilter": {
+      const f = step.filter || {};
+      const count = selfState.battle.filter(c => {
+        if (f.element && !isElement(c)) return false;
+        if (f.creatureOnly && !(c.type === "creature" || c.type === "evo_creature")) return false;
+        if (f.civ && !getCardCivs(c).includes(f.civ)) return false;
+        if (f.maxCost != null && !(c.cost <= f.maxCost)) return false;
+        return true;
+      }).length;
+      const n = Math.min(count, selfState.deck.length);
+      if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
+      addLog(`${pid}: 条件一致${count}につき${n}枚ドロー`);
+      break;
+    }
+    case "tapNoUntapNextTurn": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = otherState.battle.find(c => c.uid === uid);
+        setOther(s => ({ ...s, battle: s.battle.map(c => c.uid === uid ? { ...c, tapped: true, noUntapNextTurn: true } : c) }));
+        if (card) addLog(`${pid}: 相手の${card.name} をタップ（次の相手ターンに起きない）`);
+      }
+      break;
+    }
+    case "playLightCreatureFromHand": {
+      if (selectedUids.length > 0) {
+        const uid = selectedUids[0];
+        const card = selfState.hand.find(c => c.uid === uid);
+        if (card) { setSelf(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: true }] })); addLog(`${pid}: 光のクリーチャー「${card.name}」を手札から出した`); }
+      }
       break;
     }
     default: addLog(`[未実装ステップ] ${step.type}`);
