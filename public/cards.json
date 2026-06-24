@@ -1043,5 +1043,530 @@
         { "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す。スピードアタッカーを与え、このターンの終わりに破壊する。", "steps": [ { "type": "reviveFilteredFromGrave", "filter": { "maxCost": 5 } } ] }
       ]
     }
+  },
+  {
+    "id": 73,
+    "name": "旋略のS アドミラル・アレグル",
+    "type": "creature",
+    "civ": "water",
+    "race": "サイバー・ムーン/超化獣",
+    "cost": 2,
+    "power": 1000,
+    "keywords": ["blocker", "zRush"],
+    "effect": "ブロッカー\n相手のクリーチャーが出た時、自分はカードを1枚引いてもよい。\nZラッシュ（シールドが離れたら、次の自分のターンのはじめまで、このクリーチャーのハイパーモードを解放する）\n──ハイパーモード（パワー6000）──\nW・ブレイカー\nこのクリーチャーが攻撃する時、自分の手札の枚数以下のコストを持つ、クリーチャーではないカードを1枚、自分の手札からコストを支払わずに実行してもよい。",
+    "autoEffect": null,
+    "zRush": true,
+    "hyperPower": 6000,
+    "hyperKeywords": ["wBreaker"],
+    "triggers": [
+      { "on": "opponentCreaturePlay", "optional": true, "effect": { "type": "steps", "steps": [ { "type": "drawCards", "amount": 1, "optional": true, "label": "カードを1枚引いてもよい" } ] } },
+      { "on": "attack", "optional": true, "effect": { "type": "steps", "steps": [ { "type": "putFromHandFreeUnderHandCount", "optional": true, "label": "手札の枚数以下のコストを持つ、クリーチャーではないカードを1枚、コストを支払わず実行してもよい（ハイパーモード時）" } ] } }
+    ]
+  },
+  {
+    "id": 74,
+    "name": "真価と代価のチェスト",
+    "type": "tamaseed",
+    "civ": [
+      "light",
+      "darkness"
+    ],
+    "race": null,
+    "cost": 3,
+    "power": 0,
+    "keywords": [],
+    "effect": "シビルカウント3：自分の光のクリーチャーまたは光のタマシードが合計3つ以上あれば、自分のクリーチャーすべてに「ブロッカー」を与える。\nシビルカウント3：自分の闇のクリーチャーまたは闇のタマシードが合計3つ以上あれば、自分のクリーチャーすべてに「スレイヤー」を与える。\n自分のクリーチャーがバトル中に破壊された時、そのターンの終わりに、そのクリーチャーを墓地から出す。",
+    "autoEffect": null,
+    "grantKeywords": [
+      {
+        "keyword": "blocker",
+        "condition": {
+          "type": "civicCount",
+          "civ": "light",
+          "count": 3
+        }
+      },
+      {
+        "keyword": "slayer",
+        "condition": {
+          "type": "civicCount",
+          "civ": "darkness",
+          "count": 3
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "on": "selfBattleDestroy",
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "scheduleReviveSubjectEndOfTurn",
+              "label": "そのクリーチャーをこのターンの終わりに墓地から出す"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 75,
+    "name": "魔獣星樹ギガゲドー",
+    "type": "creature",
+    "civ": [
+      "light",
+      "darkness"
+    ],
+    "race": "キマイラ/スターライト・ツリー",
+    "cost": 3,
+    "power": 5000,
+    "keywords": [
+      "blocker"
+    ],
+    "cantAttackPlayer": true,
+    "effect": "ブロッカー\nこのクリーチャーは、プレイヤーを攻撃できない。\n自分のクリーチャーが出た時、自分のシールドを1つ手札に戻してもよい。ただし、その「S・トリガー」は使えない。\nこのクリーチャーが破壊された時、自分の山札の上から1枚目をシールド化してもよい。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "selfCreaturePlay",
+        "optional": true,
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "returnShieldToHand",
+              "optional": true,
+              "label": "自分のシールドを1つ手札に戻してもよい（S・トリガー不使用）"
+            }
+          ]
+        }
+      },
+      {
+        "on": "destroyed",
+        "optional": true,
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "shieldizeTopDeck",
+              "optional": true,
+              "label": "自分の山札の上から1枚目をシールド化してもよい"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 76,
+    "name": "～王家の御曹司～",
+    "type": "creature",
+    "civ": [
+      "light",
+      "water",
+      "darkness"
+    ],
+    "race": "エンジェル・コマンド/ロスト・クルセイダー/スチーム・ナイト",
+    "cost": 3,
+    "power": 3000,
+    "keywords": [
+      "sTrigger",
+      "blocker"
+    ],
+    "effect": "S・トリガー\nブロッカー\nこのクリーチャーが出た時、相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-4000する。（パワー0以下のクリーチャーは破壊される）\nこのクリーチャーが離れた時、カードを1枚引いてもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "type": "steps",
+      "steps": [
+        {
+          "type": "debuffOpponentPower",
+          "amount": 4000,
+          "label": "相手のクリーチャー1体のパワーを-4000（このターン）"
+        }
+      ]
+    },
+    "triggers": [
+      {
+        "on": "leave",
+        "optional": true,
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "drawCards",
+              "amount": 1,
+              "optional": true,
+              "label": "カードを1枚引いてもよい"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 77,
+    "name": "超光喜 エルボロム",
+    "type": "creature",
+    "civ": [
+      "light",
+      "water"
+    ],
+    "race": "デーモン・コマンド/超化獣",
+    "cost": 4,
+    "power": 6000,
+    "keywords": [
+      "blocker",
+      "wBreaker"
+    ],
+    "hyperPower": 8500,
+    "hyperUnlock": {
+      "type": "tapOwnCreature",
+      "count": 1
+    },
+    "effect": "ブロッカー\nW・ブレイカー\nこのクリーチャーが出た時または攻撃する時、カードを1枚引く。その後、自分の手札を1枚、シールド化してもよい。\nハイパー化：自分の他のクリーチャーを1体タップする。\n──ハイパーモード（パワー8500）──\n各ターンの終わりに、このターン自分のシールドゾーンにカードが置かれていたら、「S・トリガー」を持つ呪文を1枚、自分の手札からコストを支払わずに唱えてもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "type": "steps",
+      "steps": [
+        {
+          "type": "drawCards",
+          "amount": 1,
+          "label": "カードを1枚引く"
+        },
+        {
+          "type": "shieldizeFromHand",
+          "optional": true,
+          "label": "自分の手札を1枚シールド化してもよい"
+        }
+      ]
+    },
+    "triggers": [
+      {
+        "on": "attack",
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "drawCards",
+              "amount": 1,
+              "label": "カードを1枚引く"
+            },
+            {
+              "type": "shieldizeFromHand",
+              "optional": true,
+              "label": "自分の手札を1枚シールド化してもよい"
+            }
+          ]
+        }
+      },
+      {
+        "on": "endOfTurn",
+        "hyperOnly": true,
+        "condition": {
+          "flag": "shieldAddedThisTurn"
+        },
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "castFreeSTriggerSpellFromHand",
+              "optional": true,
+              "label": "S・トリガーを持つ呪文を1枚、コストを支払わず唱えてもよい"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 78,
+    "name": "深き知識の神殿 ブルー・ツナミ",
+    "type": "castle",
+    "civ": [
+      "water",
+      "darkness"
+    ],
+    "race": null,
+    "cost": 4,
+    "power": 0,
+    "keywords": [],
+    "faceUpLeaveTo": "grave",
+    "effect": "G城（G城は実行したら、表向きでシールド化される。このカードが表向きで自分のシールドゾーンを離れる時、かわりに墓地に置く）\n自分のターンに自分がカードを引いた時、相手は自身の手札を1枚選び、捨てる。\n各ターン、はじめて自分のクリーチャーが攻撃する時、カードを1枚引いてもよい。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "selfDraw",
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "handDiscard",
+              "target": "opponent",
+              "label": "相手は自身の手札を1枚選び捨てる"
+            }
+          ]
+        }
+      },
+      {
+        "on": "ownCreatureAttack",
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "drawCards",
+              "amount": 1,
+              "optional": true,
+              "label": "カードを1枚引いてもよい"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 79,
+    "name": "～不死の黄昏司祭～",
+    "type": "creature",
+    "civ": [
+      "light",
+      "water",
+      "darkness"
+    ],
+    "race": "エンジェル・コマンド/ドラゴン・ゾンビ/スチーム・ナイト",
+    "cost": 4,
+    "power": 4000,
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、相手のエレメントを1つ選び、持ち主の手札に戻す。その後、相手の手札を1枚見ないで選び、捨てさせる。\n相手が自身の手札を1枚捨てた時、相手のクリーチャーを1体選び、タップする。次の相手のターンのはじめに、そのクリーチャーはアンタップしない。",
+    "autoEffect": {
+      "trigger": "play",
+      "type": "steps",
+      "steps": [
+        {
+          "type": "bounceElement",
+          "label": "相手のエレメントを1つ持ち主の手札に戻す"
+        },
+        {
+          "type": "randomDiscardOpponent",
+          "label": "相手の手札を1枚見ないで捨てさせる"
+        }
+      ]
+    },
+    "triggers": [
+      {
+        "on": "opponentDiscard",
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "tapNoUntapNextTurn",
+              "label": "相手クリーチャー1体をタップ（次の相手ターンに起きない）"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 80,
+    "name": "シェケダン・ドメチアーレ",
+    "type": "creature",
+    "civ": "light",
+    "race": "メカ・デル・ディネロ",
+    "cost": 5,
+    "power": 5500,
+    "keywords": [
+      "blocker"
+    ],
+    "costReduce": {
+      "amount": 2,
+      "filter": {
+        "civ": "light"
+      },
+      "min": 1
+    },
+    "condPower": [
+      {
+        "condition": {
+          "type": "civicCount",
+          "civ": "light",
+          "count": 5
+        },
+        "amount": 10000
+      }
+    ],
+    "effect": "ブロッカー\nこのクリーチャーが出た時、自分の光のクリーチャーまたは光のタマシード1つにつき、カードを1枚引いてもよい。\n自分の光のクリーチャーと光のタマシードを使うコストを2少なくする。ただし、コストは0以下にはならない。\nシビルカウント5：自分の光のクリーチャーまたは光のタマシードが合計5つ以上あれば、このクリーチャーのパワーを+10000し、「T・ブレイカー」と「このクリーチャーが攻撃する時、相手のクリーチャーを1体選び、シールド化してもよい」を与える。",
+    "autoEffect": {
+      "trigger": "play",
+      "type": "steps",
+      "steps": [
+        {
+          "type": "drawPerFilter",
+          "filter": {
+            "civ": "light",
+            "element": true
+          },
+          "optional": true,
+          "label": "光のクリーチャー/タマシード1つにつき1枚引いてもよい"
+        }
+      ]
+    },
+    "grantKeywords": [
+      {
+        "keyword": "tBreaker",
+        "condition": {
+          "type": "civicCount",
+          "civ": "light",
+          "count": 5
+        },
+        "filter": {
+          "nameContains": "シェケダン"
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "on": "attack",
+        "condition": {
+          "type": "civicCount",
+          "civ": "light",
+          "count": 5
+        },
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "shieldizeOpponentCreature",
+              "optional": true,
+              "label": "相手のクリーチャーを1体選び、シールド化してもよい"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 81,
+    "name": "パルフェル・トリセラティ",
+    "type": "creature",
+    "civ": "light",
+    "race": "メカ・デル・ディネロ",
+    "cost": 5,
+    "power": 5500,
+    "keywords": [
+      "escape"
+    ],
+    "effect": "エスケープ（このクリーチャーが破壊される時、墓地に置くかわりに自分のシールドを1つ手札に加えてもよい。ただし、その「S・トリガー」は使えない）\nこのクリーチャーが攻撃する時、自分のコスト4以下のクリーチャー1体につき、カードを1枚引いてもよい。\n自分のシールドが離れた時、光のコスト4以下のクリーチャーを1体、自分の手札から出してもよい。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "attack",
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "drawPerFilter",
+              "filter": {
+                "creatureOnly": true,
+                "maxCost": 4
+              },
+              "optional": true,
+              "label": "コスト4以下のクリーチャー1体につき1枚引いてもよい"
+            }
+          ]
+        }
+      },
+      {
+        "on": "shieldLeave",
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "playLightCreatureFromHand",
+              "maxCost": 4,
+              "optional": true,
+              "label": "光のコスト4以下のクリーチャーを手札から出してもよい"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 82,
+    "name": "DARK MEMORY CONTAINER",
+    "type": "creature",
+    "civ": [
+      "light",
+      "water",
+      "darkness"
+    ],
+    "race": "???/スチーム・ナイト",
+    "cost": 5,
+    "power": 5500,
+    "keywords": [
+      "blocker"
+    ],
+    "effect": "ブロッカー\nこのクリーチャーが出た時、カードを2枚引く。\nカードが自分のシールドゾーンに置かれた時、このクリーチャーを自分の墓地から出してもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "type": "steps",
+      "steps": [
+        {
+          "type": "drawCards",
+          "amount": 2,
+          "label": "カードを2枚引く"
+        }
+      ]
+    },
+    "triggers": [
+      {
+        "on": "shieldAdded",
+        "optional": true,
+        "effect": {
+          "type": "steps",
+          "steps": [
+            {
+              "type": "reviveSelfFromGrave",
+              "optional": true,
+              "label": "このクリーチャーを自分の墓地から出してもよい"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": 83,
+    "name": "冥界を統べる新月のハーデス",
+    "type": "creature",
+    "civ": [
+      "light",
+      "darkness"
+    ],
+    "race": "エンジェル・コマンド/デーモン・コマンド/月光王国",
+    "cost": 9,
+    "power": 15500,
+    "keywords": [
+      "blocker",
+      "tBreaker"
+    ],
+    "effect": "ブロッカー\nT・ブレイカー\n自分のクリーチャーすべてに「エスケープ」を与える。\n＜オシオキムーン＞：カードが自分のシールドゾーンを離れた時、相手のクリーチャーを1体選び、破壊する。",
+    "autoEffect": null,
+    "grantKeywords": [
+      {
+        "keyword": "escape"
+      }
+    ],
+    "triggers": [
+      {
+        "on": "shieldLeave",
+        "effect": {
+          "type": "destroy",
+          "target": "opponent",
+          "amount": 1
+        }
+      }
+    ]
   }
 ]

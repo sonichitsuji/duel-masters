@@ -7,14 +7,15 @@ import { CardFace } from "./CardFace";
 // ===========================
 // CREATURE DETAIL PANEL
 // ===========================
-export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone}){
+export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose,battleZone,ownerState,onHyperUnlock}){
   const [showStack,setShowStack]=useState(false);
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
-  const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[]).includes("speedAttacker");
-  const canAtk=isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
-  const reason=!isActive?null:card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
+  const isCreature=card.type==="creature"||card.type==="evo_creature";
+  const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[],ownerState).includes("speedAttacker");
+  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
+  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
   const hyper=card.hyperMode;
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
@@ -96,6 +97,9 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
 
         {/* Buttons */}
         <div style={{display:"flex",gap:8,padding:"8px 12px 12px"}}>
+          {isActive&&drewThisTurn&&card.hyperUnlock&&!card.hyperMode&&onHyperUnlock&&(
+            <button onClick={()=>{onHyperUnlock(card.uid);onClose();}} style={{padding:"10px 12px",borderRadius:6,fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#ffcc0055,#ffcc0022)",border:"1px solid #ffcc00",color:"#ffcc00",cursor:"pointer",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>ハイパー化</button>
+          )}
           {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>{canAtk?"ATTACK":`攻撃不可 (${reason})`}</button>}
           <button onClick={onClose} style={{padding:"10px 16px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>閉じる</button>
         </div>

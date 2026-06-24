@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords } from "../gameLogic";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition } from "../gameLogic";
 import { executeStepAction } from "../engine/steps";
 import { processEffect } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -10,8 +10,35 @@ import { TemplateChoiceModal } from "../components/modals/TemplateChoiceModal";
 import { FinalRevolutionModal } from "../components/modals/FinalRevolutionModal";
 import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
+import { ReplacementModal } from "../components/modals/ReplacementModal";
 import { PlayerBoard } from "../components/PlayerBoard";
 import { StepIndicator } from "../components/BoardWidgets";
+
+// 汎用トリガーの関係性解決（ゾーン走査型）
+// triggerName: 発生したイベント名 / on: カードが宣言する誘発条件
+// watcherPid: 監視カードの支配者 / sourcePid: イベントの所属プレイヤー
+function triggerMatches(on, triggerName, watcherPid, sourcePid){
+  if(on === triggerName){
+    // 所属プレイヤー相対のイベントは「自分の」ものだけ反応
+    if(["selfDraw","shieldLeave","shieldAdded","ownCreatureAttack"].includes(triggerName)) return watcherPid === sourcePid;
+    if(triggerName === "opponentDiscard") return watcherPid !== sourcePid;
+    return true;
+  }
+  if(triggerName === "creatureEnter"){
+    if(on === "selfCreaturePlay") return watcherPid === sourcePid;
+    if(on === "opponentCreaturePlay") return watcherPid !== sourcePid;
+  }
+  return false;
+}
+
+// leave/destroyed/battleDestroy を「別の永続が監視する」owner相対マッチ
+function watcherLeaveMatch(on, triggerName, watcherPid, subjOwner){
+  const own = watcherPid === subjOwner;
+  if(triggerName === "leave")         return (on === "selfCreatureLeave" && own) || (on === "opponentCreatureLeave" && !own);
+  if(triggerName === "battleDestroy") return (on === "selfBattleDestroy" && own) || (on === "opponentBattleDestroy" && !own);
+  if(triggerName === "destroyed")     return (on === "selfCreatureDestroyed" && own) || (on === "opponentCreatureDestroyed" && !own);
+  return false;
+}
 
 // ===========================
 // BATTLE SCREEN
@@ -52,11 +79,18 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const otherState=active==="p1"?p2:p1;
   const setActiveState=active==="p1"?setP1:setP2;
   const setOtherState=active==="p1"?setP2:setP1;
+  // 汎用トリガー/置換が常に最新の盤面を読めるよう ref に保持
+  const stateRef=useRef({p1,p2});
+  stateRef.current={p1,p2};
+  const fireTriggerRef=useRef();
+  const [replacementModal,setReplacementModal]=useState(null);
+  const [attackedThisTurn,setAttackedThisTurn]=useState(false);
+  const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
 
-  const startStepEffect = useCallback((steps, ownerPid, srcCard) => {
+  const startStepEffect = useCallback((steps, ownerPid, srcCard, subjectCard) => {
     setActiveSteps(prev => {
-      if (prev === null) return { steps, stepIdx: 0, ownerPid, srcCard, context: { srcCardUid: srcCard?.uid } };
-      setEffectQueue(q => [...q, { steps, ownerPid, srcCard }]);
+      if (prev === null) return { steps, stepIdx: 0, ownerPid, srcCard, context: { srcCardUid: srcCard?.uid, subjectCard } };
+      setEffectQueue(q => [...q, { steps, ownerPid, srcCard, subjectCard }]);
       return prev;
     });
   }, []);
@@ -65,6 +99,24 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveSteps(prev => {
       if (!prev) return null;
       const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
+      // ステップ内で破壊されたカードの leave/destroyed/battleDestroy を発火（A7）
+      if (updatedCtx.destroyedThisStep && updatedCtx.destroyedThisStep.length) {
+        const list = updatedCtx.destroyedThisStep;
+        delete updatedCtx.destroyedThisStep;
+        list.forEach(d => setTimeout(() => { fireTriggerRef.current("leave",{card:d.card,ownerPid:d.ownerPid}); fireTriggerRef.current("destroyed",{card:d.card,ownerPid:d.ownerPid}); if(d.viaBattle) fireTriggerRef.current("battleDestroy",{card:d.card,ownerPid:d.ownerPid}); }, 0));
+      }
+      // ステップ内でシールドが置かれた時の shieldAdded を発火（DARK MEMORY等）
+      if (updatedCtx.shieldAddedFor && updatedCtx.shieldAddedFor.length) {
+        const pids = [...new Set(updatedCtx.shieldAddedFor)];
+        delete updatedCtx.shieldAddedFor;
+        pids.forEach(pid => setTimeout(() => fireTriggerRef.current("shieldAdded",{sourcePid:pid}), 0));
+      }
+      // ステップ内で手札が捨てられた時の opponentDiscard を発火（不死の黄昏司祭等）
+      if (updatedCtx.discardedBy && updatedCtx.discardedBy.length) {
+        const pids = updatedCtx.discardedBy;
+        delete updatedCtx.discardedBy;
+        pids.forEach(pid => setTimeout(() => fireTriggerRef.current("opponentDiscard",{sourcePid:pid}), 0));
+      }
       if (updatedCtx.castSpell) {
         const { card: castCard, ownerPid: castOwnerPid } = updatedCtx.castSpell;
         delete updatedCtx.castSpell;
@@ -89,7 +141,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setEffectQueue(q => {
         if (q.length > 0) {
           const [next, ...rest] = q;
-          setTimeout(() => setActiveSteps({ steps: next.steps, stepIdx: 0, ownerPid: next.ownerPid, srcCard: next.srcCard, context: { srcCardUid: next.srcCard?.uid } }), 0);
+          setTimeout(() => setActiveSteps({ steps: next.steps, stepIdx: 0, ownerPid: next.ownerPid, srcCard: next.srcCard, context: { srcCardUid: next.srcCard?.uid, subjectCard: next.subjectCard } }), 0);
           return rest;
         }
         return q;
@@ -98,18 +150,66 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     });
   }, [p1, p2, addLog]);
 
-  const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName,srcCardOverride)=>{
+  const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName,srcCardOverride,subjectCard)=>{
     if(!effect) return;
     const srcCard=srcCardOverride||cardDb.find(c=>c.name===sourceName)||{name:sourceName};
     showCutIn({title:"効果発動！",cardName:sourceName,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
     if(effect.type==="steps"){
-      startStepEffect(effect.steps, ownerPid, srcCard);
+      startStepEffect(effect.steps, ownerPid, srcCard, subjectCard);
     } else if(effect.type==="chooseTimes"){
       setTemplateChoiceModal({count:effect.count,templates:effect.templates,ownerPid,srcCard});
     } else {
       setEffectConfirmModal({effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,srcCard});
     }
   };
+
+  // 汎用トリガー・ディスパッチャ
+  // ゾーン走査型: creatureEnter/selfDraw/shieldLeave/shieldAdded/opponentDiscard（opts.sourcePid）
+  // 攻撃型: attack（opts.sourcePid, opts.attackerUid）
+  // 離脱カード固有型: leave/destroyed/battleDestroy（opts.card, opts.ownerPid）
+  const fireTrigger=(triggerName,opts={})=>{
+    const cur=stateRef.current;
+    const runOne=(card,ownerPid,tr,subject)=>{
+      const setSelf=ownerPid==="p1"?setP1:setP2;
+      const oPid=ownerPid==="p1"?"p2":"p1";
+      const setOther=ownerPid==="p1"?setP2:setP1;
+      if(tr.hyperOnly&&!card.hyperMode) return;
+      if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid])) return;
+      setTimeout(()=>triggerEffect(tr.effect,ownerPid,stateRef.current[ownerPid],setSelf,stateRef.current[oPid],setOther,card.name,{...card},subject),0);
+    };
+    const runCardTriggers=(card,ownerPid)=>{
+      (card.triggers||[]).forEach(tr=>{ if(tr.on===triggerName) runOne(card,ownerPid,tr); });
+    };
+    if(triggerName==="leave"||triggerName==="destroyed"||triggerName==="battleDestroy"){
+      // 1) 離脱カード自身の triggers
+      if(opts.card&&opts.ownerPid) runCardTriggers(opts.card,opts.ownerPid);
+      // 2) 監視カード（owner相対, subject=離脱カード）。battle＋表向きshield を走査
+      const subj=opts.card, subjOwner=opts.ownerPid;
+      ["p1","p2"].forEach(watcherPid=>{
+        const st=cur[watcherPid];
+        [...st.battle,...st.shields.filter(s=>s.faceUp)].forEach(card=>{
+          if(subj&&card.uid===subj.uid) return;
+          (card.triggers||[]).forEach(tr=>{ if(watcherLeaveMatch(tr.on,triggerName,watcherPid,subjOwner)) runOne(card,watcherPid,tr,subj); });
+        });
+      });
+      return;
+    }
+    if(triggerName==="attack"){
+      const ownerPid=opts.sourcePid;
+      const card=cur[ownerPid].battle.find(c=>c.uid===opts.attackerUid);
+      if(card) runCardTriggers(card,ownerPid);
+      return;
+    }
+    ["p1","p2"].forEach(watcherPid=>{
+      const st=cur[watcherPid];
+      // shieldAdded は墓地のカード（自身を墓地から出す系）も監視対象に含める
+      const watchers=[...st.battle,...st.shields.filter(s=>s.faceUp),...(triggerName==="shieldAdded"?st.grave:[])];
+      watchers.forEach(card=>{
+        (card.triggers||[]).forEach(tr=>{ if(triggerMatches(tr.on,triggerName,watcherPid,opts.sourcePid)) runOne(card,watcherPid,tr); });
+      });
+    });
+  };
+  fireTriggerRef.current=fireTrigger;
 
   const handleTemplateChoose=(tplIdx)=>{
     if(!templateChoiceModal)return;
@@ -135,6 +235,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
+    setTimeout(()=>fireTrigger("selfDraw",{sourcePid:active}),0);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
   const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUid=null)=>{
@@ -142,10 +243,21 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const newMana=tapManaByUids(activeState.mana,selectedManaUids);
     const newHand=activeState.hand.filter((_,i)=>i!==idx);
     const isSpell=card.type==="spell"||(card.type==="twinpact"&&twinpactSide==="spell");
+    const isCastle=card.type==="castle";
     const effectiveSide=twinpactSide==="spell"?card.spellSide:card;
-    if(!isSpell){
+    if(isCastle){
+      // G城: 表向きの新しいシールドとしてシールドゾーンへ
+      const newShields=[...activeState.shields,{...card,tapped:false,faceUp:true}];
+      setActiveState(s=>({...s,hand:newHand,mana:newMana,shields:newShields,shieldAddedThisTurn:true}));
+      addLog(`${active}: 城「${card.name}」を表向きでシールド化`);
+      showCutIn({title:"城！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
+      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,shields:newShields},setActiveState,otherState,setOtherState,card.name,{...card});
+      setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:active}),0);
+    }else if(!isSpell){
+      // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
       const isEvo=card.type==="evo_creature";
+      const isCreature=card.type==="creature"||card.type==="evo_creature";
       let evoBase=undefined;
       let battleWithoutBase=activeState.battle;
       if(evolutionBaseUid){
@@ -155,13 +267,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           battleWithoutBase=activeState.battle.filter(c=>c.uid!==evolutionBaseUid);
         }
       }
-      const newCreature={...card,tapped:false,summonedThisTurn:!isSpeed&&!isEvo,evolutionBase:evoBase};
+      const newCreature={...card,tapped:false,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
-      addLog(`${active}: ${card.name}(${effectiveSide.power||card.power}) 召喚！`);
-      showCutIn({title:"召喚！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
-      maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
+      addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) 召喚！`:"（タマシード）を出した"}`);
+      showCutIn({title:isCreature?"召喚！":"タマシード！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
+      if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
+      // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）
+      if(isCreature) setTimeout(()=>fireTrigger("creatureEnter",{sourcePid:active}),0);
     }else{
       const isCharger=effectiveSide.keywords?.includes("charger");
       if(isCharger){
@@ -218,27 +332,79 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const allies=activeState.battle.filter(c=>c.uid!==uid);
       if(allies.length>0) setHyperUntapModal({attackerUid:uid,allies});
     }
+    // 汎用トリガー: このクリーチャーが攻撃する時
+    setTimeout(()=>fireTrigger("attack",{sourcePid:active,attackerUid:uid}),0);
+    // 各ターン初回攻撃時（自分のクリーチャーが攻撃する時を監視する永続=G城等）
+    if(!attackedThisTurn){ setAttackedThisTurn(true); setTimeout(()=>fireTrigger("ownCreatureAttack",{sourcePid:active}),0); }
   };
-  const resolveAttackCreature=(attacker,target,targetUid)=>{
+  // ===== 中央破壊パイプライン（スレイヤー/エスケープ置換/離脱トリガーを集約）=====
+  const fireLeaveTriggers=(card,ownerPid,viaBattle)=>{
+    fireTrigger("leave",{card,ownerPid});
+    fireTrigger("destroyed",{card,ownerPid});
+    if(viaBattle) fireTrigger("battleDestroy",{card,ownerPid});
+  };
+  const destroyNow=(card,ownerPid,viaBattle)=>{
+    const setSt=ownerPid==="p1"?setP1:setP2;
+    setSt(s=>{const {newBattle,extracted}=extractFromBattle(s.battle,card.uid);return {...s,battle:newBattle,grave:[...s.grave,...extracted]};});
+    addLog(`[DESTROY] ${card.name} 破壊`);
+    setTimeout(()=>fireLeaveTriggers(card,ownerPid,viaBattle),0);
+  };
+  const hasEscapeNow=(card,ownerPid)=>{
+    const st=stateRef.current[ownerPid];
+    return card.keywords?.includes("escape")||computeGrantedKeywords(card,st.battle,st).includes("escape");
+  };
+  // 破壊対象列を順に処理。エスケープ持ちは置換モーダル（§0: 必ず例外中止可）を挟む。
+  const processVictims=(victims,idx)=>{
+    if(idx>=victims.length){return;}
+    const v=victims[idx];
+    const ownerSt=stateRef.current[v.ownerPid];
+    const stillThere=ownerSt.battle.some(c=>c.uid===v.card.uid);
+    if(!stillThere){processVictims(victims,idx+1);return;}
+    if(hasEscapeNow(v.card,v.ownerPid)&&ownerSt.shields.length>0){
+      setReplacementModal({
+        title:"エスケープ（置換効果）",
+        card:v.card,
+        message:`${v.card.name} は破壊されます。\n墓地に置く代わりに、自分のシールドを1つ手札に加えてもよい（エスケープ）。`,
+        applyLabel:"エスケープ（シールド→手札）",
+        cancelLabel:"例外処理で中止（破壊）",
+        onApply:()=>{
+          setReplacementModal(null);
+          const setSt=v.ownerPid==="p1"?setP1:setP2;
+          setSt(s=>{if(s.shields.length===0)return s;const sh=s.shields[0];return {...s,shields:s.shields.slice(1),hand:[...s.hand,{...sh,tapped:false,faceUp:false}]};});
+          addLog(`[ESCAPE] ${v.card.name} エスケープ：シールド1枚を手札へ（破壊を回避）`);
+          setTimeout(()=>fireTrigger("shieldLeave",{sourcePid:v.ownerPid}),0);
+          processVictims(victims,idx+1);
+        },
+        onCancel:()=>{
+          setReplacementModal(null);
+          destroyNow(v.card,v.ownerPid,v.viaBattle);
+          processVictims(victims,idx+1);
+        },
+      });
+    }else{
+      destroyNow(v.card,v.ownerPid,v.viaBattle);
+      processVictims(victims,idx+1);
+    }
+  };
+
+  const resolveAttackCreature=(attacker,target)=>{
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:true}:c)}));
     const aEff=getEffectivePower(attacker,activeState,activeState.battle);
     const dEff=getEffectivePower(target,otherState,otherState.battle);
     addLog(`[VS] ${attacker.name}(${aEff}) vs ${target.name}(${dEff})`);
     const aWin=aEff>=dEff;const dWin=dEff>=aEff;
-    if(aWin){
-      const {newBattle:nb1,extracted:ex1}=extractFromBattle(otherState.battle,targetUid);
-      setOtherState(s=>({...s,battle:nb1,grave:[...s.grave,...ex1]}));
-      addLog(`[WIN] ${target.name} 破壊`);
-    }
-    if(dWin){
-      const {newBattle:nb2,extracted:ex2}=extractFromBattle(activeState.battle,attacker.uid);
-      setActiveState(s=>({...s,battle:nb2,grave:[...s.grave,...ex2]}));
-      addLog(`[LOST] ${attacker.name} 破壊`);
-    }else if(attacker.untapAfterAttack){
+    const aSlayer=attacker.keywords?.includes("slayer")||computeGrantedKeywords(attacker,activeState.battle,activeState).includes("slayer");
+    const dSlayer=target.keywords?.includes("slayer")||computeGrantedKeywords(target,otherState.battle,otherState).includes("slayer");
+    const victims=[];
+    if(aWin||dSlayer){ addLog(`[WIN] ${target.name} 破壊${!aWin&&dSlayer?"（スレイヤー）":""}`); victims.push({card:target,ownerPid:otherPid,viaBattle:true}); }
+    const attackerDies=dWin||aSlayer;
+    if(attackerDies){ addLog(`[LOST] ${attacker.name} 破壊${!dWin&&aSlayer?"（スレイヤー）":""}`); victims.push({card:attacker,ownerPid:active,viaBattle:true}); }
+    else if(attacker.untapAfterAttack){
       setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:false,untapAfterAttack:false}:c)}));
       addLog(`${attacker.name}: 攻撃後にアンタップ`);
     }
     setAttackingUid(null);
+    setTimeout(()=>processVictims(victims,0),0);
   };
   const handleAttackCreature=targetUid=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
@@ -254,55 +420,117 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const handleAttackShield=shieldIdx=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
-    const effectiveSA=computeGrantedKeywords(attacker,activeState.battle).includes("speedAttacker");
-    const effectiveTBreaker=attacker.keywords?.includes("tBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("tBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("tBreaker"));
-    const effectiveWBreaker=(!effectiveTBreaker)&&(attacker.keywords?.includes("wBreaker")||computeGrantedKeywords(attacker,activeState.battle).includes("wBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("wBreaker")));
+    if(attacker.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません（クリーチャーのみ攻撃可）");return;}
+    const effectiveTBreaker=attacker.keywords?.includes("tBreaker")||computeGrantedKeywords(attacker,activeState.battle,activeState).includes("tBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("tBreaker"));
+    const effectiveWBreaker=(!effectiveTBreaker)&&(attacker.keywords?.includes("wBreaker")||computeGrantedKeywords(attacker,activeState.battle,activeState).includes("wBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("wBreaker")));
     const breakCount=effectiveTBreaker?3:effectiveWBreaker?2:1;
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
     let shields=[...otherState.shields];const broken=[];
     for(let i=0;i<breakCount;i++){if(shields.length===0)break;broken.push(shields[0]);shields=shields.slice(1);}
-    const isBolmetheus=attacker.name.includes("ボルメテウス");
-    const gStrikeCards=broken.filter(c=>c.keywords?.includes("gStrike"));
-    const sTriggers=broken.filter(c=>c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
-    const normal=broken.filter(c=>!c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
-    if(isBolmetheus){setOtherState(s=>({...s,shields,grave:[...s.grave,...broken]}));addLog(`[BURN] ボルメテウス効果`);}
-    else{
-      // シールドから手札に入るときtappedをリセット
-      const toHand=[...normal,...sTriggers,...gStrikeCards].map(c=>({...c,tapped:false}));
-      setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand]}));
-      sTriggers.forEach(c=>{addLog(`ST 「${c.name}」`);showCutIn({title:"S-TRIGGER!",cardName:c.name,civ:c.civ});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,otherState,setOtherState,activeState,setActiveState,c.name),800);});
+    // graveSet: 手札でなく墓地へ送る broken の uid 集合（ボルメテウス置換 / faceUpLeaveTo 置換）
+    const finalizeBreak=(graveSet)=>{
+      const gset=graveSet||new Set();
+      const toGraveCards=broken.filter(c=>gset.has(c.uid));
+      const toHandAll=broken.filter(c=>!gset.has(c.uid));
+      const sTriggers=toHandAll.filter(c=>c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
+      const gStrikeCards=toHandAll.filter(c=>c.keywords?.includes("gStrike"));
+      const toHand=toHandAll.map(c=>({...c,tapped:false,faceUp:false}));
+      setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand],grave:[...s.grave,...toGraveCards]}));
+      if(toGraveCards.length>0) addLog(`[BURN] ${toGraveCards.length}枚を墓地へ（置換効果）`);
+      sTriggers.forEach(c=>{addLog(`ST 「${c.name}」`);showCutIn({title:"S-TRIGGER!",cardName:c.name,civ:c.civ});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,stateRef.current[otherPid],setOtherState,stateRef.current[active],setActiveState,c.name),800);});
       if(gStrikeCards.length>0){
         gStrikeCards.forEach(c=>addLog(`[GS] G・ストライク「${c.name}」`));
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
       }
-    }
-    // Z-Rush: シールドが離れたら両プレイヤーのzRushクリーチャーのhyperModeを解放
-    if(broken.length>0){
-      const zActive=activeState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
-      const zOther=otherState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
-      const zAll=[...zActive,...zOther];
-      if(zAll.length>0){
-        if(zActive.length>0)setActiveState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
-        if(zOther.length>0)setOtherState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
-        zAll.forEach(c=>addLog(`[ZR] Zラッシュ: ${c.name} ハイパーモード解放！`));
-        setHyperModeCutIn(zAll[0]);
+      // Z-Rush: シールドが離れたらzRushクリーチャーのhyperModeを解放（攻撃ブレイク以外でも shieldLeave 経由で発火可）
+      if(broken.length>0){
+        const zActive=activeState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
+        const zOther=otherState.battle.filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
+        const zAll=[...zActive,...zOther];
+        if(zAll.length>0){
+          if(zActive.length>0)setActiveState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
+          if(zOther.length>0)setOtherState(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
+          zAll.forEach(c=>addLog(`[ZR] Zラッシュ: ${c.name} ハイパーモード解放！`));
+          setHyperModeCutIn(zAll[0]);
+        }
+        // 汎用トリガー: カードがシールドゾーンを離れた時（防御側=otherPid のシールド）
+        setTimeout(()=>fireTrigger("shieldLeave",{sourcePid:otherPid}),0);
       }
+      addLog(`[BREAK] ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
+      if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
+      if(attacker.untapAfterAttack){
+        setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:false,untapAfterAttack:false}:c)}));
+        addLog(`${attacker.name}: 攻撃後にアンタップ`);
+      }
+      setAttackingUid(null);
+    };
+
+    const isBolmetheus=attacker.name.includes("ボルメテウス");
+    const faceUpToGrave=broken.filter(c=>c.faceUp&&c.faceUpLeaveTo==="grave");
+    if(isBolmetheus&&broken.length>0){
+      // 置換効果（§0: 必ず例外処理で中止できる）
+      setReplacementModal({
+        title:"ボルメテウス（置換効果）",
+        card:attacker,
+        message:`ブレイクしたシールド${broken.length}枚を、手札に加える代わりに墓地に置く（その「S・トリガー」は使えない）。`,
+        applyLabel:"墓地に置く（置換）",
+        cancelLabel:"例外処理で中止（通常ブレイク）",
+        onApply:()=>{setReplacementModal(null);finalizeBreak(new Set(broken.map(c=>c.uid)));},
+        onCancel:()=>{setReplacementModal(null);finalizeBreak(null);},
+      });
+    }else if(faceUpToGrave.length>0){
+      // 表向きカードの離脱置換（G城等：表向きで離れる時はかわりに墓地へ）§0で中止可
+      setReplacementModal({
+        title:"表向きシールドの離脱（置換効果）",
+        card:faceUpToGrave[0],
+        message:`表向きの「${faceUpToGrave.map(c=>c.name).join("、")}」は、離れる時にかわりに墓地に置く。`,
+        applyLabel:"墓地に置く（置換）",
+        cancelLabel:"例外処理で中止（通常どおり手札へ）",
+        onApply:()=>{setReplacementModal(null);finalizeBreak(new Set(faceUpToGrave.map(c=>c.uid)));},
+        onCancel:()=>{setReplacementModal(null);finalizeBreak(null);},
+      });
+    }else{
+      finalizeBreak(null);
     }
-    addLog(`[BREAK] ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
-    if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
-    if(attacker.untapAfterAttack){
-      setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:false,untapAfterAttack:false}:c)}));
-      addLog(`${attacker.name}: 攻撃後にアンタップ`);
+  };
+  // ハイパー化（コスト支払いによる解放：メインステップ）
+  const handleHyperUnlock=uid=>{
+    const card=activeState.battle.find(c=>c.uid===uid);
+    if(!card?.hyperUnlock||card.hyperMode) return;
+    if(card.hyperUnlock.type==="tapOwnCreature"){
+      const allies=activeState.battle.filter(c=>c.uid!==uid&&!c.tapped);
+      if(allies.length===0){addLog("ハイパー化の対象（タップできる自分の他のクリーチャー）がいない");setMessage("ハイパー化できません（対象不足）");return;}
+      setHyperUnlockModal({sourceUid:uid,allies,desc:"ハイパー化：自分の他のクリーチャーを1体タップする",actionLabel:"ハイパー化"});
     }
-    setAttackingUid(null);
   };
   const handleDirectAttack=()=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
+    if(attacker?.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません");return;}
     addLog(`[DIRECT] ${attacker?.name??""} ダイレクトアタック！${active.toUpperCase()} の勝利！`);
     setAttackingUid(null);
     setWinner(active.toUpperCase());
   };
   const handleEndTurn=()=>{
+    // 汎用 endOfTurn トリガー（hyperOnly/condition を現状態で同期評価してから発火）
+    [{pid:"p1",st:p1},{pid:"p2",st:p2}].forEach(({pid,st})=>{
+      const setSelf=pid==="p1"?setP1:setP2;const oPid=pid==="p1"?"p2":"p1";const setOther=pid==="p1"?setP2:setP1;
+      [...st.battle,...st.shields.filter(s=>s.faceUp)].forEach(card=>{
+        (card.triggers||[]).forEach(tr=>{
+          if(tr.on!=="endOfTurn") return;
+          if(tr.hyperOnly&&!card.hyperMode) return;
+          if(tr.condition&&!checkGrantCondition(tr.condition,st)) return;
+          setTimeout(()=>triggerEffect(tr.effect,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);
+        });
+      });
+    });
+    // 遅延効果: pendingRevive（チェスト等）をこのターンの終わりに墓地→BZ
+    [{st:p1,set:setP1},{st:p2,set:setP2}].forEach(({st,set})=>{
+      if(st.pendingRevive&&st.pendingRevive.length){
+        const ids=st.pendingRevive.map(c=>c.uid);
+        st.pendingRevive.forEach(c=>addLog(`${c.name} をターン終了時に墓地から出した`));
+        set(s=>{const revive=s.grave.filter(c=>ids.includes(c.uid));return {...s,grave:s.grave.filter(c=>!ids.includes(c.uid)),battle:[...s.battle,...revive.map(c=>({...c,tapped:false,summonedThisTurn:true}))],pendingRevive:[]};});
+      }
+    });
     // endOfTurnEffect処理
     [{state:p1,setState:setP1},{state:p2,setState:setP2}].forEach(({state:ps,setState:pss})=>{
       ps.battle.forEach(c=>{
@@ -320,7 +548,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       });
     });
     // 終了するプレイヤー: このターン限定のフラグのみリセット（タップ状態・cantAttackUntilMyTurnは自分の次のターン開始時まで維持）
-    setActiveState(s=>({...s,battle:s.battle.map(c=>({
+    setActiveState(s=>({...s,shieldAddedThisTurn:false,battle:s.battle.map(c=>({
       ...c,
       cantAttackThisTurn:false,
       untapAfterAttack:false,
@@ -329,9 +557,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // 相手の常時能力(cantAttackUntilControllerTurn)を考慮し、次に開始するプレイヤーのクリーチャーをアンタップ
     const reactiveCreature=activeState.battle.find(c=>c.reactivePassive?.type==="cantAttackUntilControllerTurn");
     const tappedOtherUids=new Set(otherState.battle.filter(c=>c.tapped).map(c=>c.uid));
-    setOtherState(s=>({...s,battle:s.battle.map(c=>({
+    setOtherState(s=>({...s,shieldAddedThisTurn:false,battle:s.battle.map(c=>({
       ...c,
-      tapped:false,
+      // noUntapNextTurn のクリーチャーはこのターン開始時にアンタップしない（フラグはここで解除）
+      tapped:c.noUntapNextTurn?true:false,
+      noUntapNextTurn:false,
       summonedThisTurn:false,
       cantAttackThisTurn:false,
       hyperMode:false,
@@ -343,7 +573,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const affected=otherState.battle.filter(c=>tappedOtherUids.has(c.uid));
       if(affected.length>0) addLog(`[反応] ${reactiveCreature.name}: アンタップした${affected.map(c=>c.name).join("、")}は次の自分のターンまで攻撃できない`);
     }
-    setAttackingUid(null);setUsedFinalRevThisTurn(false);
+    setAttackingUid(null);setUsedFinalRevThisTurn(false);setAttackedThisTurn(false);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
     setHandoff({from:active.toUpperCase(),to:next.toUpperCase()});
@@ -372,7 +602,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
+      {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
+      {hyperUnlockModal&&<HyperUntapModal modal={hyperUnlockModal} onSelect={uid2=>{
+        const srcUid=hyperUnlockModal.sourceUid;
+        const srcCard=activeState.battle.find(c=>c.uid===srcUid);
+        setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid2?{...c,tapped:true}:c.uid===srcUid?{...c,hyperMode:true}:c)}));
+        addLog(`[HYPER化] ${srcCard?.name} ハイパーモード解放！（${activeState.battle.find(c=>c.uid===uid2)?.name} をタップ）`);
+        if(srcCard) setHyperModeCutIn(srcCard);
+        setHyperUnlockModal(null);
+      }} onSkip={()=>setHyperUnlockModal(null)}/>}
       {hyperTargetedModal&&<HyperTargetedModal modal={hyperTargetedModal} attackerShields={activeState.shields.length} onUse={()=>{
         const {targetUid,attackerUid,amount}=hyperTargetedModal;
         const target=otherState.battle.find(c=>c.uid===targetUid);
@@ -406,8 +645,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#4af",background:"rgba(10,30,80,0.35)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>◆ ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
               }
             </div>
           </div>
@@ -416,8 +655,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#f84",background:"rgba(80,15,10,0.25)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>非ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
               }
             </div>
           </div>
@@ -427,8 +666,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 22px 1fr",minHeight:0}}>
           <div style={{overflowY:"auto",padding:"6px 10px",borderBottom:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
             }
           </div>
           <div style={{overflow:"hidden"}}>
@@ -436,8 +675,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           </div>
           <div style={{overflowY:"auto",padding:"6px 10px",borderTop:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
-              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack}/>
+              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
             }
           </div>
         </div>
