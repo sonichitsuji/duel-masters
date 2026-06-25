@@ -8,6 +8,7 @@ import { EffectModal, EffectConfirmModal } from "../components/modals/EffectModa
 import { EffectStepModal } from "../components/modals/EffectStepModal";
 import { TemplateChoiceModal } from "../components/modals/TemplateChoiceModal";
 import { TriggerOrderModal } from "../components/modals/TriggerOrderModal";
+import { BlockerModal } from "../components/modals/BlockerModal";
 import { FinalRevolutionModal } from "../components/modals/FinalRevolutionModal";
 import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
@@ -104,6 +105,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [replacementModal,setReplacementModal]=useState(null);
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
+  const [blockerModal,setBlockerModal]=useState(null);
 
   // 効果を pending キューへ積む（front=true で先頭=LIFO, #6枠組み）
   const enqueueEffect=(entry,{front=false}={})=>{
@@ -131,7 +133,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||effectConfirmModal||templateChoiceModal||triggerOrderModal||replacementModal||effectModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||handoff||winner;
+  const resolverBusy = activeSteps||effectConfirmModal||templateChoiceModal||triggerOrderModal||replacementModal||effectModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     if(pendingEffects.length===0) return;
@@ -399,6 +401,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setTimeout(()=>fireTrigger("attack",{sourcePid:active,attackerUid:uid}),0);
     // 各ターン初回攻撃時（自分のクリーチャーが攻撃する時を監視する永続=G城等）
     if(!attackedThisTurn){ setAttackedThisTurn(true); setTimeout(()=>fireTrigger("ownCreatureAttack",{sourcePid:active}),0); }
+    // ブロッカー：防御側に未タップのブロッカーがいれば、ブロック選択モーダルを表示
+    const blockers=otherState.battle.filter(c=>
+      !c.tapped &&
+      (c.type==="creature"||c.type==="evo_creature") &&
+      (c.keywords?.includes("blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
+    );
+    if(blockers.length>0){
+      setBlockerModal({attackerUid:uid,blockerUids:blockers.map(b=>b.uid)});
+      setMessage(`${otherPid.toUpperCase()}: ブロックするか選択`);
+    }
   };
   // ===== 中央破壊パイプライン（スレイヤー/エスケープ置換/離脱トリガーを集約）=====
   const fireLeaveTriggers=(card,ownerPid,viaBattle)=>{
@@ -666,6 +678,20 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         if(srcCard) setHyperModeCutIn(srcCard);
         setHyperUnlockModal(null);
       }} onSkip={()=>setHyperUnlockModal(null)}/>}
+      {blockerModal&&<BlockerModal
+        blockers={otherState.battle.filter(c=>blockerModal.blockerUids.includes(c.uid)&&!c.tapped)}
+        attackerName={activeState.battle.find(c=>c.uid===blockerModal.attackerUid)?.name||""}
+        onBlock={blockerUid=>{
+          const attacker=activeState.battle.find(c=>c.uid===blockerModal.attackerUid);
+          const blocker=otherState.battle.find(c=>c.uid===blockerUid);
+          setBlockerModal(null);
+          if(!attacker||!blocker){setMessage("攻撃対象を選択");return;}
+          setOtherState(s=>({...s,battle:s.battle.map(c=>c.uid===blockerUid?{...c,tapped:true}:c)}));
+          addLog(`[BLOCK] ${otherPid.toUpperCase()}: ${blocker.name} でブロック！`);
+          resolveAttackCreature(attacker,blocker);
+        }}
+        onDecline={()=>{setBlockerModal(null);setMessage("攻撃対象を選択");}}
+      />}
       {hyperTargetedModal&&<HyperTargetedModal modal={hyperTargetedModal} attackerShields={activeState.shields.length} onUse={()=>{
         const {targetUid,attackerUid,amount}=hyperTargetedModal;
         const target=otherState.battle.find(c=>c.uid===targetUid);
