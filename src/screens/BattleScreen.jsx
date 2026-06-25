@@ -7,6 +7,7 @@ import { HandoffScreen } from "./HandoffScreen";
 import { EffectModal, EffectConfirmModal } from "../components/modals/EffectModal";
 import { EffectStepModal } from "../components/modals/EffectStepModal";
 import { TemplateChoiceModal } from "../components/modals/TemplateChoiceModal";
+import { TriggerOrderModal } from "../components/modals/TriggerOrderModal";
 import { FinalRevolutionModal } from "../components/modals/FinalRevolutionModal";
 import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
@@ -27,6 +28,19 @@ function triggerMatches(on, triggerName, watcherPid, sourcePid){
   if(triggerName === "creatureEnter"){
     if(on === "selfCreaturePlay") return watcherPid === sourcePid;
     if(on === "opponentCreaturePlay") return watcherPid !== sourcePid;
+  }
+  return false;
+}
+
+// #3 常在型能力の事前適用（枠組み）。例: 相手の「クリーチャーを出せない」常在型を、
+// クリーチャーを出す処理に先んじてチェックして中止する。現状は該当カードが無いため常に false。
+// データ形: カードに staticDeny:{ type:"cantPutCreature", filter? } を持たせ、その支配者の「相手」に効く。
+function checkStaticDeny(state, targetPid, type){
+  for(const pid of ["p1","p2"]){
+    if(pid===targetPid) continue; // 自分の常在型は自分のプレイを止めない（「相手は〜できない」想定）
+    const st=state?.[pid]; if(!st) continue;
+    const sources=[...(st.battle||[]),...((st.shields||[]).filter(s=>s.faceUp))];
+    if(sources.some(c=>c.staticDeny?.type===type)) return true;
   }
   return false;
 }
@@ -62,7 +76,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [finalRevModal,setFinalRevModal]=useState(false);
   const [effectConfirmModal,setEffectConfirmModal]=useState(null);
   const [activeSteps,setActiveSteps]=useState(null);
-  const [effectQueue,setEffectQueue]=useState([]);
+  const [pendingEffects,setPendingEffects]=useState([]);
+  const [triggerOrderModal,setTriggerOrderModal]=useState(null);
   const [gStrikeModal,setGStrikeModal]=useState(null);
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
   const [hyperTargetedModal,setHyperTargetedModal]=useState(null);
@@ -84,17 +99,57 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   stateRef.current={p1,p2};
   const fireTriggerRef=useRef();
   const onShieldLeaveRef=useRef();
+  const enqueueEffectRef=useRef();
+  const pendingIdRef=useRef(0);
   const [replacementModal,setReplacementModal]=useState(null);
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
 
-  const startStepEffect = useCallback((steps, ownerPid, srcCard, subjectCard) => {
-    setActiveSteps(prev => {
-      if (prev === null) return { steps, stepIdx: 0, ownerPid, srcCard, context: { srcCardUid: srcCard?.uid, subjectCard } };
-      setEffectQueue(q => [...q, { steps, ownerPid, srcCard, subjectCard }]);
-      return prev;
-    });
-  }, []);
+  // 効果を pending キューへ積む（front=true で先頭=LIFO, #6枠組み）
+  const enqueueEffect=(entry,{front=false}={})=>{
+    if(!entry?.effect) return;
+    const e={ id:`pe${++pendingIdRef.current}`, kind:entry.kind||"trigger", priority: entry.priority ?? (entry.ownerPid===active?0:1), ...entry };
+    setPendingEffects(p=> front?[e,...p]:[...p,e]);
+  };
+  enqueueEffectRef.current=enqueueEffect;
+
+  // pending から取り出したエントリを実際に解決開始する
+  const resolveEntry=(entry)=>{
+    const {effect,ownerPid,srcCard,subjectCard,sourceName}=entry;
+    showCutIn({title:"効果発動！",cardName:sourceName||srcCard?.name,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
+    const setSelf=ownerPid==="p1"?setP1:setP2;
+    const oPid=ownerPid==="p1"?"p2":"p1";
+    const setOther=ownerPid==="p1"?setP2:setP1;
+    if(effect.type==="steps"){
+      setActiveSteps({ steps:effect.steps, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid, subjectCard } });
+    } else if(effect.type==="chooseTimes"){
+      setTemplateChoiceModal({count:effect.count,templates:effect.templates,ownerPid,srcCard});
+    } else {
+      setEffectConfirmModal({effect,ownerPid,selfSnap:stateRef.current[ownerPid],setSelf,otherSnap:stateRef.current[oPid],setOther,srcCard});
+    }
+  };
+
+  // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
+  // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
+  const resolverBusy = activeSteps||effectConfirmModal||templateChoiceModal||triggerOrderModal||replacementModal||effectModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||handoff||winner;
+  useEffect(()=>{
+    if(resolverBusy) return;
+    if(pendingEffects.length===0) return;
+    const minP=Math.min(...pendingEffects.map(e=>e.priority));
+    const group=pendingEffects.filter(e=>e.priority===minP);
+    // 呪文は順序固定（割り込ませず enqueue 順で解決）。誘発が2件以上なら順序選択モーダル。
+    const spell=group.find(e=>e.kind==="spell");
+    if(spell){
+      setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
+      resolveEntry(spell);
+    } else if(group.length>1){
+      setTriggerOrderModal({entries:group});
+    } else {
+      setPendingEffects(p=>p.filter(e=>e.id!==group[0].id));
+      resolveEntry(group[0]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[resolverBusy,pendingEffects]);
 
   const advanceStep = useCallback((selectedUids) => {
     setActiveSteps(prev => {
@@ -128,11 +183,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         const { card: castCard, ownerPid: castOwnerPid } = updatedCtx.castSpell;
         delete updatedCtx.castSpell;
         if (castCard.autoEffect) {
-          const selfSnap = castOwnerPid === "p1" ? p1 : p2;
-          const setSelfFn = castOwnerPid === "p1" ? setP1 : setP2;
-          const otherSnap = castOwnerPid === "p1" ? p2 : p1;
-          const setOtherFn = castOwnerPid === "p1" ? setP2 : setP1;
-          setTimeout(() => triggerEffect(castCard.autoEffect, castOwnerPid, selfSnap, setSelfFn, otherSnap, setOtherFn, castCard.name, castCard), 0);
+          // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
+          setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castCard.autoEffect, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
         }
       }
       let nextIdx = prev.stepIdx + 1;
@@ -144,15 +196,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         nextIdx++;
       }
       if (nextIdx < prev.steps.length) return { ...prev, stepIdx: nextIdx, context: updatedCtx };
-      // All done — pop queue
-      setEffectQueue(q => {
-        if (q.length > 0) {
-          const [next, ...rest] = q;
-          setTimeout(() => setActiveSteps({ steps: next.steps, stepIdx: 0, ownerPid: next.ownerPid, srcCard: next.srcCard, context: { srcCardUid: next.srcCard?.uid, subjectCard: next.subjectCard } }), 0);
-          return rest;
-        }
-        return q;
-      });
+      // 一連の解決が完了 → activeSteps を空にし、リゾルバが次の pending を処理（#2 直列化）
       return null;
     });
   }, [p1, p2, addLog]);
@@ -160,14 +204,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName,srcCardOverride,subjectCard)=>{
     if(!effect) return;
     const srcCard=srcCardOverride||cardDb.find(c=>c.name===sourceName)||{name:sourceName};
-    showCutIn({title:"効果発動！",cardName:sourceName,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
-    if(effect.type==="steps"){
-      startStepEffect(effect.steps, ownerPid, srcCard, subjectCard);
-    } else if(effect.type==="chooseTimes"){
-      setTemplateChoiceModal({count:effect.count,templates:effect.templates,ownerPid,srcCard});
-    } else {
-      setEffectConfirmModal({effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,srcCard});
-    }
+    const kind=(srcCard?.type==="spell"||srcCard?.type==="twinpact")?"spell":"trigger";
+    enqueueEffect({ kind, effect, ownerPid, srcCard, subjectCard, sourceName:sourceName||srcCard?.name });
   };
 
   // 汎用トリガー・ディスパッチャ
@@ -177,12 +215,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const fireTrigger=(triggerName,opts={})=>{
     const cur=stateRef.current;
     const runOne=(card,ownerPid,tr,subject)=>{
-      const setSelf=ownerPid==="p1"?setP1:setP2;
-      const oPid=ownerPid==="p1"?"p2":"p1";
-      const setOther=ownerPid==="p1"?setP2:setP1;
       if(tr.hyperOnly&&!card.hyperMode) return;
       if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid])) return;
-      setTimeout(()=>triggerEffect(tr.effect,ownerPid,stateRef.current[ownerPid],setSelf,stateRef.current[oPid],setOther,card.name,{...card},subject),0);
+      // 誘発を pending キューへ。同一tickに積まれた分が「同時誘発」としてまとめてリゾルバで順序選択される。
+      enqueueEffect({ kind:"trigger", effect:tr.effect, ownerPid, srcCard:{...card}, subjectCard:subject, sourceName:card.name });
     };
     const runCardTriggers=(card,ownerPid)=>{
       (card.triggers||[]).forEach(tr=>{ if(tr.on===triggerName) runOne(card,ownerPid,tr); });
@@ -237,7 +273,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const {templates,ownerPid,srcCard,count}=templateChoiceModal;
     const tpl=templates[tplIdx];
     setTemplateChoiceModal(count>1?{...templateChoiceModal,count:count-1}:null);
-    startStepEffect(tpl.steps, ownerPid, srcCard);
+    // 選んだテンプレートの steps を現在の解決として実行（chooseTimes の継続。アイドル時のみ表示されるため直接 set）
+    setActiveSteps({ steps:tpl.steps, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid } });
   };
 
   // 相手の常時能力(reactivePassive)を考慮し、新たにBZに出たクリーチャーへcantAttackUntilMyTurnを付与
@@ -276,6 +313,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:active}),0);
     }else if(!isSpell){
       // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
+      // #3 常在型: 相手の「クリーチャーを出せない」常在型を解決に先んじて適用（枠組み・現状該当カード無し）
+      const isCre=card.type==="creature"||card.type==="evo_creature";
+      if(isCre&&checkStaticDeny(stateRef.current,active,"cantPutCreature")){
+        addLog(`${active}: 相手の常在型能力によりクリーチャーを出せない`);setMessage("相手の常在型能力でクリーチャーを出せません");return true;
+      }
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
       const isEvo=card.type==="evo_creature";
       const isCreature=card.type==="creature"||card.type==="evo_creature";
@@ -611,6 +653,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
+      {triggerOrderModal&&<TriggerOrderModal entries={triggerOrderModal.entries} onChoose={id=>{const entry=triggerOrderModal.entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
