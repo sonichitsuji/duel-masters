@@ -40,7 +40,7 @@ export function ExceptionPanel({pid,state,setState,otherState,setOtherState,addL
     <div style={{background:"#07071a",border:`1px solid ${color}44`,borderRadius:12,padding:14,fontSize:11}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <span style={{color,fontWeight:700,fontSize:13}}>{label} 例外処理パネル</span>
-        <button onClick={()=>{setOpen(false);clearSel();}} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>✕</button>
+        <button onClick={()=>{setOpen(false);clearSel();}} style={{padding:"3px 10px",borderRadius:4,background:"#222",border:"1px solid #666",color:"#eee",cursor:"pointer",fontSize:11}}>✕</button>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
         {ZONES.map(z=>(

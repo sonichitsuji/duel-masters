@@ -261,7 +261,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
                   <div style={{width:2,height:16,background:"#ffe066",boxShadow:"0 0 4px #ffe066"}}/>
                   <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:14,fontWeight:700,letterSpacing:3,color:"#ffe066"}}>DECK LIST</span>
                 </div>
-                <button onClick={()=>setScreen("main")} style={{padding:"5px 12px",borderRadius:2,background:"transparent",border:"1px solid #2a2a3a",color:"#555",cursor:"pointer",fontSize:11,fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>← BACK</button>
+                <button onClick={()=>setScreen("main")} style={{padding:"5px 12px",borderRadius:2,background:"transparent",border:"1px solid #667",color:"#ddd",cursor:"pointer",fontSize:11,fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>← BACK</button>
               </div>
 
               <div style={{display:"flex",gap:8,marginBottom:12}}>

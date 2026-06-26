@@ -77,7 +77,7 @@ export function ManaPayModal({ card, mana, selfBattle, onConfirm, onCancel }) {
                   {CIV[civ]?.label}
                 </button>
               ))}
-              <button onClick={() => setCivPicker(null)} style={{ padding:"6px 10px", borderRadius:6, background:"#111", border:"1px solid #444", color:"#666", cursor:"pointer", fontSize:12 }}>
+              <button onClick={() => setCivPicker(null)} style={{ padding:"6px 10px", borderRadius:6, background:"#222", border:"1px solid #666", color:"#eee", cursor:"pointer", fontSize:12 }}>
                 ✕
               </button>
             </div>
