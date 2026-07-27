@@ -15,8 +15,34 @@ const root = path.join(__dirname, "..");
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer"]);
 const TRIGGER_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","attack","ownCreatureAttack","selfDraw","shieldLeave","shieldAdded","opponentDiscard","leave","destroyed","battleDestroy","selfCreatureLeave","opponentCreatureLeave","selfBattleDestroy","opponentBattleDestroy","selfCreatureDestroyed","opponentCreatureDestroyed","endOfTurn"]);
-const STEP_TYPES = new Set(["battleOpponentCreature","bounceElement","bounceMaxCost","bounceSelectCreature","breakOpponentShieldChoice","bzSelectToMana","castFilteredSpellFromHand","castFreeSTriggerSpellFromHand","chooseFromRevealed","debuffOpponentPower","destroyChooseAny","destroyNonColor","discardHandDrawPlusOne","drawCards","drawCardsPerTappedOpponent","drawPerFilter","grantSAUntapAfterAttack","grantTempBuffToSelf","handDiscard","manaCreatureSelectToBZ","millTop","millTopToMana","millTopToManaIfDragon","optionalReviveFromMilled","playFromRevealed","playLightCreatureFromHand","putFilteredFromHand","putFromHandFreeUnderHandCount","randomDiscardOpponent","restRevealedToBottom","returnShieldToHand","revealDeckTop","reviveFilteredFromGrave","reviveFromDestroyedOwnerGrave","reviveSelfFromGrave","scheduleReviveSubjectEndOfTurn","searchSpellToTop","selectShieldToGrave","setUntapAfterAttack","shieldizeFromHand","shieldizeOpponentCreature","shieldizeTopDeck","tapAllOpponent","tapNoUntapNextTurn","tapOrUntapSelectCreature","tapSelectCreature","untapAllMana","untapSelectCreature"]);
-const SIMPLE_EFFECT_TYPES = new Set(["draw","destroy","handDestroy","sendToMana","bounce","manaReturn","deckSearch","destroyUnder","tapAll","deckToMana"]);
+const EFFECT_TYPES = new Set([
+  // 変数ステップ
+  "count","pick",
+  // ドロー/山札
+  "drawCards","reveal","search","topToGrave","topToMana","topToShield",
+  // 公開カードの行き先
+  "revealedToHand","revealedToBz","revealedToMana","revealedToGrave","revealedToDeckTop","revealedToDeckBottom",
+  // 手札から
+  "handToBz","handToShield","handToGrave","playFromHand",
+  // マナから
+  "manaToBz","manaToHand",
+  // バトルゾーンから
+  "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
+  // 墓地・シールド
+  "graveToBz","shieldToHand","shieldToGrave","breakShield",
+  // 遅延
+  "scheduleReviveSubjectEndOfTurn",
+]);
+// 旧記法（廃止済み）。見つかったらエラーにする
+const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","bounce","manaReturn","deckSearch","tapAll","deckToMana",
+  "revealDeckTop","chooseFromRevealed","restRevealedToBottom","millTop","millTopToMana","millTopToManaIfDragon","searchSpellToTop",
+  "drawPerFilter","drawCardsPerTappedOpponent","discardHandDrawPlusOne","playFromRevealed","putFilteredFromHand","playLightCreatureFromHand",
+  "castFilteredSpellFromHand","castFreeSTriggerSpellFromHand","putFromHandFreeUnderHandCount","reviveFilteredFromGrave","reviveSelfFromGrave",
+  "reviveFromDestroyedOwnerGrave","optionalReviveFromMilled","bounceSelectCreature","bounceElement","bounceMaxCost","bzSelectToMana",
+  "manaCreatureSelectToBZ","destroyChooseAny","destroyNonColor","tapAllOpponent","tapSelectCreature","tapNoUntapNextTurn",
+  "tapOrUntapSelectCreature","untapSelectCreature","battleOpponentCreature","breakOpponentShieldChoice","debuffOpponentPower",
+  "grantTempBuffToSelf","setUntapAfterAttack","grantSAUntapAfterAttack","shieldizeTopDeck","shieldizeFromHand","shieldizeOpponentCreature",
+  "returnShieldToHand","selectShieldToGrave","handDiscard","randomDiscardOpponent"]);
 
 const errors = [];
 const warnings = [];
@@ -27,15 +53,24 @@ try { cards = JSON.parse(fs.readFileSync(cardsPath, "utf8")); }
 catch (e) { console.error("❌ cards.json のJSONが不正:", e.message); process.exit(1); }
 
 // steps/effect の再帰検証
+function checkOne(e, where) {
+  if (!e || !e.type) { errors.push(`${where}: type の無い効果要素`); return; }
+  if (LEGACY_TYPES.has(e.type)) errors.push(`${where}: 旧記法の効果 "${e.type}"（新語彙へ移行してください）`);
+  else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
+  if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
+}
 function checkEffect(eff, where) {
   if (!eff || typeof eff !== "object") return;
-  if (eff.type === "steps") {
-    for (const s of eff.steps || []) if (!STEP_TYPES.has(s.type)) errors.push(`${where}: 未知のstep型 "${s.type}"`);
-  } else if (eff.type === "chooseTimes") {
-    for (const t of eff.templates || []) for (const s of t.steps || []) if (!STEP_TYPES.has(s.type)) errors.push(`${where}: 未知のstep型 "${s.type}"`);
-  } else if (eff.type) {
-    if (!SIMPLE_EFFECT_TYPES.has(eff.type)) errors.push(`${where}: 未知の効果type "${eff.type}"`);
+  if (eff.type === "steps" || eff.steps) { errors.push(`${where}: 旧記法 type:"steps"/steps は廃止（effects へ）`); return; }
+  if (eff.type === "chooseTimes") {
+    for (const t of eff.templates || []) {
+      if (t.steps) { errors.push(`${where}: templates 内が旧記法 steps`); continue; }
+      for (const e of t.effects || []) checkOne(e, where);
+    }
+    return;
   }
+  if (eff.effects) { for (const e of eff.effects) checkOne(e, where); return; }
+  if (eff.type) errors.push(`${where}: 単純効果 "${eff.type}" は廃止（effects 配列へ）`);
 }
 
 const seenIds = new Map();
@@ -55,10 +90,11 @@ for (const c of cards) {
 
   checkEffect(c.autoEffect, `${tag}.autoEffect`);
   checkEffect(c.spellSide?.autoEffect, `${tag}.spellSide`);
-  checkEffect(c.finalRevolution?.effect, `${tag}.finalRevolution`);
+  checkEffect(c.finalRevolution, `${tag}.finalRevolution`);
   for (const tr of c.triggers || []) {
     if (!TRIGGER_ONS.has(tr.on)) errors.push(`${tag}: 未知のtrigger on "${tr.on}"`);
-    checkEffect(tr.effect, `${tag}.triggers(${tr.on})`);
+    if (tr.effect) errors.push(`${tag}.triggers(${tr.on}): 旧記法 effect（effects へ）`);
+    checkEffect(tr, `${tag}.triggers(${tr.on})`);
   }
 }
 

@@ -1,10 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition } from "../gameLogic";
-import { executeStepAction } from "../engine/steps";
-import { processEffect } from "../engine/effects";
+import { executeEffect } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
-import { EffectModal, EffectConfirmModal } from "../components/modals/EffectModal";
 import { EffectStepModal } from "../components/modals/EffectStepModal";
 import { TemplateChoiceModal } from "../components/modals/TemplateChoiceModal";
 import { TriggerOrderModal } from "../components/modals/TriggerOrderModal";
@@ -70,12 +68,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [winner,setWinner]=useState(null);
   const [handoff,setHandoff]=useState(null);
   const [turn,setTurn]=useState(1);
-  const [effectModal,setEffectModal]=useState(null);
   const [cutin,setCutin]=useState(null);
   const [hyperModeCutIn,setHyperModeCutIn]=useState(null);
   const [usedFinalRevThisTurn,setUsedFinalRevThisTurn]=useState(false);
   const [finalRevModal,setFinalRevModal]=useState(false);
-  const [effectConfirmModal,setEffectConfirmModal]=useState(null);
   const [activeSteps,setActiveSteps]=useState(null);
   const [pendingEffects,setPendingEffects]=useState([]);
   const [triggerOrderModal,setTriggerOrderModal]=useState(null);
@@ -88,7 +84,6 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [isPC,setIsPC]=useState(()=>window.innerWidth>=768);
   useEffect(()=>{const fn=()=>setIsPC(window.innerWidth>=768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn);},[]);
   const showCutIn=useCallback(data=>setCutin(data),[]);
-  const openEffectModal=useCallback(m=>setEffectModal(m),[]);
 
   const otherPid=active==="p1"?"p2":"p1";
   const activeState=active==="p1"?p1:p2;
@@ -119,21 +114,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const resolveEntry=(entry)=>{
     const {effect,ownerPid,srcCard,subjectCard,sourceName}=entry;
     showCutIn({title:"効果発動！",cardName:sourceName||srcCard?.name,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
-    const setSelf=ownerPid==="p1"?setP1:setP2;
-    const oPid=ownerPid==="p1"?"p2":"p1";
-    const setOther=ownerPid==="p1"?setP2:setP1;
-    if(effect.type==="steps"){
-      setActiveSteps({ steps:effect.steps, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid, subjectCard } });
-    } else if(effect.type==="chooseTimes"){
+    if(effect.type==="chooseTimes"){
       setTemplateChoiceModal({count:effect.count,templates:effect.templates,ownerPid,srcCard});
-    } else {
-      setEffectConfirmModal({effect,ownerPid,selfSnap:stateRef.current[ownerPid],setSelf,otherSnap:stateRef.current[oPid],setOther,srcCard});
+    } else if(effect.effects?.length){
+      setActiveSteps({ steps:effect.effects, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid, subjectCard, vars:{} } });
     }
   };
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||effectConfirmModal||templateChoiceModal||triggerOrderModal||replacementModal||effectModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     if(pendingEffects.length===0) return;
@@ -156,7 +146,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const advanceStep = useCallback((selectedUids) => {
     setActiveSteps(prev => {
       if (!prev) return null;
-      const updatedCtx = executeStepAction(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
+      const updatedCtx = executeEffect(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
       // ステップ内で破壊されたカードの leave/destroyed/battleDestroy を発火（A7）
       if (updatedCtx.destroyedThisStep && updatedCtx.destroyedThisStep.length) {
         const list = updatedCtx.destroyedThisStep;
@@ -192,8 +182,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       let nextIdx = prev.stepIdx + 1;
       // Skip conditional steps when their precondition is not met
       while (nextIdx < prev.steps.length && (
-        (prev.steps[nextIdx].type === "reviveFromDestroyedOwnerGrave" && !updatedCtx.destroyedCreatureOwner) ||
-        (prev.steps[nextIdx].type === "breakOpponentShieldChoice" && !updatedCtx.etbBattleWon)
+        (prev.steps[nextIdx].type === "graveToBz" && prev.steps[nextIdx].owner === "destroyed" && !updatedCtx.destroyedCreatureOwner) ||
+        (prev.steps[nextIdx].type === "breakShield" && !updatedCtx.etbBattleWon)
       )) {
         nextIdx++;
       }
@@ -220,7 +210,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(tr.hyperOnly&&!card.hyperMode) return;
       if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid])) return;
       // 誘発を pending キューへ。同一tickに積まれた分が「同時誘発」としてまとめてリゾルバで順序選択される。
-      enqueueEffect({ kind:"trigger", effect:tr.effect, ownerPid, srcCard:{...card}, subjectCard:subject, sourceName:card.name });
+      enqueueEffect({ kind:"trigger", effect:tr, ownerPid, srcCard:{...card}, subjectCard:subject, sourceName:card.name });
     };
     const runCardTriggers=(card,ownerPid)=>{
       (card.triggers||[]).forEach(tr=>{ if(tr.on===triggerName) runOne(card,ownerPid,tr); });
@@ -369,7 +359,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     else if(handCard.finalRevolution&&!usedFinalRevThisTurn){
       setUsedFinalRevThisTurn(true);
-      triggerEffect(handCard.finalRevolution.effect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,handCard);
+      triggerEffect(handCard.finalRevolution,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,handCard);
     }
     setAttackingUid(handCard.uid);
     setMessage("攻撃対象を選択");
@@ -584,7 +574,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           if(tr.on!=="endOfTurn") return;
           if(tr.hyperOnly&&!card.hyperMode) return;
           if(tr.condition&&!checkGrantCondition(tr.condition,st)) return;
-          setTimeout(()=>triggerEffect(tr.effect,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);
+          setTimeout(()=>triggerEffect(tr,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);
         });
       });
     });
@@ -655,14 +645,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           <div style={{fontFamily:"'Cinzel',serif",fontSize:72,fontWeight:900,color:"#ffe066",textShadow:"0 0 40px #ffe066aa",lineHeight:1,letterSpacing:4}}>✦</div>
           <div style={{fontFamily:"'Cinzel',serif",fontSize:48,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066",marginTop:12}}>{winner} WIN!</div>
           <div style={{display:"flex",gap:12,marginTop:32}}>
-            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setEffectModal(null);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
+            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
             <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
           </div>
         </div>
       )}
       {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
-      {effectModal&&<EffectModal modal={effectModal} p1State={p1} setP1={setP1} p2State={p2} setP2={setP2} onClose={()=>setEffectModal(null)} addLog={addLog}/>}
-      {effectConfirmModal&&<EffectConfirmModal modal={effectConfirmModal} onConfirm={()=>{const{effect,ownerPid,selfSnap,setSelf,otherSnap,setOther}=effectConfirmModal;setEffectConfirmModal(null);processEffect(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,addLog,openEffectModal);}} onSkip={()=>setEffectConfirmModal(null)}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
       {triggerOrderModal&&<TriggerOrderModal entries={triggerOrderModal.entries} onChoose={id=>{const entry=triggerOrderModal.entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}/>}
