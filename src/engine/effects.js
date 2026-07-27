@@ -278,6 +278,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const where = { revealedToHand:"手札", revealedToBz:"バトルゾーン", revealedToMana:"マナ", revealedToGrave:"墓地", revealedToDeckTop:"山札の上", revealedToDeckBottom:"山札の下" }[type];
         addLog(`${pid}: ${take.map(c => c.name).join(", ")} → ${where}`);
         ctx.lastMoved = take;
+        if (type === "revealedToBz") ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...take.map(c => ({ card: c, ownerPid, method: "put" }))];
       }
       const takenUids = take.map(c => c.uid);
       ctx.revealed = pool.filter(c => !takenUids.includes(c.uid));
@@ -294,6 +295,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を手札からバトルゾーンへ`);
         ctx.lastMoved = cards;
+        ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
       }
       break;
     }
@@ -340,6 +342,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           } else {
             setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: true }] }));
             addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}召喚`);
+            ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
           }
         }
       }
@@ -354,6 +357,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→バトルゾーン`);
         ctx.lastMoved = cards;
+        ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
       }
       break;
     }
@@ -491,6 +495,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
+      ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: ownerOfGrave, method: "put" }))];
       break;
     }
     case "shieldToHand": {

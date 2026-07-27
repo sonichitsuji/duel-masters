@@ -1960,7 +1960,8 @@
     ],
     "triggers": [
       {
-        "on": "opponentCreaturePlay",
+        "on": "creaturePutBz",
+        "target": "opponent",
         "optional": true,
         "effects": [
           {
@@ -2029,7 +2030,8 @@
     ],
     "triggers": [
       {
-        "on": "selfBattleDestroy",
+        "on": "battleDestroy",
+        "target": "self",
         "effects": [
           {
             "label": "そのクリーチャーをこのターンの終わりに墓地から出す",
@@ -2058,7 +2060,8 @@
     "autoEffect": null,
     "triggers": [
       {
-        "on": "selfCreaturePlay",
+        "on": "creaturePutBz",
+        "target": "self",
         "optional": true,
         "effects": [
           {
@@ -2217,7 +2220,7 @@
     "autoEffect": null,
     "triggers": [
       {
-        "on": "selfDraw",
+        "on": "draw",
         "effects": [
           {
             "label": "相手は自身の手札を1枚選び捨てる",
@@ -2227,7 +2230,8 @@
         ]
       },
       {
-        "on": "ownCreatureAttack",
+        "on": "attack",
+        "target": "self",
         "effects": [
           {
             "label": "カードを1枚引いてもよい",
@@ -2235,7 +2239,8 @@
             "type": "drawCards",
             "amount": 1
           }
-        ]
+        ],
+        "firstEachTurn": true
       }
     ]
   },
@@ -2275,7 +2280,8 @@
     },
     "triggers": [
       {
-        "on": "opponentDiscard",
+        "on": "discard",
+        "target": "opponent",
         "effects": [
           {
             "label": "相手クリーチャー1体をタップ（次の相手ターンに起きない）",

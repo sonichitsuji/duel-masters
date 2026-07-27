@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition } from "../gameLogic";
-import { executeEffect } from "../engine/effects";
+import { executeEffect, matchFilter } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
 import { EffectStepModal } from "../components/modals/EffectStepModal";
@@ -14,21 +14,29 @@ import { ReplacementModal } from "../components/modals/ReplacementModal";
 import { PlayerBoard } from "../components/PlayerBoard";
 import { StepIndicator } from "../components/BoardWidgets";
 
-// 汎用トリガーの関係性解決（ゾーン走査型）
-// triggerName: 発生したイベント名 / on: カードが宣言する誘発条件
-// watcherPid: 監視カードの支配者 / sourcePid: イベントの所属プレイヤー
-function triggerMatches(on, triggerName, watcherPid, sourcePid){
-  if(on === triggerName){
-    // 所属プレイヤー相対のイベントは「自分の」ものだけ反応
-    if(["selfDraw","shieldLeave","shieldAdded","ownCreatureAttack"].includes(triggerName)) return watcherPid === sourcePid;
-    if(triggerName === "opponentDiscard") return watcherPid !== sourcePid;
-    return true;
+// 誘発の宣言と発生イベントのマッチング
+// tr.on: イベント名 / tr.target: "this"(このカード自身) | "self"(自分の) | "opponent"(相手の) | "both"
+// tr.filter: 主体カードの条件（効果と同じ filter 語彙） / tr.method: creaturePutBz の "summon"|"put"
+// ev: { sourcePid, subjectCard?, method?, firstThisTurn? }
+const DEFAULT_TRIGGER_SCOPE = {
+  creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this",
+  castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self", endOfTurn:"self",
+};
+function matchTrigger(tr, event, watcherPid, watcherCard, ev){
+  if(tr.on !== event) return false;
+  const scope = tr.target || DEFAULT_TRIGGER_SCOPE[event] || "self";
+  const subj = ev.subjectCard;
+  if(scope === "this"){
+    if(!subj || !watcherCard || subj.uid !== watcherCard.uid) return false;
+  } else if(scope === "self"){
+    if(ev.sourcePid !== watcherPid) return false;
+  } else if(scope === "opponent"){
+    if(ev.sourcePid === watcherPid) return false;
   }
-  if(triggerName === "creatureEnter"){
-    if(on === "selfCreaturePlay") return watcherPid === sourcePid;
-    if(on === "opponentCreaturePlay") return watcherPid !== sourcePid;
-  }
-  return false;
+  if(tr.method && ev.method && tr.method !== ev.method) return false;
+  if(tr.firstEachTurn && !ev.firstThisTurn) return false;
+  if(tr.filter && subj && !matchFilter(subj, tr.filter, {})) return false;
+  return true;
 }
 
 // #3 常在型能力の事前適用（枠組み）。例: 相手の「クリーチャーを出せない」常在型を、
@@ -41,15 +49,6 @@ function checkStaticDeny(state, targetPid, type){
     const sources=[...(st.battle||[]),...((st.shields||[]).filter(s=>s.faceUp))];
     if(sources.some(c=>c.staticDeny?.type===type)) return true;
   }
-  return false;
-}
-
-// leave/destroyed/battleDestroy を「別の永続が監視する」owner相対マッチ
-function watcherLeaveMatch(on, triggerName, watcherPid, subjOwner){
-  const own = watcherPid === subjOwner;
-  if(triggerName === "leave")         return (on === "selfCreatureLeave" && own) || (on === "opponentCreatureLeave" && !own);
-  if(triggerName === "battleDestroy") return (on === "selfBattleDestroy" && own) || (on === "opponentBattleDestroy" && !own);
-  if(triggerName === "destroyed")     return (on === "selfCreatureDestroyed" && own) || (on === "opponentCreatureDestroyed" && !own);
   return false;
 }
 
@@ -151,7 +150,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if (updatedCtx.destroyedThisStep && updatedCtx.destroyedThisStep.length) {
         const list = updatedCtx.destroyedThisStep;
         delete updatedCtx.destroyedThisStep;
-        list.forEach(d => setTimeout(() => { fireTriggerRef.current("leave",{card:d.card,ownerPid:d.ownerPid}); fireTriggerRef.current("destroyed",{card:d.card,ownerPid:d.ownerPid}); if(d.viaBattle) fireTriggerRef.current("battleDestroy",{card:d.card,ownerPid:d.ownerPid}); }, 0));
+        list.forEach(d => setTimeout(() => { fireTriggerRef.current("leave",{sourcePid:d.ownerPid,subjectCard:d.card}); fireTriggerRef.current("destroyed",{sourcePid:d.ownerPid,subjectCard:d.card}); if(d.viaBattle) fireTriggerRef.current("battleDestroy",{sourcePid:d.ownerPid,subjectCard:d.card}); }, 0));
       }
       // ステップ内でシールドが置かれた時の shieldAdded を発火（DARK MEMORY等）
       if (updatedCtx.shieldAddedFor && updatedCtx.shieldAddedFor.length) {
@@ -163,7 +162,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if (updatedCtx.discardedBy && updatedCtx.discardedBy.length) {
         const pids = updatedCtx.discardedBy;
         delete updatedCtx.discardedBy;
-        pids.forEach(pid => setTimeout(() => fireTriggerRef.current("opponentDiscard",{sourcePid:pid}), 0));
+        pids.forEach(pid => setTimeout(() => fireTriggerRef.current("discard",{sourcePid:pid}), 0));
       }
       // ステップ内で自分のシールドが離れた時の zRush 解放＋shieldLeave を発火（ギガゲドー等）
       if (updatedCtx.shieldLeftFor && updatedCtx.shieldLeftFor.length) {
@@ -178,6 +177,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
           setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castCard.autoEffect, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
         }
+        setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard}), 0);
+      }
+      // 効果でクリーチャーがバトルゾーンに出た時（method:"put"/"summon"）
+      if (updatedCtx.creatureEnteredBz && updatedCtx.creatureEnteredBz.length) {
+        const list = updatedCtx.creatureEnteredBz;
+        delete updatedCtx.creatureEnteredBz;
+        list.filter(e => e.card.type === "creature" || e.card.type === "evo_creature")
+            .forEach(e => setTimeout(() => fireTriggerRef.current("creaturePutBz",{sourcePid:e.ownerPid,subjectCard:e.card,method:e.method}), 0));
       }
       let nextIdx = prev.stepIdx + 1;
       // Skip conditional steps when their precondition is not met
@@ -204,7 +211,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // ゾーン走査型: creatureEnter/selfDraw/shieldLeave/shieldAdded/opponentDiscard（opts.sourcePid）
   // 攻撃型: attack（opts.sourcePid, opts.attackerUid）
   // 離脱カード固有型: leave/destroyed/battleDestroy（opts.card, opts.ownerPid）
-  const fireTrigger=(triggerName,opts={})=>{
+  // 汎用トリガー・ディスパッチャ
+  // event: creaturePutBz/castSpell/leave/destroyed/battleDestroy/attack/draw/discard/shieldAdded/shieldLeave/endOfTurn
+  // ev: { sourcePid, subjectCard?, method?("summon"|"put"), firstThisTurn? }
+  const fireTrigger=(event,ev={})=>{
     const cur=stateRef.current;
     const runOne=(card,ownerPid,tr,subject)=>{
       if(tr.hyperOnly&&!card.hyperMode) return;
@@ -212,35 +222,18 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // 誘発を pending キューへ。同一tickに積まれた分が「同時誘発」としてまとめてリゾルバで順序選択される。
       enqueueEffect({ kind:"trigger", effect:tr, ownerPid, srcCard:{...card}, subjectCard:subject, sourceName:card.name });
     };
-    const runCardTriggers=(card,ownerPid)=>{
-      (card.triggers||[]).forEach(tr=>{ if(tr.on===triggerName) runOne(card,ownerPid,tr); });
-    };
-    if(triggerName==="leave"||triggerName==="destroyed"||triggerName==="battleDestroy"){
-      // 1) 離脱カード自身の triggers
-      if(opts.card&&opts.ownerPid) runCardTriggers(opts.card,opts.ownerPid);
-      // 2) 監視カード（owner相対, subject=離脱カード）。battle＋表向きshield を走査
-      const subj=opts.card, subjOwner=opts.ownerPid;
-      ["p1","p2"].forEach(watcherPid=>{
-        const st=cur[watcherPid];
-        [...st.battle,...st.shields.filter(s=>s.faceUp)].forEach(card=>{
-          if(subj&&card.uid===subj.uid) return;
-          (card.triggers||[]).forEach(tr=>{ if(watcherLeaveMatch(tr.on,triggerName,watcherPid,subjOwner)) runOne(card,watcherPid,tr,subj); });
-        });
-      });
-      return;
+    const subj=ev.subjectCard;
+    // 1) 主体カード自身の triggers（target:"this" もここで成立。離脱後でゾーンに無くても発火できる）
+    if(subj&&ev.sourcePid){
+      (subj.triggers||[]).forEach(tr=>{ if(matchTrigger(tr,event,ev.sourcePid,subj,ev)) runOne(subj,ev.sourcePid,tr,subj); });
     }
-    if(triggerName==="attack"){
-      const ownerPid=opts.sourcePid;
-      const card=cur[ownerPid].battle.find(c=>c.uid===opts.attackerUid);
-      if(card) runCardTriggers(card,ownerPid);
-      return;
-    }
+    // 2) 監視カード（バトルゾーン＋表向きシールド。shieldAdded は墓地の自己蘇生系も対象）
     ["p1","p2"].forEach(watcherPid=>{
       const st=cur[watcherPid];
-      // shieldAdded は墓地のカード（自身を墓地から出す系）も監視対象に含める
-      const watchers=[...st.battle,...st.shields.filter(s=>s.faceUp),...(triggerName==="shieldAdded"?st.grave:[])];
+      const watchers=[...st.battle,...st.shields.filter(s=>s.faceUp),...(event==="shieldAdded"?st.grave:[])];
       watchers.forEach(card=>{
-        (card.triggers||[]).forEach(tr=>{ if(triggerMatches(tr.on,triggerName,watcherPid,opts.sourcePid)) runOne(card,watcherPid,tr); });
+        if(subj&&card.uid===subj.uid) return; // 1) で処理済み
+        (card.triggers||[]).forEach(tr=>{ if(matchTrigger(tr,event,watcherPid,card,ev)) runOne(card,watcherPid,tr,subj); });
       });
     });
   };
@@ -285,7 +278,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
-    setTimeout(()=>fireTrigger("selfDraw",{sourcePid:active}),0);
+    setTimeout(()=>fireTrigger("draw",{sourcePid:active}),0);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
   const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUid=null)=>{
@@ -330,7 +323,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
       // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）
-      if(isCreature) setTimeout(()=>fireTrigger("creatureEnter",{sourcePid:active}),0);
+      if(isCreature) setTimeout(()=>fireTrigger("creaturePutBz",{sourcePid:active,subjectCard:newCreature,method:"summon"}),0);
     }else{
       const isCharger=effectiveSide.keywords?.includes("charger");
       if(isCharger){
@@ -343,6 +336,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       const spellEffect=effectiveSide?.autoEffect||card.autoEffect;
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
+      // 汎用トリガー: 呪文を唱えた時
+      setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card}),0);
     }
     return true;
   };
@@ -388,9 +383,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(allies.length>0) setHyperUntapModal({attackerUid:uid,allies});
     }
     // 汎用トリガー: このクリーチャーが攻撃する時
-    setTimeout(()=>fireTrigger("attack",{sourcePid:active,attackerUid:uid}),0);
-    // 各ターン初回攻撃時（自分のクリーチャーが攻撃する時を監視する永続=G城等）
-    if(!attackedThisTurn){ setAttackedThisTurn(true); setTimeout(()=>fireTrigger("ownCreatureAttack",{sourcePid:active}),0); }
+    const firstThisTurn=!attackedThisTurn;
+    if(firstThisTurn) setAttackedThisTurn(true);
+    setTimeout(()=>fireTrigger("attack",{sourcePid:active,subjectCard:card,firstThisTurn}),0);
     // ブロッカー：防御側に未タップのブロッカーがいれば、ブロック選択モーダルを表示
     const blockers=otherState.battle.filter(c=>
       !c.tapped &&
@@ -404,9 +399,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
   // ===== 中央破壊パイプライン（スレイヤー/エスケープ置換/離脱トリガーを集約）=====
   const fireLeaveTriggers=(card,ownerPid,viaBattle)=>{
-    fireTrigger("leave",{card,ownerPid});
-    fireTrigger("destroyed",{card,ownerPid});
-    if(viaBattle) fireTrigger("battleDestroy",{card,ownerPid});
+    fireTrigger("leave",{sourcePid:ownerPid,subjectCard:card});
+    fireTrigger("destroyed",{sourcePid:ownerPid,subjectCard:card});
+    if(viaBattle) fireTrigger("battleDestroy",{sourcePid:ownerPid,subjectCard:card});
   };
   const destroyNow=(card,ownerPid,viaBattle)=>{
     const setSt=ownerPid==="p1"?setP1:setP2;
@@ -571,7 +566,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const setSelf=pid==="p1"?setP1:setP2;const oPid=pid==="p1"?"p2":"p1";const setOther=pid==="p1"?setP2:setP1;
       [...st.battle,...st.shields.filter(s=>s.faceUp)].forEach(card=>{
         (card.triggers||[]).forEach(tr=>{
-          if(tr.on!=="endOfTurn") return;
+          if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:pid})) return;
           if(tr.hyperOnly&&!card.hyperMode) return;
           if(tr.condition&&!checkGrantCondition(tr.condition,st)) return;
           setTimeout(()=>triggerEffect(tr,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);

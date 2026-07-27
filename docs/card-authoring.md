@@ -139,25 +139,68 @@
 
 ---
 
-## 7. triggers の `on`
+## 7. triggers（誘発能力）
 
+**`on`（イベント名）＋ `target`（誰の）＋ `filter`（どんなカード）** の組み合わせで書きます。
+
+```jsonc
+"triggers":[
+  { "on":"creaturePutBz", "target":"opponent", "optional":true, "effects":[ … ] },
+  { "on":"destroyed", "filter":{"raceContains":"ドラゴン"}, "effects":[ … ] }
+]
+```
+
+### イベント一覧（`on`）
 | on | 契機 |
 |---|---|
-| `selfCreaturePlay` / `opponentCreaturePlay` | 自分/相手のクリーチャーが出た時 |
-| `attack` | このクリーチャーが攻撃する時（`hyperOnly` 併用可） |
-| `ownCreatureAttack` | 自分のクリーチャーが攻撃する時（各ターン初回・監視用） |
-| `selfDraw` | 自分がカードを引いた時 |
-| `shieldLeave` / `shieldAdded` | 自分のシールドが離れた/置かれた時 |
-| `opponentDiscard` | 相手が手札を捨てた時 |
-| `leave` / `destroyed` / `battleDestroy` | このカード自身が離れた/破壊された時 |
-| `selfCreatureLeave` / `opponentCreatureLeave` | 自分/相手のクリーチャーが離れた時（監視） |
-| `selfBattleDestroy` / `opponentBattleDestroy` | バトルで破壊された時（監視・subject 参照可） |
-| `selfCreatureDestroyed` / `opponentCreatureDestroyed` | 破壊された時（監視） |
+| `creaturePutBz` | クリーチャーがバトルゾーンに出た時（`method` 指定可） |
+| `castSpell` | 呪文を唱えた時 |
+| `attack` | クリーチャーが攻撃する時（`firstEachTurn` 指定可） |
+| `leave` | カードが離れた時 |
+| `destroyed` | 破壊された時 |
+| `battleDestroy` | バトルで破壊された時 |
+| `draw` | カードを引いた時 |
+| `discard` | 手札を捨てた時 |
+| `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時 |
 | `endOfTurn` | 各ターンの終わり |
 
-`condition`: `{type:"civicCount",civ,count}` または `{flag:"shieldAddedThisTurn"}`。`hyperOnly:true` でハイパー時のみ。
+### `target`（誰のイベントに反応するか）
+| 値 | 意味 |
+|---|---|
+| `this` | **このカード自身**のイベント |
+| `self` | 自分の |
+| `opponent` | 相手の |
+| `both` | どちらでも |
 
----
+**既定値**：カード自身のイベント（`creaturePutBz` `leave` `destroyed` `battleDestroy` `attack`）は **`this`**、
+プレイヤーのイベント（`castSpell` `draw` `discard` `shieldAdded` `shieldLeave` `endOfTurn`）は **`self`**。
+
+```jsonc
+{"on":"leave"}                      // このクリーチャーが離れた時
+{"on":"leave","target":"self"}      // 自分のクリーチャーが離れた時
+{"on":"destroyed","target":"opponent"} // 相手のクリーチャーが破壊された時
+```
+
+### 追加パラメータ
+| パラメータ | 説明 |
+|---|---|
+| `filter` | 主体カードの条件（効果と同じ filter 語彙）。例 `{"raceContains":"ドラゴン"}` |
+| `method` | `creaturePutBz` 専用。`"summon"`(召喚＝プレイして出た) / `"put"`(効果で出された)。未指定なら両方 |
+| `firstEachTurn` | `attack` 等で「各ターン最初の1回のみ」 |
+| `optional` | 「〜してもよい」 |
+| `hyperOnly` | ハイパーモード時のみ発火 |
+| `condition` | `{type:"civicCount",civ,count}` または `{flag:"shieldAddedThisTurn"}` |
+
+```jsonc
+// 相手が効果でクリーチャーを出した時（召喚は対象外）
+{"on":"creaturePutBz","target":"opponent","method":"put","effects":[ … ]}
+
+// 各ターン、はじめて自分のクリーチャーが攻撃する時
+{"on":"attack","target":"self","firstEachTurn":true,"effects":[ … ]}
+
+// 相手が呪文を唱えた時
+{"on":"castSpell","target":"opponent","effects":[ … ]}
+```
 
 ## 8. 常在・付与・ハイパー等のフィールド
 

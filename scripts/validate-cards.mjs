@@ -14,7 +14,12 @@ const root = path.join(__dirname, "..");
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer"]);
-const TRIGGER_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","attack","ownCreatureAttack","selfDraw","shieldLeave","shieldAdded","opponentDiscard","leave","destroyed","battleDestroy","selfCreatureLeave","opponentCreatureLeave","selfBattleDestroy","opponentBattleDestroy","selfCreatureDestroyed","opponentCreatureDestroyed","endOfTurn"]);
+const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","draw","discard","shieldAdded","shieldLeave","endOfTurn"]);
+const TRIGGER_SCOPES = ["this","self","opponent","both"];
+// 旧トリガー名（廃止済み）
+const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
+  "selfCreatureLeave","opponentCreatureLeave","selfBattleDestroy","opponentBattleDestroy",
+  "selfCreatureDestroyed","opponentCreatureDestroyed","creatureEnter"]);
 const EFFECT_TYPES = new Set([
   // 変数ステップ
   "count","pick",
@@ -92,7 +97,10 @@ for (const c of cards) {
   checkEffect(c.spellSide?.autoEffect, `${tag}.spellSide`);
   checkEffect(c.finalRevolution, `${tag}.finalRevolution`);
   for (const tr of c.triggers || []) {
-    if (!TRIGGER_ONS.has(tr.on)) errors.push(`${tag}: 未知のtrigger on "${tr.on}"`);
+    if (LEGACY_ONS.has(tr.on)) errors.push(`${tag}: 旧トリガー名 "${tr.on}"（on＋target 形式へ移行してください）`);
+    else if (!TRIGGER_ONS.has(tr.on)) errors.push(`${tag}: 未知のtrigger on "${tr.on}"`);
+    if (tr.target && !TRIGGER_SCOPES.includes(tr.target)) errors.push(`${tag}.triggers(${tr.on}): 未知のtarget "${tr.target}"`);
+    if (tr.method && !["summon","put"].includes(tr.method)) errors.push(`${tag}.triggers(${tr.on}): 未知のmethod "${tr.method}"`);
     if (tr.effect) errors.push(`${tag}.triggers(${tr.on}): 旧記法 effect（effects へ）`);
     checkEffect(tr, `${tag}.triggers(${tr.on})`);
   }
