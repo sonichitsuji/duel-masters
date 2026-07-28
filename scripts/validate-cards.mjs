@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // cards.json とデッキの整合性を検証する。
 //  - JSONの妥当性 / id・nameの重複 / type・keyword の未知値
-//  - triggers[].on の未知値 / steps[].type・単純効果type の未知値（autoEffect/triggers/chooseTimes/finalRevolution/spellSide を再帰）
+//  - triggers[].on / effects[].type の未知値（autoEffect/triggers/activated/chooseTimes/finalRevolution/spellSide を再帰）
+//  - ssx に書けるのは能力フィールドのみ / activated の形 / condition の型
 //  - decks.js の参照id が存在するか
 // 語彙は src の実装に合わせて更新すること（出典はコメント参照）。
 import fs from "node:fs";
@@ -14,7 +15,12 @@ const root = path.join(__dirname, "..");
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer"]);
-const TRIGGER_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","attack","ownCreatureAttack","selfDraw","shieldLeave","shieldAdded","opponentDiscard","leave","destroyed","battleDestroy","selfCreatureLeave","opponentCreatureLeave","selfBattleDestroy","opponentBattleDestroy","selfCreatureDestroyed","opponentCreatureDestroyed","endOfTurn"]);
+const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","draw","discard","shieldAdded","shieldLeave","endOfTurn"]);
+const TRIGGER_SCOPES = ["this","self","opponent","both"];
+// 旧トリガー名（廃止済み）
+const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
+  "selfCreatureLeave","opponentCreatureLeave","selfBattleDestroy","opponentBattleDestroy",
+  "selfCreatureDestroyed","opponentCreatureDestroyed","creatureEnter"]);
 const EFFECT_TYPES = new Set([
   // 変数ステップ
   "count","pick",
@@ -30,6 +36,8 @@ const EFFECT_TYPES = new Set([
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
   "graveToBz","shieldToHand","shieldToGrave","breakShield",
+  // 召喚元ゾーンの拡張
+  "grantSummonFrom",
   // 遅延
   "scheduleReviveSubjectEndOfTurn",
 ]);
@@ -43,6 +51,17 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
   "tapOrUntapSelectCreature","untapSelectCreature","battleOpponentCreature","breakOpponentShieldChoice","debuffOpponentPower",
   "grantTempBuffToSelf","setUntapAfterAttack","grantSAUntapAfterAttack","shieldizeTopDeck","shieldizeFromHand","shieldizeOpponentCreature",
   "returnShieldToHand","selectShieldToGrave","handDiscard","randomDiscardOpponent"]);
+
+// 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
+const ABILITY_KEYS = new Set([
+  "keywords","triggers","activated","summonFrom","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
+  "hyperKeywords","hyperPower",
+]);
+const SUMMON_ZONES = new Set(["grave","mana"]);
+const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
+const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
+const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 
 const errors = [];
 const warnings = [];
@@ -58,6 +77,19 @@ function checkOne(e, where) {
   if (LEGACY_TYPES.has(e.type)) errors.push(`${where}: 旧記法の効果 "${e.type}"（新語彙へ移行してください）`);
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
+  if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
+}
+
+// 召喚元ゾーンの拡張（墓地・マナからの召喚許可）
+function checkSummonFrom(list, where) {
+  if (!Array.isArray(list)) { errors.push(`${where}.summonFrom: 配列である必要があります`); return; }
+  list.forEach((p, i) => {
+    const w = `${where}.summonFrom[${i}]`;
+    if (!p || typeof p !== "object") { errors.push(`${w}: オブジェクトである必要があります`); return; }
+    if (!SUMMON_ZONES.has(p.zone)) errors.push(`${w}: zone は ${[...SUMMON_ZONES].join("/")} のいずれか`);
+    if (p.timing && !ACTIVATED_TIMINGS.has(p.timing)) errors.push(`${w}: 未知の timing "${p.timing}"`);
+    if (p.maxPerTurn != null && typeof p.maxPerTurn !== "number") errors.push(`${w}: maxPerTurn は数値`);
+  });
 }
 function checkEffect(eff, where) {
   if (!eff || typeof eff !== "object") return;
@@ -73,6 +105,67 @@ function checkEffect(eff, where) {
   if (eff.type) errors.push(`${where}: 単純効果 "${eff.type}" は廃止（effects 配列へ）`);
 }
 
+function checkCondition(cond, where) {
+  if (!cond || typeof cond !== "object") return;
+  if (cond.flag) return; // 任意のプレイヤー状態フラグ
+  if (!cond.type) { errors.push(`${where}: condition に type も flag もありません`); return; }
+  if (!CONDITION_TYPES.has(cond.type)) errors.push(`${where}: 未知の condition.type "${cond.type}"`);
+  else if (typeof cond.count !== "number") errors.push(`${where}: condition "${cond.type}" に count(数値) が必要です`);
+}
+
+function checkTrigger(tr, where) {
+  if (LEGACY_ONS.has(tr.on)) errors.push(`${where}: 旧トリガー名 "${tr.on}"（on＋target 形式へ移行してください）`);
+  else if (!TRIGGER_ONS.has(tr.on)) errors.push(`${where}: 未知のtrigger on "${tr.on}"`);
+  if (tr.target && !TRIGGER_SCOPES.includes(tr.target)) errors.push(`${where}(${tr.on}): 未知のtarget "${tr.target}"`);
+  if (tr.method && !["summon","put"].includes(tr.method)) errors.push(`${where}(${tr.on}): 未知のmethod "${tr.method}"`);
+  if (tr.effect) errors.push(`${where}(${tr.on}): 旧記法 effect（effects へ）`);
+  if (tr.oncePerTurn != null && typeof tr.oncePerTurn !== "boolean") errors.push(`${where}(${tr.on}): oncePerTurn は真偽値`);
+  if (tr.oncePerGame != null && typeof tr.oncePerGame !== "boolean") errors.push(`${where}(${tr.on}): oncePerGame は真偽値`);
+  checkCondition(tr.condition, `${where}(${tr.on})`);
+  checkEffect(tr, `${where}(${tr.on})`);
+}
+
+// 起動型能力（プレイヤーが任意のタイミングで使う能力）
+function checkActivated(list, where) {
+  if (!Array.isArray(list)) { errors.push(`${where}.activated: 配列である必要があります`); return; }
+  list.forEach((ab, i) => {
+    const w = `${where}.activated[${i}]`;
+    if (!ab || typeof ab !== "object") { errors.push(`${w}: オブジェクトである必要があります`); return; }
+    if (!Array.isArray(ab.effects) || ab.effects.length === 0) errors.push(`${w}: effects(非空配列) が必要です`);
+    else for (const e of ab.effects) checkOne(e, w);
+    if (ab.steps) errors.push(`${w}: 旧記法 steps は廃止（effects へ）`);
+    if (ab.timing && !ACTIVATED_TIMINGS.has(ab.timing)) errors.push(`${w}: 未知の timing "${ab.timing}"`);
+    if (ab.oncePerTurn != null && typeof ab.oncePerTurn !== "boolean") errors.push(`${w}: oncePerTurn は真偽値`);
+    if (ab.oncePerGame != null && typeof ab.oncePerGame !== "boolean") errors.push(`${w}: oncePerGame は真偽値`);
+    if (!ab.label) warnings.push(`${w}: label が無いとUIに説明が出ません`);
+    checkCondition(ab.condition, w);
+  });
+}
+
+// カード直下 / ssx 内の共通能力フィールド検証
+function checkAbilityFields(obj, where) {
+  for (const k of obj.keywords || []) if (!KEYWORDS.has(k)) errors.push(`${where}: 未知のkeyword "${k}"`);
+  for (const k of obj.hyperKeywords || []) if (!KEYWORDS.has(k)) errors.push(`${where}: 未知のhyperKeyword "${k}"`);
+  for (const tr of obj.triggers || []) checkTrigger(tr, where);
+  if (obj.activated) checkActivated(obj.activated, where);
+  if (obj.summonFrom) checkSummonFrom(obj.summonFrom, where);
+  if (obj.powerAttacker != null && typeof obj.powerAttacker !== "number") errors.push(`${where}: powerAttacker は数値`);
+  if (obj.poweredBreaker != null && typeof obj.poweredBreaker !== "boolean") errors.push(`${where}: poweredBreaker は真偽値`);
+  for (const cp of obj.condPower || []) {
+    if (typeof cp.amount !== "number") errors.push(`${where}.condPower: amount(数値) が必要です`);
+    checkCondition(cp.condition, `${where}.condPower`);
+  }
+  for (const rule of obj.grantKeywords || []) {
+    if (!KEYWORDS.has(rule.keyword)) errors.push(`${where}.grantKeywords: 未知のkeyword "${rule.keyword}"`);
+    checkCondition(rule.condition, `${where}.grantKeywords`);
+  }
+  const cr = obj.costReduce;
+  if (cr) {
+    for (const z of cr.zones || []) if (!COST_REDUCE_ZONES.has(z)) errors.push(`${where}.costReduce: 未知のzone "${z}"`);
+    checkCondition(cr.condition, `${where}.costReduce`);
+  }
+}
+
 const seenIds = new Map();
 const seenNames = new Map();
 for (const c of cards) {
@@ -84,18 +177,27 @@ for (const c of cards) {
 
   for (const k of ["id","name","type","civ","cost","power","keywords","effect"]) if (!(k in c)) errors.push(`${tag}: 必須フィールド欠落 "${k}"`);
   if (c.type && !TYPES.has(c.type)) errors.push(`${tag}: 未知のtype "${c.type}"`);
-  for (const k of c.keywords || []) if (!KEYWORDS.has(k)) errors.push(`${tag}: 未知のkeyword "${k}"`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
   for (const cv of civs) if (!["light","water","darkness","fire","nature"].includes(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
 
+  // カード直下の能力フィールド（keywords / triggers / activated / condPower / costReduce ...）
+  checkAbilityFields(c, tag);
+
+  // 超魂X(SSX): 任意の能力フィールドを持てる。中身の検証は通常の能力と同じ
+  if (c.ssx) {
+    if (typeof c.ssx !== "object" || Array.isArray(c.ssx)) {
+      errors.push(`${tag}.ssx: オブジェクトである必要があります`);
+    } else {
+      for (const k of Object.keys(c.ssx)) {
+        if (!ABILITY_KEYS.has(k)) errors.push(`${tag}.ssx: "${k}" は能力フィールドではありません（ssx に書けるのは ${[...ABILITY_KEYS].join("/")}）`);
+      }
+      checkAbilityFields(c.ssx, `${tag}.ssx`);
+      if (Object.keys(c.ssx).length === 0) warnings.push(`${tag}.ssx: 中身が空です`);
+    }
+  }
   checkEffect(c.autoEffect, `${tag}.autoEffect`);
   checkEffect(c.spellSide?.autoEffect, `${tag}.spellSide`);
   checkEffect(c.finalRevolution, `${tag}.finalRevolution`);
-  for (const tr of c.triggers || []) {
-    if (!TRIGGER_ONS.has(tr.on)) errors.push(`${tag}: 未知のtrigger on "${tr.on}"`);
-    if (tr.effect) errors.push(`${tag}.triggers(${tr.on}): 旧記法 effect（effects へ）`);
-    checkEffect(tr, `${tag}.triggers(${tr.on})`);
-  }
 }
 
 // デッキ参照チェック

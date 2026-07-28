@@ -60,8 +60,8 @@ export function makeCardBg(civs) {
   return `linear-gradient(225deg, ${stops.join(', ')})`;
 }
 
-export function canPayCost(mana,card,selfBattle){
-  const effectiveCost=selfBattle?getEffectiveCost(card,selfBattle):card.cost;
+export function canPayCost(mana,card,costSource){
+  const effectiveCost=costSource?getEffectiveCost(card,costSource):card.cost;
   const untapped=mana.filter(c=>!c.tapped);
   if(untapped.length<effectiveCost) return {ok:false,reason:`マナ不足 (必要:${effectiveCost} / 利用可能:${untapped.length})`};
   if(effectiveCost===0) return {ok:true};
@@ -78,15 +78,58 @@ export function tapManaByUids(mana,uids){
   return mana.map(c=>uids.includes(c.uid)?{...c,tapped:true}:c);
 }
 
-export function getEffectiveCost(card, selfBattle) {
-  if (!selfBattle || selfBattle.length === 0) return card.cost;
+// costReduce の軽減元がどのゾーンにいれば有効か（未指定時の既定）
+// バトルゾーン＋シールドゾーンの表向きカード（=継続能力が有効な場所）
+export const COST_REDUCE_DEFAULT_ZONES = ["bz", "shield"];
+
+// 軽減元になりうるカードを {card, zone} の形で集める。
+// source は プレイヤー状態オブジェクト（推奨）か、後方互換のバトルゾーン配列。
+export function collectCostReduceSources(source) {
+  if (!source) return [];
+  if (Array.isArray(source)) return source.map(c => ({ card: c, zone: "bz" }));
+  const out = [];
+  for (const c of source.battle || []) out.push({ card: effectiveCard(c), zone: "bz" });
+  for (const c of source.shields || []) if (c.faceUp) out.push({ card: effectiveCard(c), zone: "shield" });
+  for (const c of source.mana   || []) out.push({ card: c, zone: "mana" });
+  for (const c of source.grave  || []) out.push({ card: c, zone: "grave" });
+  for (const c of source.hand   || []) out.push({ card: c, zone: "hand" });
+  return out;
+}
+
+// costReduce.filter の判定（gameLogic 内で完結。engine/effects へは依存しない）
+// カードのフィルタ判定（gameLogic 内で完結。engine/effects の matchFilter と同じ語彙のうち、
+// ctx(変数参照)を必要としないものだけを扱う）
+export function matchCardFilter(card, filter) {
+  if (!filter) return true;
+  if (filter.raceContains && !card.race?.includes(filter.raceContains)) return false;
+  if (filter.nameContains && !card.name?.includes(filter.nameContains)) return false;
+  if (filter.civ && !getCardCivs(card).includes(filter.civ)) return false;
+  if (filter.keyword && !hasKeyword(card, filter.keyword)) return false;
+  if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
+  if (filter.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
+  if (filter.type) {
+    if (filter.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
+    else if (filter.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
+    else if (filter.type === "element") { if (!isElement(card)) return false; }
+    else if (card.type !== filter.type) return false;
+  }
+  if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
+  if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
+  return true;
+}
+const costReduceMatches = matchCardFilter;
+
+// card をプレイする際の実効コスト。
+// source: プレイヤー状態（複数ゾーンの軽減元を見る）／配列（旧: バトルゾーンのみ）
+export function getEffectiveCost(card, source) {
+  const sources = collectCostReduceSources(source);
+  if (sources.length === 0) return card.cost;
   let cost = card.cost;
-  for (const c of selfBattle) {
+  for (const { card: c, zone } of sources) {
     if (!c.costReduce) continue;
-    const { amount, filter, min } = c.costReduce;
-    if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
-    if (filter?.nameContains && !card.name?.includes(filter.nameContains)) continue;
-    if (filter?.civ && !getCardCivs(card).includes(filter.civ)) continue;
+    const { amount, filter, min, zones } = c.costReduce;
+    if (!(zones || COST_REDUCE_DEFAULT_ZONES).includes(zone)) continue;
+    if (!costReduceMatches(card, filter)) continue;
     cost = Math.max(min ?? 0, cost - amount);
   }
   return Math.max(cost, getCardCivs(card).length);
@@ -109,6 +152,104 @@ export function extractFromBattle(battle, uid) {
 // 「エレメント」= クリーチャー(進化含む)またはタマシード
 export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed"; }
 
+// ===========================
+// 超魂X (SSX / Super Soul Cross)
+// ssx に書いた能力は、そのカードが持つ「通常の能力」（keywords/triggers 等と同じ扱い）。
+// SSX 固有のルールは1つだけ:
+//   このカードがクリーチャーの「下」に置かれている間、その上のクリーチャーもこの能力を持つ。
+// ssx には任意の"能力フィールド"を書ける（keywords/triggers/activated/costReduce/
+// condPower/grantKeywords/powerAttacker/poweredBreaker ...）。
+// ===========================
+
+// ssx でマージしない「カードの同一性」に関わるフィールド
+const IDENTITY_KEYS = new Set(["id","uid","name","cost","power","civ","type","race","effect","ssx","evolutionBase"]);
+
+// 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」
+export function effectiveCard(card){
+  if(!card) return card;
+  const layers=[card.ssx, ...((card.evolutionBase||[]).map(u=>u.ssx))].filter(Boolean);
+  if(layers.length===0) return card;
+  const out={...card};
+  for(const layer of layers){
+    for(const [k,v] of Object.entries(layer)){
+      if(IDENTITY_KEYS.has(k)) continue;
+      if(Array.isArray(v))            out[k]=[...(Array.isArray(out[k])?out[k]:[]), ...v];
+      else if(typeof v==="number")    out[k]=(typeof out[k]==="number"?out[k]:0)+v;
+      else if(typeof v==="boolean")   out[k]=out[k]||v;
+      else                            out[k]=out[k] ?? v;
+    }
+  }
+  return out;
+}
+
+// 表示用: 超魂X由来のキーワード（自身のssx + 下のカードのssx）
+export function ssxKeywords(card){
+  if(!card) return [];
+  const out=[...(card.ssx?.keywords || [])];
+  for(const under of card.evolutionBase || []) out.push(...(under.ssx?.keywords || []));
+  return out;
+}
+// カードが持つ誘発能力（通常 + 超魂X）
+export function getCardTriggers(card){ return effectiveCard(card)?.triggers || []; }
+// カードが持つ起動型能力（通常 + 超魂X）
+export function getCardActivated(card){ return effectiveCard(card)?.activated || []; }
+// カードが持つキーワード判定（通常 + 超魂X + 一時付与）。
+// 他カードからの継続付与は computeGrantedKeywords を併用すること。
+export function hasKeyword(card, kw){
+  const ec=effectiveCard(card);
+  return !!ec?.keywords?.includes(kw) || !!card?.tempBuff?.keywords?.includes(kw);
+}
+// このクリーチャーに含まれるカードの枚数（自身 + 下に敷かれたカード）
+export function stackCount(card){ return 1 + (card?.evolutionBase?.length || 0); }
+
+// ブレイク枚数: T/W・ブレイカー、パワード・ブレイカー（パワー6000ごとに1つ）を考慮
+export function getBreakCount(card, effPower, extraKeywords = []) {
+  const ec = effectiveCard(card);
+  const kw = [...(ec.keywords || []), ...(card.tempBuff?.keywords || []), ...extraKeywords,
+              ...((card.hyperMode && ec.hyperKeywords) || [])];
+  let n = 1;
+  if (kw.includes("tBreaker")) n = Math.max(n, 3);
+  else if (kw.includes("wBreaker")) n = Math.max(n, 2);
+  if (ec.poweredBreaker) n = Math.max(n, Math.max(1, Math.floor((effPower || 0) / 6000)));
+  return n;
+}
+
+// ===========================
+// 召喚元ゾーンの拡張（墓地・マナゾーンからの召喚）
+// 通常、クリーチャーは手札からしか召喚できない。summonFrom / turnSummonFrom はその許可を追加する。
+// 「召喚」なので コストは通常どおり支払い、召喚酔いも付き、creaturePutBz(method:"summon") が誘発する。
+//   - summonFrom     : 継続能力。バトルゾーン＋表向きシールドで有効（ssx にも書ける＝下のカードから伝播）
+//   - turnSummonFrom : そのターン限りの許可（効果 grantSummonFrom が積み、ターン終了時に消える）
+// ===========================
+export const SUMMON_ZONES = ["grave", "mana"];
+
+// 今この瞬間に有効な召喚許可を集める。isOwnTurn=false なら timing:"any" のものだけ。
+export function collectSummonPermissions(ownerState, isOwnTurn) {
+  if (!ownerState) return [];
+  const out = [];
+  const add = (perm, key) => {
+    if (!perm?.zone || !SUMMON_ZONES.includes(perm.zone)) return;
+    if ((perm.timing || "ownTurn") === "ownTurn" && !isOwnTurn) return;
+    out.push({ ...perm, key });
+  };
+  const fromCard = c => effectiveCard(c).summonFrom?.forEach((p, i) => add(p, `${c.uid}#sf${i}`));
+  for (const c of ownerState.battle || []) fromCard(c);
+  for (const c of ownerState.shields || []) if (c.faceUp) fromCard(c);
+  (ownerState.turnSummonFrom || []).forEach((p, i) => add(p, `turn#sf${i}`));
+  return out;
+}
+
+// card（zone にあるカード）を召喚できる許可を1つ返す。無ければ null。
+// usedCounts: { [perm.key]: そのターンに使った回数 }
+export function summonPermissionFor(card, zone, perms, usedCounts = {}) {
+  if (!card || !(card.type === "creature" || card.type === "evo_creature")) return null;
+  return perms.find(p =>
+    p.zone === zone &&
+    (p.maxPerTurn == null || (usedCounts[p.key] || 0) < p.maxPerTurn) &&
+    matchCardFilter(card, p.filter)
+  ) || null;
+}
+
 // シビルカウント: 自分の指定文明の「クリーチャーまたはタマシード」の数
 // （バトルゾーン＋シールドゾーンの表向きカードを数える。種別非依存で faceUp を見る）
 export function civicCount(state, civ){
@@ -120,29 +261,33 @@ export function civicCount(state, civ){
 }
 
 // grant規則やパワー強化に付く condition の評価
-export function checkGrantCondition(cond, ownerState){
+export function checkGrantCondition(cond, ownerState, card){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
+  if(cond.type === "stackCount") return stackCount(card) >= cond.count;
   if(cond.flag) return !!ownerState?.[cond.flag];
   return true;
 }
 
-export function getEffectivePower(card, ownerState, allOwnBattle) {
-  let power = (card.hyperMode && card.hyperPower != null) ? card.hyperPower : (card.power || 0);
+export function getEffectivePower(card, ownerState, allOwnBattle, opts = {}) {
+  const ec = effectiveCard(card);
+  let power = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
   power += card.tempBuff?.power || 0;
-  if (card.selfPowerBoostGrave) {
-    const { civFilter, perCard } = card.selfPowerBoostGrave;
+  // パワーアタッカー+N（攻撃中のみ）
+  if (opts.attacking && ec.powerAttacker) power += ec.powerAttacker;
+  if (ec.selfPowerBoostGrave) {
+    const { civFilter, perCard } = ec.selfPowerBoostGrave;
     const count = (ownerState.grave || []).filter(c => getCardCivs(c).includes(civFilter)).length;
     power += count * perCard;
   }
-  // 自身の条件付きパワー強化（例: シビルカウント5で +10000）
-  for (const cp of (card.condPower || [])) {
-    if (checkGrantCondition(cp.condition, ownerState)) power += cp.amount || 0;
+  // 自身の条件付きパワー強化（例: シビルカウント5で +10000 / スタック3枚以上で +N）
+  for (const cp of (ec.condPower || [])) {
+    if (checkGrantCondition(cp.condition, ownerState, card)) power += cp.amount || 0;
   }
   for (const ally of (allOwnBattle || [])) {
     if (!ally.grantPowerBoost || ally.uid === card.uid) continue;
     const { amount, filter, condition } = ally.grantPowerBoost;
-    if (condition && !checkGrantCondition(condition, ownerState)) continue;
+    if (condition && !checkGrantCondition(condition, ownerState, ally)) continue;
     if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
     power += amount;
   }
@@ -159,17 +304,18 @@ export function getEffectivePower(card, ownerState, allOwnBattle) {
 // ownerState を渡すと condition(civicCount等) と表向きシールドの付与源も評価できる。
 // 後方互換: battleZone のみでも動作（その場合 condition は battle だけで評価、表向きシールド源は無し）。
 export function computeGrantedKeywords(card, battleZone, ownerState) {
-  const granted = [...(card.tempBuff?.keywords || [])];
+  const granted = [...(card.tempBuff?.keywords || []), ...ssxKeywords(card)];
+  const evalCard = effectiveCard(card);
   const zone = battleZone || ownerState?.battle;
   if (!zone) return granted;
   const evalState = ownerState || { battle: zone, shields: [] };
   // 付与源: バトルゾーンの全カード＋シールドゾーンの表向きカード（種別非依存で faceUp を見る）
-  const granters = [...zone, ...((ownerState?.shields || []).filter(s => s.faceUp))];
+  const granters = [...zone, ...((ownerState?.shields || []).filter(s => s.faceUp))].map(effectiveCard);
   for (const granter of granters) {
     if (!granter.grantKeywords) continue;
     for (const rule of granter.grantKeywords) {
-      if (rule.condition && !checkGrantCondition(rule.condition, evalState)) continue;
-      if (rule.filter?.raceContains && !card.race?.includes(rule.filter.raceContains)) continue;
+      if (rule.condition && !checkGrantCondition(rule.condition, evalState, granter)) continue;
+      if (rule.filter?.raceContains && !evalCard.race?.includes(rule.filter.raceContains)) continue;
       if (rule.filter?.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) continue;
       if (rule.filter?.notSelf && granter.uid === card.uid) continue;
       if (rule.filter?.nameContains && !card.name?.includes(rule.filter.nameContains)) continue;

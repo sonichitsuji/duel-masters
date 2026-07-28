@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword } from "../gameLogic";
 import { KEYWORD_LABELS } from "../constants";
 
 // ===========================
@@ -29,7 +29,7 @@ export function matchFilter(card, filter, ctx) {
   if (f.raceContains && !card.race?.includes(f.raceContains)) return false;
   if (f.nameContains && !card.name?.includes(f.nameContains)) return false;
   if (f.notNameSelf && ctx?.srcName && card.name === ctx.srcName) return false;
-  if (f.keyword && !card.keywords?.includes(f.keyword)) return false;
+  if (f.keyword && !hasKeyword(card, f.keyword)) return false;
   if (f.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (f.element && !isElement(card)) return false;
   if (f.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
@@ -100,7 +100,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom"]);
 
 // ===========================
 // 候補算出（選択UI用）
@@ -278,6 +278,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const where = { revealedToHand:"手札", revealedToBz:"バトルゾーン", revealedToMana:"マナ", revealedToGrave:"墓地", revealedToDeckTop:"山札の上", revealedToDeckBottom:"山札の下" }[type];
         addLog(`${pid}: ${take.map(c => c.name).join(", ")} → ${where}`);
         ctx.lastMoved = take;
+        if (type === "revealedToBz") ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...take.map(c => ({ card: c, ownerPid, method: "put" }))];
       }
       const takenUids = take.map(c => c.uid);
       ctx.revealed = pool.filter(c => !takenUids.includes(c.uid));
@@ -294,6 +295,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を手札からバトルゾーンへ`);
         ctx.lastMoved = cards;
+        ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
       }
       break;
     }
@@ -340,6 +342,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           } else {
             setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: true }] }));
             addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}召喚`);
+            ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
           }
         }
       }
@@ -354,6 +357,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: false }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→バトルゾーン`);
         ctx.lastMoved = cards;
+        ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
       }
       break;
     }
@@ -435,6 +439,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       addLog(`${pid}: マナゾーンをすべてアンタップ`);
       break;
     }
+    // そのターン限り、指定ゾーンからの召喚を許可する（例: 蛇手の親分ゴエモンキー！）
+    case "grantSummonFrom": {
+      const perm = { zone: effect.zone, filter: effect.filter, maxPerTurn: effect.maxPerTurn,
+                     timing: effect.timing, label: effect.label };
+      for (const pidx of pids) setOf(pidx)(s => ({ ...s, turnSummonFrom: [...(s.turnSummonFrom || []), perm] }));
+      addLog(`${pid}: このターン、${effect.zone === "mana" ? "マナゾーン" : "墓地"}からクリーチャーを召喚できる`);
+      break;
+    }
     case "powerBuff": {
       for (const pidx of pids) {
         const st = stateOf(pidx);
@@ -491,6 +503,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
+      ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: ownerOfGrave, method: "put" }))];
       break;
     }
     case "shieldToHand": {
