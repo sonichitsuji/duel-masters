@@ -21,15 +21,28 @@ export function resolveAmount(ctx, val, fallback = 1) {
 }
 
 // ---- フィルタ ----
+// civ / raceContains / nameContains / keyword / type は配列で書くと「いずれか」(OR) になる。
+// 例: "civ": ["water", "darkness"] = 水または闇
+const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
+
+// type の判定。"creature" は進化クリーチャーも含み、"nonEvoCreature" は含まない
+function matchesType(card, t) {
+  if (t === "creature") return card.type === "creature" || card.type === "evo_creature";
+  if (t === "nonCreature") return !(card.type === "creature" || card.type === "evo_creature");
+  if (t === "nonEvoCreature") return card.type === "creature";
+  return card.type === t;
+}
+
 export function matchFilter(card, filter, ctx) {
   if (!filter) return true;
   const f = filter;
-  if (f.civ && !getCardCivs(card).includes(f.civ)) return false;
-  if (f.civNot && getCardCivs(card).includes(f.civNot)) return false;
-  if (f.raceContains && !card.race?.includes(f.raceContains)) return false;
-  if (f.nameContains && !card.name?.includes(f.nameContains)) return false;
+  const civs = getCardCivs(card);
+  if (f.civ && !anyOf(f.civ, x => civs.includes(x))) return false;
+  if (f.civNot && anyOf(f.civNot, x => civs.includes(x))) return false;
+  if (f.raceContains && !anyOf(f.raceContains, x => !!card.race?.includes(x))) return false;
+  if (f.nameContains && !anyOf(f.nameContains, x => !!card.name?.includes(x))) return false;
   if (f.notNameSelf && ctx?.srcName && card.name === ctx.srcName) return false;
-  if (f.keyword && !hasKeyword(card, f.keyword)) return false;
+  if (f.keyword && !anyOf(f.keyword, x => hasKeyword(card, x))) return false;
   if (f.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (f.element && !isElement(card)) return false;
   if (f.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
@@ -37,13 +50,7 @@ export function matchFilter(card, filter, ctx) {
   if (f.maxCost != null && !(card.cost <= resolveAmount(ctx, f.maxCost, f.maxCost))) return false;
   if (f.minCost != null && !(card.cost >= resolveAmount(ctx, f.minCost, f.minCost))) return false;
   if (f.maxPower != null && !((card.power || 0) <= resolveAmount(ctx, f.maxPower, f.maxPower))) return false;
-  if (f.type) {
-    if (f.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
-    else if (f.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
-    // 「進化ではないクリーチャー」。"creature" は進化クリーチャーも含むので別に用意する
-    else if (f.type === "nonEvoCreature") { if (card.type !== "creature") return false; }
-    else if (card.type !== f.type) return false;
-  }
+  if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   return true;
 }
 

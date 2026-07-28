@@ -58,6 +58,20 @@
 `element`(クリーチャー/タマシード) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `notNameSelf`
 ※ `maxCost` 等にも**変数名の文字列**を書けます。
 
+**「〜または〜」は配列で書きます**（`civ` `civNot` `raceContains` `nameContains` `keyword` `type` が対応）。
+
+```jsonc
+{ "civ": ["water", "darkness"] }                  // 水または闇
+{ "raceContains": ["ドラゴン", "コマンド"] }        // ドラゴンまたはコマンド
+{ "type": ["spell", "tamaseed"] }                 // 呪文またはタマシード
+{ "keyword": ["blocker", "slayer"] }              // ブロッカーまたはスレイヤーを持つ
+{ "civNot": ["light", "fire"] }                   // 光でも火でもない
+{ "civ": ["water", "darkness"], "maxCost": 5 }    // 「水または闇」かつ「コスト5以下」
+```
+
+**同じキーの中は OR、違うキーどうしは AND** です。多色カードは持っている文明のどれかが
+一致すれば `civ` に該当します（例: 水/火の多色は `{"civ":["water","darkness"]}` に該当）。
+
 ---
 
 ## 3. 変数ステップ（variable）

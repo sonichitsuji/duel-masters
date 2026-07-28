@@ -96,25 +96,28 @@ export function collectCostReduceSources(source) {
   return out;
 }
 
-// costReduce.filter の判定（gameLogic 内で完結。engine/effects へは依存しない）
 // カードのフィルタ判定（gameLogic 内で完結。engine/effects の matchFilter と同じ語彙のうち、
 // ctx(変数参照)を必要としないものだけを扱う）
+// civ / raceContains / nameContains / keyword / type は配列で書くと「いずれか」(OR) になる
+const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
+
+function matchesType(card, t) {
+  if (t === "creature") return card.type === "creature" || card.type === "evo_creature";
+  if (t === "nonCreature") return !(card.type === "creature" || card.type === "evo_creature");
+  if (t === "nonEvoCreature") return card.type === "creature";
+  if (t === "element") return isElement(card);
+  return card.type === t;
+}
+
 export function matchCardFilter(card, filter) {
   if (!filter) return true;
-  if (filter.raceContains && !card.race?.includes(filter.raceContains)) return false;
-  if (filter.nameContains && !card.name?.includes(filter.nameContains)) return false;
-  if (filter.civ && !getCardCivs(card).includes(filter.civ)) return false;
-  if (filter.keyword && !hasKeyword(card, filter.keyword)) return false;
+  if (filter.raceContains && !anyOf(filter.raceContains, x => !!card.race?.includes(x))) return false;
+  if (filter.nameContains && !anyOf(filter.nameContains, x => !!card.name?.includes(x))) return false;
+  if (filter.civ && !anyOf(filter.civ, x => getCardCivs(card).includes(x))) return false;
+  if (filter.keyword && !anyOf(filter.keyword, x => hasKeyword(card, x))) return false;
   if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (filter.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
-  if (filter.type) {
-    if (filter.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
-    else if (filter.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
-    // 「進化ではないクリーチャー」。"creature" は進化クリーチャーも含むので別に用意する
-    else if (filter.type === "nonEvoCreature") { if (card.type !== "creature") return false; }
-    else if (filter.type === "element") { if (!isElement(card)) return false; }
-    else if (card.type !== filter.type) return false;
-  }
+  if (filter.type && !anyOf(filter.type, t => matchesType(card, t))) return false;
   if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
   if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
   return true;

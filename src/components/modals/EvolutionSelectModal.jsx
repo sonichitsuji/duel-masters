@@ -5,13 +5,15 @@ import { CardFace } from "../CardFace";
 
 const ZONE_LABEL = { bz:"バトルゾーン", grave:"墓地", mana:"マナゾーン" };
 
-// 進化元の条件を人が読める形に
+// 進化元の条件を人が読める形に。配列は「または」でつなぐ
+const orList = (v, fmt = x => x) => (Array.isArray(v) ? v.map(fmt).join("または") : fmt(v));
+
 function describeFilter(filter) {
   if (!filter) return "クリーチャー";
   const parts = [];
-  if (filter.civ) parts.push(`${CIV[filter.civ]?.label ?? filter.civ}文明`);
-  if (filter.raceContains) parts.push(filter.raceContains);
-  if (filter.nameContains) parts.push(`名前に「${filter.nameContains}」`);
+  if (filter.civ) parts.push(`${orList(filter.civ, x => CIV[x]?.label ?? x)}文明`);
+  if (filter.raceContains) parts.push(orList(filter.raceContains));
+  if (filter.nameContains) parts.push(`名前に「${orList(filter.nameContains)}」`);
   if (filter.maxCost != null) parts.push(`コスト${filter.maxCost}以下`);
   parts.push("クリーチャー");
   return parts.join("の");
