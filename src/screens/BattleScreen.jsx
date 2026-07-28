@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, hasKeyword } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount } from "../gameLogic";
 import { executeEffect, matchFilter } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -7,6 +7,7 @@ import { EffectStepModal } from "../components/modals/EffectStepModal";
 import { TemplateChoiceModal } from "../components/modals/TemplateChoiceModal";
 import { TriggerOrderModal } from "../components/modals/TriggerOrderModal";
 import { BlockerModal } from "../components/modals/BlockerModal";
+import { ActivatedAbilityModal } from "../components/modals/ActivatedAbilityModal";
 import { FinalRevolutionModal } from "../components/modals/FinalRevolutionModal";
 import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
@@ -100,6 +101,18 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
   const [blockerModal,setBlockerModal]=useState(null);
+  // 「各ターンに一度」「ゲーム中に一度」の使用済みキー（`${uid}#a${i}` 起動型 / `${uid}#t${i}` 誘発型）
+  const [usedThisTurn,setUsedThisTurn]=useState(()=>new Set());
+  const [usedThisGame,setUsedThisGame]=useState(()=>new Set());
+  const [activatedModal,setActivatedModal]=useState(null);
+  const usedRef=useRef({turn:usedThisTurn,game:usedThisGame});
+  usedRef.current={turn:usedThisTurn,game:usedThisGame};
+  const isAbilityUsed=(ab,key)=>(ab.oncePerGame&&usedRef.current.game.has(key))||(ab.oncePerTurn&&usedRef.current.turn.has(key));
+  const markAbilityUsed=(ab,key)=>{
+    if(!key) return;
+    if(ab?.oncePerGame) setUsedThisGame(s=>new Set(s).add(key));
+    else if(ab?.oncePerTurn) setUsedThisTurn(s=>new Set(s).add(key));
+  };
 
   // 効果を pending キューへ積む（front=true で先頭=LIFO, #6枠組み）
   const enqueueEffect=(entry,{front=false}={})=>{
@@ -112,6 +125,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // pending から取り出したエントリを実際に解決開始する
   const resolveEntry=(entry)=>{
     const {effect,ownerPid,srcCard,subjectCard,sourceName}=entry;
+    if(entry.onceKey) markAbilityUsed(effect,entry.onceKey);
     showCutIn({title:"効果発動！",cardName:sourceName||srcCard?.name,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
     if(effect.type==="chooseTimes"){
       setTemplateChoiceModal({count:effect.count,templates:effect.templates,ownerPid,srcCard});
@@ -122,18 +136,19 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     if(pendingEffects.length===0) return;
     const minP=Math.min(...pendingEffects.map(e=>e.priority));
     const group=pendingEffects.filter(e=>e.priority===minP);
-    // 呪文は順序固定（割り込ませず enqueue 順で解決）。誘発が2件以上なら順序選択モーダル。
+    // 呪文は順序固定（割り込ませず enqueue 順で解決）。誘発が2件以上、または任意誘発(単体でも)は選択モーダル。
+    // 起動型能力はプレイヤーが既に「使う」と宣言しているので確認しない。
     const spell=group.find(e=>e.kind==="spell");
     if(spell){
       setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
       resolveEntry(spell);
-    } else if(group.length>1){
+    } else if(group.length>1 || (group[0].effect?.optional && group[0].kind!=="activated")){
       setTriggerOrderModal({entries:group});
     } else {
       setPendingEffects(p=>p.filter(e=>e.id!==group[0].id));
@@ -218,9 +233,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const cur=stateRef.current;
     const runOne=(card,ownerPid,tr,subject)=>{
       if(tr.hyperOnly&&!card.hyperMode) return;
-      if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid])) return;
+      if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid],card)) return;
+      // 「各ターンに一度」「ゲーム中に一度」の誘発は使用済みなら発火しない
+      const idx=getCardTriggers(card).indexOf(tr);
+      const onceKey=(tr.oncePerTurn||tr.oncePerGame)?`${card.uid}#t${idx}`:null;
+      if(onceKey&&isAbilityUsed(tr,onceKey)) return;
       // 誘発を pending キューへ。同一tickに積まれた分が「同時誘発」としてまとめてリゾルバで順序選択される。
-      enqueueEffect({ kind:"trigger", effect:tr, ownerPid, srcCard:{...card}, subjectCard:subject, sourceName:card.name });
+      enqueueEffect({ kind:"trigger", effect:tr, ownerPid, srcCard:{...card}, subjectCard:subject, sourceName:card.name,
+        onceKey, onceLabel: tr.oncePerGame?"ゲーム中に一度":tr.oncePerTurn?"各ターンに一度":null });
     };
     const subj=ev.subjectCard;
     // 1) 主体カード自身の triggers（target:"this" もここで成立。離脱後でゾーンに無くても発火できる）
@@ -238,6 +258,31 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     });
   };
   fireTriggerRef.current=fireTrigger;
+
+  // 起動型能力（activated）: 自分のバトルゾーン＋表向きシールドから、今使えるものを集める
+  const collectActivated=(pid)=>{
+    const st=stateRef.current[pid];
+    if(!st) return [];
+    const out=[];
+    [...st.battle, ...st.shields.filter(c=>c.faceUp)].forEach(card=>{
+      getCardActivated(card).forEach((ab,i)=>{
+        const key=`${card.uid}#a${i}`;
+        if(isAbilityUsed(ab,key)) return;
+        const timing=ab.timing||"ownTurn";
+        if(timing==="ownTurn"&&pid!==active) return;
+        if(ab.condition&&!checkGrantCondition(ab.condition,st,card)) return;
+        out.push({ key, pid, card, ability:ab, fromSsx: !(card.activated||[]).includes(ab) });
+      });
+    });
+    return out;
+  };
+  const handleUseActivated=(entry)=>{
+    setActivatedModal(null);
+    const {card,ability,key,pid}=entry;
+    addLog(`${pid}: ${card.name} の能力を発動（${ability.label||""}）`);
+    enqueueEffect({ kind:"activated", effect:ability, ownerPid:pid, srcCard:{...card}, sourceName:card.name, onceKey:key,
+      onceLabel: ability.oncePerGame?"ゲーム中に一度":ability.oncePerTurn?"各ターンに一度":null });
+  };
 
   // シールドが離れた時の共通処理：その所有者の zRush クリーチャーのハイパーを解放し、shieldLeave を発火
   const onShieldLeave=(ownerPid)=>{
@@ -449,7 +494,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   const resolveAttackCreature=(attacker,target)=>{
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:true}:c)}));
-    const aEff=getEffectivePower(attacker,activeState,activeState.battle);
+    const aEff=getEffectivePower(attacker,activeState,activeState.battle,{attacking:true});
     const dEff=getEffectivePower(target,otherState,otherState.battle);
     addLog(`[VS] ${attacker.name}(${aEff}) vs ${target.name}(${dEff})`);
     const aWin=aEff>=dEff;const dWin=dEff>=aEff;
@@ -481,9 +526,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
     if(attacker.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません（クリーチャーのみ攻撃可）");return;}
-    const effectiveTBreaker=attacker.keywords?.includes("tBreaker")||computeGrantedKeywords(attacker,activeState.battle,activeState).includes("tBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("tBreaker"));
-    const effectiveWBreaker=(!effectiveTBreaker)&&(attacker.keywords?.includes("wBreaker")||computeGrantedKeywords(attacker,activeState.battle,activeState).includes("wBreaker")||(attacker.hyperMode&&attacker.hyperKeywords?.includes("wBreaker")));
-    const breakCount=effectiveTBreaker?3:effectiveWBreaker?2:1;
+    const attackerPower=getEffectivePower(attacker,activeState,activeState.battle,{attacking:true});
+    const breakCount=getBreakCount(attacker,attackerPower,computeGrantedKeywords(attacker,activeState.battle,activeState));
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
     let shields=[...otherState.shields];const broken=[];
     for(let i=0;i<breakCount;i++){if(shields.length===0)break;broken.push(shields[0]);shields=shields.slice(1);}
@@ -623,7 +667,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const affected=otherState.battle.filter(c=>tappedOtherUids.has(c.uid));
       if(affected.length>0) addLog(`[反応] ${reactiveCreature.name}: アンタップした${affected.map(c=>c.name).join("、")}は次の自分のターンまで攻撃できない`);
     }
-    setAttackingUid(null);setUsedFinalRevThisTurn(false);setAttackedThisTurn(false);
+    setAttackingUid(null);setUsedFinalRevThisTurn(false);setAttackedThisTurn(false);setUsedThisTurn(new Set());
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
     setHandoff({from:active.toUpperCase(),to:next.toUpperCase()});
@@ -648,7 +692,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
-      {triggerOrderModal&&<TriggerOrderModal entries={triggerOrderModal.entries} onChoose={id=>{const entry=triggerOrderModal.entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}/>}
+      {triggerOrderModal&&<TriggerOrderModal entries={triggerOrderModal.entries}
+        onChoose={id=>{const entry=triggerOrderModal.entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}
+        onDecline={id=>{const entry=triggerOrderModal.entries.find(e=>e.id===id);addLog(`${entry?.sourceName??""}: 能力を発動しなかった`);setPendingEffects(p=>p.filter(e=>e.id!==id));setTriggerOrderModal(prev=>{const rest=(prev?.entries||[]).filter(e=>e.id!==id);return rest.length?{entries:rest}:null;});}}
+        onDeclineAll={()=>{const ids=triggerOrderModal.entries.filter(e=>e.effect?.optional).map(e=>e.id);addLog("任意の誘発能力を発動しなかった");setPendingEffects(p=>p.filter(e=>!ids.includes(e.id)));setTriggerOrderModal(prev=>{const rest=(prev?.entries||[]).filter(e=>!ids.includes(e.id));return rest.length?{entries:rest}:null;});}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
@@ -675,6 +722,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         }}
         onDecline={()=>{setBlockerModal(null);setMessage("攻撃対象を選択");}}
       />}
+      {activatedModal&&<ActivatedAbilityModal entries={activatedModal.entries} onUse={handleUseActivated} onClose={()=>setActivatedModal(null)}/>}
       {hyperTargetedModal&&<HyperTargetedModal modal={hyperTargetedModal} attackerShields={activeState.shields.length} onUse={()=>{
         const {targetUid,attackerUid,amount}=hyperTargetedModal;
         const target=otherState.battle.find(c=>c.uid===targetUid);
@@ -710,8 +758,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#4af",background:"rgba(10,30,80,0.35)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>◆ ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
-                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
               }
             </div>
           </div>
@@ -720,8 +768,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#f84",background:"rgba(80,15,10,0.25)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>非ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
-                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
               }
             </div>
           </div>
@@ -731,8 +779,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 22px 1fr",minHeight:0}}>
           <div style={{overflowY:"auto",padding:"6px 10px",borderBottom:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
-              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
             }
           </div>
           <div style={{overflow:"hidden"}}>
@@ -740,8 +788,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           </div>
           <div style={{overflowY:"auto",padding:"6px 10px",borderTop:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
-              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock}/>
+              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
             }
           </div>
         </div>

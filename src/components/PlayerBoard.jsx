@@ -15,7 +15,7 @@ import { EvolutionSelectModal } from "./modals/EvolutionSelectModal";
 // ===========================
 // PLAYER BOARD
 // ===========================
-export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack,onHyperUnlock,large}){
+export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack,onHyperUnlock,activatedCount,onOpenActivated,large}){
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
   const [revChangeTarget,setRevChangeTarget]=useState(null);
@@ -235,6 +235,12 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
         <div style={{background:"rgba(255,80,0,0.08)",border:"1px dashed #f8444488",borderRadius:6,padding:"6px 10px",marginBottom:8}}>
           <div style={{fontSize:11,color:"#f84",marginBottom:4,fontFamily:"'Cinzel',serif",letterSpacing:1}}>攻撃対象を選択</div>
           <ShieldPile shields={state.shields} canClick onBreak={onAttackShield}/>
+        </div>
+      )}
+      {/* 起動型能力（各ターンに一度〜等）。timing:"any" の能力は相手ターン中でも使えるので isActive とは独立に出す */}
+      {activatedCount>0&&onOpenActivated&&(
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+          <Btn onClick={onOpenActivated} col="#cc99ff">起動能力 ({activatedCount})</Btn>
         </div>
       )}
       {isActive&&(

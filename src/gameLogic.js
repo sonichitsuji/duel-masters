@@ -88,8 +88,8 @@ export function collectCostReduceSources(source) {
   if (!source) return [];
   if (Array.isArray(source)) return source.map(c => ({ card: c, zone: "bz" }));
   const out = [];
-  for (const c of source.battle || []) out.push({ card: c, zone: "bz" });
-  for (const c of source.shields || []) if (c.faceUp) out.push({ card: c, zone: "shield" });
+  for (const c of source.battle || []) out.push({ card: effectiveCard(c), zone: "bz" });
+  for (const c of source.shields || []) if (c.faceUp) out.push({ card: effectiveCard(c), zone: "shield" });
   for (const c of source.mana   || []) out.push({ card: c, zone: "mana" });
   for (const c of source.grave  || []) out.push({ card: c, zone: "grave" });
   for (const c of source.hand   || []) out.push({ card: c, zone: "hand" });
@@ -149,31 +149,64 @@ export function isElement(card){ return card.type === "creature" || card.type ==
 
 // ===========================
 // 超魂X (SSX / Super Soul Cross)
-// ssx に書いた能力は、そのカードが持つ「通常の能力」（keywords/triggers と同じ扱い）。
+// ssx に書いた能力は、そのカードが持つ「通常の能力」（keywords/triggers 等と同じ扱い）。
 // SSX 固有のルールは1つだけ:
 //   このカードがクリーチャーの「下」に置かれている間、その上のクリーチャーもこの能力を持つ。
-// データ形: "ssx": { "keywords":[...], "triggers":[...] }
+// ssx には任意の"能力フィールド"を書ける（keywords/triggers/activated/costReduce/
+// condPower/grantKeywords/powerAttacker/poweredBreaker ...）。
 // ===========================
+
+// ssx でマージしない「カードの同一性」に関わるフィールド
+const IDENTITY_KEYS = new Set(["id","uid","name","cost","power","civ","type","race","effect","ssx","evolutionBase"]);
+
+// 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」
+export function effectiveCard(card){
+  if(!card) return card;
+  const layers=[card.ssx, ...((card.evolutionBase||[]).map(u=>u.ssx))].filter(Boolean);
+  if(layers.length===0) return card;
+  const out={...card};
+  for(const layer of layers){
+    for(const [k,v] of Object.entries(layer)){
+      if(IDENTITY_KEYS.has(k)) continue;
+      if(Array.isArray(v))            out[k]=[...(Array.isArray(out[k])?out[k]:[]), ...v];
+      else if(typeof v==="number")    out[k]=(typeof out[k]==="number"?out[k]:0)+v;
+      else if(typeof v==="boolean")   out[k]=out[k]||v;
+      else                            out[k]=out[k] ?? v;
+    }
+  }
+  return out;
+}
+
+// 表示用: 超魂X由来のキーワード（自身のssx + 下のカードのssx）
 export function ssxKeywords(card){
   if(!card) return [];
   const out=[...(card.ssx?.keywords || [])];
   for(const under of card.evolutionBase || []) out.push(...(under.ssx?.keywords || []));
   return out;
 }
-export function ssxTriggers(card){
-  if(!card) return [];
-  const out=[...(card.ssx?.triggers || [])];
-  for(const under of card.evolutionBase || []) out.push(...(under.ssx?.triggers || []));
-  return out;
-}
-// カードが持つ誘発能力（通常 + 超魂X + 下にあるカードの超魂X）
-export function getCardTriggers(card){
-  return [...(card?.triggers || []), ...ssxTriggers(card)];
-}
-// カードが持つキーワード判定（通常 + 超魂X(自身/下のカード) + 一時付与）。
+// カードが持つ誘発能力（通常 + 超魂X）
+export function getCardTriggers(card){ return effectiveCard(card)?.triggers || []; }
+// カードが持つ起動型能力（通常 + 超魂X）
+export function getCardActivated(card){ return effectiveCard(card)?.activated || []; }
+// カードが持つキーワード判定（通常 + 超魂X + 一時付与）。
 // 他カードからの継続付与は computeGrantedKeywords を併用すること。
 export function hasKeyword(card, kw){
-  return !!card?.keywords?.includes(kw) || ssxKeywords(card).includes(kw) || !!card?.tempBuff?.keywords?.includes(kw);
+  const ec=effectiveCard(card);
+  return !!ec?.keywords?.includes(kw) || !!card?.tempBuff?.keywords?.includes(kw);
+}
+// このクリーチャーに含まれるカードの枚数（自身 + 下に敷かれたカード）
+export function stackCount(card){ return 1 + (card?.evolutionBase?.length || 0); }
+
+// ブレイク枚数: T/W・ブレイカー、パワード・ブレイカー（パワー6000ごとに1つ）を考慮
+export function getBreakCount(card, effPower, extraKeywords = []) {
+  const ec = effectiveCard(card);
+  const kw = [...(ec.keywords || []), ...(card.tempBuff?.keywords || []), ...extraKeywords,
+              ...((card.hyperMode && ec.hyperKeywords) || [])];
+  let n = 1;
+  if (kw.includes("tBreaker")) n = Math.max(n, 3);
+  else if (kw.includes("wBreaker")) n = Math.max(n, 2);
+  if (ec.poweredBreaker) n = Math.max(n, Math.max(1, Math.floor((effPower || 0) / 6000)));
+  return n;
 }
 
 // シビルカウント: 自分の指定文明の「クリーチャーまたはタマシード」の数
@@ -187,29 +220,33 @@ export function civicCount(state, civ){
 }
 
 // grant規則やパワー強化に付く condition の評価
-export function checkGrantCondition(cond, ownerState){
+export function checkGrantCondition(cond, ownerState, card){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
+  if(cond.type === "stackCount") return stackCount(card) >= cond.count;
   if(cond.flag) return !!ownerState?.[cond.flag];
   return true;
 }
 
-export function getEffectivePower(card, ownerState, allOwnBattle) {
-  let power = (card.hyperMode && card.hyperPower != null) ? card.hyperPower : (card.power || 0);
+export function getEffectivePower(card, ownerState, allOwnBattle, opts = {}) {
+  const ec = effectiveCard(card);
+  let power = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
   power += card.tempBuff?.power || 0;
-  if (card.selfPowerBoostGrave) {
-    const { civFilter, perCard } = card.selfPowerBoostGrave;
+  // パワーアタッカー+N（攻撃中のみ）
+  if (opts.attacking && ec.powerAttacker) power += ec.powerAttacker;
+  if (ec.selfPowerBoostGrave) {
+    const { civFilter, perCard } = ec.selfPowerBoostGrave;
     const count = (ownerState.grave || []).filter(c => getCardCivs(c).includes(civFilter)).length;
     power += count * perCard;
   }
-  // 自身の条件付きパワー強化（例: シビルカウント5で +10000）
-  for (const cp of (card.condPower || [])) {
-    if (checkGrantCondition(cp.condition, ownerState)) power += cp.amount || 0;
+  // 自身の条件付きパワー強化（例: シビルカウント5で +10000 / スタック3枚以上で +N）
+  for (const cp of (ec.condPower || [])) {
+    if (checkGrantCondition(cp.condition, ownerState, card)) power += cp.amount || 0;
   }
   for (const ally of (allOwnBattle || [])) {
     if (!ally.grantPowerBoost || ally.uid === card.uid) continue;
     const { amount, filter, condition } = ally.grantPowerBoost;
-    if (condition && !checkGrantCondition(condition, ownerState)) continue;
+    if (condition && !checkGrantCondition(condition, ownerState, ally)) continue;
     if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
     power += amount;
   }
@@ -227,16 +264,17 @@ export function getEffectivePower(card, ownerState, allOwnBattle) {
 // 後方互換: battleZone のみでも動作（その場合 condition は battle だけで評価、表向きシールド源は無し）。
 export function computeGrantedKeywords(card, battleZone, ownerState) {
   const granted = [...(card.tempBuff?.keywords || []), ...ssxKeywords(card)];
+  const evalCard = effectiveCard(card);
   const zone = battleZone || ownerState?.battle;
   if (!zone) return granted;
   const evalState = ownerState || { battle: zone, shields: [] };
   // 付与源: バトルゾーンの全カード＋シールドゾーンの表向きカード（種別非依存で faceUp を見る）
-  const granters = [...zone, ...((ownerState?.shields || []).filter(s => s.faceUp))];
+  const granters = [...zone, ...((ownerState?.shields || []).filter(s => s.faceUp))].map(effectiveCard);
   for (const granter of granters) {
     if (!granter.grantKeywords) continue;
     for (const rule of granter.grantKeywords) {
-      if (rule.condition && !checkGrantCondition(rule.condition, evalState)) continue;
-      if (rule.filter?.raceContains && !card.race?.includes(rule.filter.raceContains)) continue;
+      if (rule.condition && !checkGrantCondition(rule.condition, evalState, granter)) continue;
+      if (rule.filter?.raceContains && !evalCard.race?.includes(rule.filter.raceContains)) continue;
       if (rule.filter?.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) continue;
       if (rule.filter?.notSelf && granter.uid === card.uid) continue;
       if (rule.filter?.nameContains && !card.name?.includes(rule.filter.nameContains)) continue;

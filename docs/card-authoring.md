@@ -189,7 +189,9 @@
 | `firstEachTurn` | `attack` 等で「各ターン最初の1回のみ」 |
 | `optional` | 「〜してもよい」 |
 | `hyperOnly` | ハイパーモード時のみ発火 |
-| `condition` | `{type:"civicCount",civ,count}` または `{flag:"shieldAddedThisTurn"}` |
+| `oncePerTurn` | 「各ターンに一度」。実際に解決した時だけ消費（辞退しても消費しない） |
+| `oncePerGame` | 「ゲーム中に一度」（終極宣言など） |
+| `condition` | `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"shieldAddedThisTurn"}` |
 
 ```jsonc
 // 相手が効果でクリーチャーを出した時（召喚は対象外）
@@ -200,7 +202,17 @@
 
 // 相手が呪文を唱えた時
 {"on":"castSpell","target":"opponent","effects":[ … ]}
+
+// 各ターンに一度、クリーチャーが出た時、山札の上をシールド化してもよい
+{"on":"creaturePutBz","target":"both","oncePerTurn":true,"optional":true,
+ "effects":[{"type":"topToShield","amount":1,"label":"山札の上をシールド化"}]}
 ```
+
+### 任意誘発（`optional`）の確認タイミング
+
+`optional` / `oncePerTurn` の誘発は、**他の任意誘発と同じモーダル**（誘発順序モーダル）で
+「発動する／発動しない」を問われます。単独で誘発した場合もモーダルが出ます。
+「発動しない」を選んだ能力は `oncePerTurn` を **消費しません**（同ターン中に再び誘発すれば再度問われる）。
 
 ## 7.5. 超魂X（SSX / Super Soul Cross）
 
@@ -219,24 +231,75 @@
 - このカード自身は、`keywords:["blocker"]` と書いたのと同じようにブロッカーとして扱われます。
 - **加えて**、このカードを下に持つクリーチャー（進化元など）もブロッカーを得ます。
 
+### `ssx` には任意の「能力フィールド」が書ける
+
+`ssx` の中身は **カード直下に書ける能力フィールドと同じ語彙**です。`keywords` / `triggers` に限らず、
+`activated`(§7.6) `costReduce` `condPower` `grantKeywords` `grantPowerBoost` `grantPowerBoostGrave`
+`selfPowerBoostGrave` `powerAttacker` `poweredBreaker` `hyperKeywords` `hyperPower` が使えます。
+（`id` `name` `cost` `power` `civ` `type` `race` などカードの同一性に関わるものは書けません。）
+
+マージ規則は「配列＝連結／数値＝加算／真偽＝OR」なので、**同じ能力を複数持つ**ことも、
+**下のカードの超魂Xを重ねる**こともそのまま表現できます。
+
 ```jsonc
-// 誘発能力も持てる（通常の triggers と同じ書式。下のクリーチャーにも伝播する）
+// 誘発能力（通常の triggers と同じ書式。下のクリーチャーにも伝播する）
 "ssx": { "triggers":[ { "on":"attack", "optional":true, "effects":[ … ] } ] }
+
+// 複数の能力を1枚に（例: パワーアタッカー＋4000 と 起動型能力）
+"ssx": {
+  "powerAttacker": 4000,
+  "activated": [ { "label":"自分の墓地からクリーチャーを1体出す", "oncePerTurn":true,
+                   "effects":[{"type":"graveToBz","filter":{"creatureOnly":true}}] } ]
+}
+
+// スタック枚数を条件にする（このクリーチャーにカードが3枚以上あれば +6000 かつ Wブレイカー）
+"ssx": {
+  "condPower":[ { "condition":{"type":"stackCount","count":3}, "amount":6000 } ],
+  "grantKeywords":[ { "keyword":"wBreaker", "condition":{"type":"stackCount","count":3} } ]
+}
+```
+
+カード表示では紫の **SSX** バッジが付き、キーワードのバッジは通常能力と同じ色で表示されます。
+
+## 7.6. 起動型能力（`activated`）と「各ターンに一度」
+
+プレイヤーが任意のタイミングで自分から使う能力は `activated` に書きます。
+バトルゾーンのボタン **「起動能力 (N)」** から一覧が開き、選んで発動します。
+
+```jsonc
+"activated": [
+  { "label": "自分の墓地からクリーチャーを1体、バトルゾーンに出す",
+    "oncePerTurn": true,        // 各ターンに一度（"oncePerGame":true なら ゲーム中に一度＝終極宣言）
+    "timing": "ownTurn",        // "ownTurn"(自分のターン中/既定) | "any"(いつでも)
+    "condition": {"type":"stackCount","count":3},   // 省略可
+    "effects": [ { "type":"graveToBz", "filter":{"creatureOnly":true} } ] }
+]
 ```
 
 | フィールド | 説明 |
 |---|---|
-| `ssx.keywords` | 超魂Xで持つキーワード能力（`§6` のキーワード名） |
-| `ssx.triggers` | 超魂Xで持つ誘発能力（`§7` と同じ書式） |
+| `label` | UI に出る説明文（必須ではないが無いと何の能力か分からない） |
+| `effects` | 効果本体（§2 と同じ記法。必須） |
+| `oncePerTurn` / `oncePerGame` | 使用回数制限。使用済みの間は候補に出ない |
+| `timing` | `"ownTurn"`(既定) / `"any"` |
+| `condition` | §7 の `condition` と同じ |
 
-カード表示では紫の **SSX** バッジが付き、キーワードのバッジは通常能力と同じ色で表示されます。
+- 有効なゾーンは **バトルゾーン＋表向きのシールド**（継続能力が働く場所）。
+- `oncePerTurn` はターン終了時にリセット、`oncePerGame` はゲーム中リセットされません。
+- `ssx.activated` に書けば、下に敷かれたクリーチャーの起動型能力として上のクリーチャーも使えます。
 
 ---
 
 ## 8. 常在・付与・ハイパー等のフィールド
 
+- `activated`: 起動型能力 → **§7.6**
 - `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `notSelf,raceContains,multiColor,nameContains,elementOnly`）
 - `grantPowerBoost` / `grantPowerBoostGrave` / `selfPowerBoostGrave` / `condPower:[{condition,amount}]`
+- `powerAttacker`: `N` — パワーアタッカー+N（**攻撃中のみ**パワー+N）
+- `poweredBreaker`: `true` — パワード・ブレイカー（パワー6000ごとに1つブレイク、最低1）。
+  W/Tブレイカーと併用した場合は**大きい方**が採用される
+- `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"…"}`
+  - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
 - `costReduce`: `{amount, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
   - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
     既定は `["bz","shield"]`（バトルゾーン＋表向きシールド＝継続能力が働く場所）
