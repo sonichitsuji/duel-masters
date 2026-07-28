@@ -171,6 +171,14 @@
 **遅延**
 - `scheduleReviveSubjectEndOfTurn` — 「そのクリーチャー」をターン終了時に墓地から出す
 
+### 効果でバトルゾーンに出したクリーチャーの召喚酔い
+
+`handToBz` / `manaToBz` / `graveToBz` / `revealedToBz` / `search{destination:"bz"}` で出したクリーチャーは、
+**既定で召喚酔いします**（そのターンは攻撃できない）。DMの通常ルールどおりです。
+
+「出したターンから攻撃できる」と書かれたカードだけ **`"summoningSickness": false`** を付けてください。
+スピードアタッカー持ちは攻撃可否の判定側で除外されるので、この指定は不要です。
+
 ---
 
 ## 6. type とキーワード

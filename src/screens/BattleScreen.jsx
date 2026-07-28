@@ -463,7 +463,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const manaUids=selected.filter(x=>x.from==="mana").map(x=>x.uid);
     const fromHand=activeState.hand.filter(c=>handUids.includes(c.uid));
     const fromMana=activeState.mana.filter(c=>manaUids.includes(c.uid));
-    const newCards=[...fromHand,...fromMana].map(c=>({...c,tapped:false,summonedThisTurn:false}));
+    // ファイナル革命で出したクリーチャーも召喚酔いする
+    const newCards=[...fromHand,...fromMana].map(c=>({ ...c, tapped: false, summonedThisTurn: true }));
     setActiveState(s=>({...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]}));
     addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
     maybeFlagCantAttack(newCards.map(c=>c.uid),setActiveState,otherState.battle);
