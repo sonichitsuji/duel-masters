@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec } from "../gameLogic";
-import { executeEffect, matchFilter } from "../engine/effects";
+import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
 import { EffectStepModal } from "../components/modals/EffectStepModal";
@@ -224,9 +224,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         setWinner(wpid.toUpperCase());
         return null;
       }
-      // メテオバーンのコストを支払えなかった/支払わなかった → 「そうしたら」以降は起こらない
-      if (updatedCtx.meteorBurnFailed) {
-        addLog("メテオバーンを支払わなかったため、以降の効果は発生しない");
+      // 「そうしたら」「そうした場合」: 直前のステップを実際に行わなかったら以降は起こらない
+      if (shouldStopChain(prev.steps, prev.stepIdx, updatedCtx)) {
+        addLog(prev.steps[prev.stepIdx].type === "meteorBurn"
+          ? "メテオバーンを支払わなかったため、以降の効果は発生しない"
+          : "直前の効果を行わなかったため、「そうしたら」以降の効果は発生しない");
         return null;
       }
       let nextIdx = prev.stepIdx + 1;

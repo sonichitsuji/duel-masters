@@ -147,6 +147,19 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
 }
 
 // ===========================
+// 「そうしたら」「そうした場合」
+// 直前のステップを実際に行わなかった場合、そこから後ろのステップは実行しない。
+//   - 後続ステップに ifPrevious:true を書くと、その手前のステップに依存する
+//   - meteorBurn は「コスト」なので、支払わなければ常に以降を打ち切る（ifPrevious 不要）
+// ===========================
+export function shouldStopChain(steps, doneIdx, ctx) {
+  if (ctx?.stepDone !== false) return false;
+  const cur = steps?.[doneIdx];
+  const next = steps?.[doneIdx + 1];
+  return cur?.type === "meteorBurn" || !!next?.ifPrevious;
+}
+
+// ===========================
 // 実行
 // ===========================
 export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1, p2, setP2, addLog, srcCard) {
@@ -157,6 +170,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const oppPid     = ownerPid === "p1" ? "p2" : "p1";
   const pid = ownerPid === "p1" ? "P1" : "P2";
   const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name };
+  // 「そうしたら」判定用。このステップを実際に行ったか。各 case が明示しなければ末尾で既定値を入れる
+  ctx.stepDone = undefined;
   const type = effect.type;
   const spec = SOURCE[type] || {};
   const tgt = effect.target || spec.target || "self";
@@ -202,6 +217,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const n = Math.min(amount, selfState.deck.length);
       if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
       addLog(`${pid}: ${n}枚ドロー`);
+      ctx.stepDone = n > 0;
       break;
     }
     case "reveal": {
@@ -531,7 +547,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const under = live?.evolutionBase || [];
       const picked = under.filter(c => selectedUids.includes(c.uid));
       if (!live || under.length < need || picked.length < need) {
-        ctx.meteorBurnFailed = true;
+        ctx.stepDone = false;
         addLog(`${pid}: メテオバーン不発（${!live ? "クリーチャーがバトルゾーンにいない" : "下のカードが足りない/支払わなかった"}）`);
         break;
       }
@@ -556,6 +572,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const ZONE_JP = { grave:"墓地", mana:"マナゾーン", hand:"手札", shield:"シールドゾーン", deck:"山札の下" };
       addLog(`${pid}: [メテオバーン] ${live.name} の下から「${picked.map(c => c.name).join("、")}」を${ZONE_JP[to] || "墓地"}へ`);
       ctx.lastMoved = moved;
+      ctx.stepDone = true;
       break;
     }
     case "graveToHand": {
@@ -610,5 +627,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     default: addLog(`[未実装効果] ${type}`);
   }
+  // 既定: 自動実行のステップは「行った」、選択が要るステップは1枚以上選ばれていれば「行った」
+  if (ctx.stepDone === undefined) ctx.stepDone = AUTO_TYPES.has(type) || selectedUids.length > 0;
   return ctx;
 }

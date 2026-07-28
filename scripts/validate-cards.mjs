@@ -116,6 +116,9 @@ function checkEffect(eff, where) {
       checkOne(e, where);
       // meteorBurn は支払えないと以降が打ち切られるので、先頭以外に置くのは意図しにくい
       if (e?.type === "meteorBurn" && i !== 0) warnings.push(`${where}: meteorBurn は effects の先頭に置いてください（以降のステップが打ち切られます）`);
+      // 「そうしたら」は直前のステップに依存するので、先頭には置けない
+      if (e?.ifPrevious && i === 0) errors.push(`${where}: 先頭のステップに ifPrevious は指定できません（直前のステップがありません）`);
+      if (e?.ifPrevious != null && typeof e.ifPrevious !== "boolean") errors.push(`${where}: ifPrevious は真偽値`);
     });
     return;
   }
