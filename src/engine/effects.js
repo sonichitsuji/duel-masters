@@ -84,6 +84,7 @@ const SOURCE = {
   untap:          { zone: "bz",       target: "self" },
   tapToggle:      { zone: "bz",       target: "both" },
   graveToBz:      { zone: "grave",    target: "self" },
+  graveToHand:    { zone: "grave",    target: "self" },
   shieldToHand:   { zone: "shield",   target: "self" },
   shieldToGrave:  { zone: "shield",   target: "self" },
   battle:         { zone: "bz",       target: "opponent" },
@@ -135,7 +136,9 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   cards = cards.filter(c => matchFilter(c, effect.filter, c2));
   // 一括処理（選択不要）
   if (effect.all || effect.random || effect.takeAll) return { candidates: cards, isAuto: true };
-  const maxSelect = resolveAmount(c2, effect.amount, 1) || 1;
+  // 選択枚数は通常 amount。ただし powerBuff の amount は「パワー増減値」なので count で指定する（既定1体）
+  const countSpec = type === "powerBuff" ? (effect.count ?? 1) : (effect.count ?? effect.amount);
+  const maxSelect = Math.max(1, resolveAmount(c2, countSpec, 1) || 1);
   return { candidates: cards, isAuto: cards.length === 0, maxSelect, optional: effect.optional };
 }
 
@@ -448,19 +451,21 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "powerBuff": {
+      // amount は数値でも変数参照でもよい。perUnit を付けると「1つにつき N」（例: 墓地のクリーチャー1体につき-1000）
+      const delta = resolveAmount(ctx, effect.amount, 0) * (effect.perUnit ?? 1);
       for (const pidx of pids) {
         const st = stateOf(pidx);
         const targets = st.battle.filter(c => selectedUids.includes(c.uid));
         for (const card of targets) {
-          const newBuff = { power: (card.tempBuff?.power || 0) + (effect.amount || 0), keywords: effect.keywords || card.tempBuff?.keywords, expires: effect.expires || "endOfTurn" };
+          const newBuff = { power: (card.tempBuff?.power || 0) + delta, keywords: effect.keywords || card.tempBuff?.keywords, expires: effect.expires || "endOfTurn" };
           const projected = getEffectivePower({ ...card, tempBuff: newBuff }, st, st.battle);
           if (projected <= 0) {
             setOf(pidx)(s => { const { newBattle, extracted } = extractFromBattle(s.battle, card.uid); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
-            addLog(`${pid}: ${card.name} のパワーを${effect.amount}（パワー0以下のため破壊）`);
+            addLog(`${pid}: ${card.name} のパワーを${delta}（パワー0以下のため破壊）`);
             markDestroyed(card, pidx, false);
           } else {
             setOf(pidx)(s => ({ ...s, battle: s.battle.map(c => c.uid === card.uid ? { ...c, tempBuff: newBuff } : c) }));
-            addLog(`${pid}: ${card.name} のパワーを${effect.amount > 0 ? "+" : ""}${effect.amount}`);
+            addLog(`${pid}: ${card.name} のパワーを${delta > 0 ? "+" : ""}${delta}`);
           }
         }
       }
@@ -504,6 +509,17 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
       ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: ownerOfGrave, method: "put" }))];
+      break;
+    }
+    case "graveToHand": {
+      for (const pidx of pids) {
+        const cards = stateOf(pidx).grave.filter(c => selectedUids.includes(c.uid));
+        if (!cards.length) continue;
+        const uids = cards.map(c => c.uid);
+        setOf(pidx)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false }))] }));
+        addLog(`${pid}: 墓地から「${cards.map(c => c.name).join(", ")}」を手札へ`);
+        ctx.lastMoved = cards;
+      }
       break;
     }
     case "shieldToHand": {

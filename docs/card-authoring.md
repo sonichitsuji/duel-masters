@@ -114,13 +114,21 @@
 - `bzToHand` / `bzToMana` / `bzToShield`（`target,filter,amount,all`）
 - `tap` / `untap` / `tapToggle`（`target,zone,filter,all,noUntapNextTurn`）
 - `untapAllMana` — 自分のマナを全アンタップ
-- `powerBuff {target,amount,expires,keywords}` — パワー増減（負値で弱体、0以下で破壊）
+- `powerBuff {target,count,amount,perUnit,expires,keywords}` — パワー増減（負値で弱体、0以下で破壊）
+  - `amount` は**パワー増減値**（他の効果と違い選択枚数ではない）。選ぶ体数は `count`（既定1体）
+  - `perUnit` を付けると「1つにつきN」。`amount` に変数を渡して掛ける
+    ```jsonc
+    // 自分の墓地のクリーチャー1体につき −1000（相手1体に、このターン）
+    {"type":"count","zone":"grave","target":"self","filter":{"creatureOnly":true},"as":"graveCre"},
+    {"type":"powerBuff","target":"opponent","count":1,"amount":"graveCre","perUnit":-1000,"expires":"endOfTurn"}
+    ```
 - `grant {keywords,untapAfterAttack,untap,expires}` — 能力付与
 - `battle {target}` — このクリーチャーと相手1体をバトル
 
 **墓地・シールド**
 - `graveToBz {filter,owner,self,tempKeywords,destroyAtEndOfTurn,summoningSickness}` — 墓地から出す
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
+- `graveToHand {target,filter,amount}` — 墓地から手札に戻す
 - `shieldToHand {target}` / `shieldToGrave {target}` / `breakShield {target}`
 
 **召喚元ゾーンの拡張**
@@ -343,18 +351,25 @@
   W/Tブレイカーと併用した場合は**大きい方**が採用される
 - `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"…"}`
   - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
-- `costReduce`: `{amount, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
+- `costReduce`: `{amount | amountPer, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
   - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
     既定は `["bz","shield"]`（バトルゾーン＋表向きシールド＝継続能力が働く場所）
   - `filter`: 軽減対象の条件 — `civ` `raceContains` `nameContains` `keyword` `multiColor` `maxCost`
-    `type`(`creature`/`nonCreature`/`element`/`spell`…)
+    `type`(`creature`/`nonCreature`/`element`/`spell`…)、
+    **`self:true`** =「このクリーチャーの召喚コストを〜」（軽減元自身にだけ効く）
+  - `amountPer`: `{zone,filter}` — 「〜1枚につき1少なくする」の可変軽減（`amount` の代わりに書く）
   - `min`: 下限コスト。複数の軽減は重ねがけされる
   ```jsonc
   // バトルゾーンにいる間、自分のドラゴンのコストを2軽減（最低1）
   "costReduce": { "amount":2, "filter":{"raceContains":"ドラゴン"}, "min":1 }
   // 墓地にある間だけ、自分の光のカードのコストを1軽減
   "costReduce": { "amount":1, "zones":["grave"], "filter":{"civ":"light"}, "min":1 }
+  // このクリーチャー自身の召喚コストを、自分の墓地のクリーチャー1体につき1軽減（0以下にはならない）
+  "costReduce": { "amountPer":{"zone":"grave","filter":{"creatureOnly":true}},
+                  "filter":{"self":true}, "zones":["hand"], "min":0 }
   ```
+  > コストが**0まで下がった場合は文明ぶんの下限もかからず0**になります（支払いが発生しないため）。
+  > 0でなければ下限は文明数（2色カードは最低2）です。
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
 - `evolution`: `{civFilter,raceContains}`

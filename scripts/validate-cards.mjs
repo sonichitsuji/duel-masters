@@ -35,7 +35,7 @@ const EFFECT_TYPES = new Set([
   // バトルゾーンから
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
-  "graveToBz","shieldToHand","shieldToGrave","breakShield",
+  "graveToBz","graveToHand","shieldToHand","shieldToGrave","breakShield",
   // 召喚元ゾーンの拡張
   "grantSummonFrom",
   // 遅延
@@ -60,6 +60,8 @@ const ABILITY_KEYS = new Set([
 ]);
 const SUMMON_ZONES = new Set(["grave","mana"]);
 const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
+// 「〜1枚につき」の数え上げ対象ゾーン（countCardsInZone / count ステップ）
+const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 
@@ -162,6 +164,9 @@ function checkAbilityFields(obj, where) {
   const cr = obj.costReduce;
   if (cr) {
     for (const z of cr.zones || []) if (!COST_REDUCE_ZONES.has(z)) errors.push(`${where}.costReduce: 未知のzone "${z}"`);
+    if (cr.amount == null && cr.amountPer == null) errors.push(`${where}.costReduce: amount か amountPer が必要です`);
+    if (cr.amount != null && typeof cr.amount !== "number") errors.push(`${where}.costReduce: amount は数値`);
+    if (cr.amountPer && !COUNT_ZONES.has(cr.amountPer.zone)) errors.push(`${where}.costReduce.amountPer: 未知のzone "${cr.amountPer.zone}"`);
     checkCondition(cr.condition, `${where}.costReduce`);
   }
 }

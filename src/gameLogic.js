@@ -119,19 +119,34 @@ export function matchCardFilter(card, filter) {
 }
 const costReduceMatches = matchCardFilter;
 
+// ゾーン内の該当カード枚数（costReduce.amountPer 等、「〜1枚につき」の分母）
+export function countCardsInZone(state, spec) {
+  if (!state || !spec) return 0;
+  const list = { grave: state.grave, mana: state.mana, hand: state.hand,
+                 bz: state.battle, shield: state.shields, deck: state.deck }[spec.zone] || [];
+  return list.filter(c => matchCardFilter(c, spec.filter)).length;
+}
+
 // card をプレイする際の実効コスト。
 // source: プレイヤー状態（複数ゾーンの軽減元を見る）／配列（旧: バトルゾーンのみ）
 export function getEffectiveCost(card, source) {
   const sources = collectCostReduceSources(source);
   if (sources.length === 0) return card.cost;
+  const ownerState = Array.isArray(source) ? null : source;
   let cost = card.cost;
   for (const { card: c, zone } of sources) {
     if (!c.costReduce) continue;
-    const { amount, filter, min, zones } = c.costReduce;
+    const { amount, amountPer, filter, min, zones } = c.costReduce;
     if (!(zones || COST_REDUCE_DEFAULT_ZONES).includes(zone)) continue;
+    // filter.self: 「このクリーチャーの召喚コストを〜」= 軽減元自身にだけ効く
+    if (filter?.self && c.uid !== card.uid) continue;
     if (!costReduceMatches(card, filter)) continue;
-    cost = Math.max(min ?? 0, cost - amount);
+    // amountPer: 「〜1枚につき1少なくする」のような可変軽減
+    const n = amountPer ? countCardsInZone(ownerState, amountPer) : (amount || 0);
+    cost = Math.max(min ?? 0, cost - n);
   }
+  // コストが0まで下がったらマナの支払い自体が発生しないので、文明ぶんの下限もかからない
+  if (cost <= 0) return 0;
   return Math.max(cost, getCardCivs(card).length);
 }
 

@@ -2566,5 +2566,87 @@
       ]
     },
     "id": 85
+  },
+  {
+    "name": "龍装鬼 オブザ08号",
+    "type": "creature",
+    "civ": "darkness",
+    "race": "ドラゴンギルド/マフィ・ギャング",
+    "cost": 9,
+    "power": 8000,
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "このクリーチャーの召喚コストを、自分の墓地にあるクリーチャー1体につき1少なくする。ただし、コストは0以下にはならない。\nこのクリーチャーが出た時、相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを、自分の墓地にあるクリーチャー1体につき−1000する。\nW・ブレイカー",
+    "costReduce": {
+      "amountPer": {
+        "zone": "grave",
+        "filter": {
+          "creatureOnly": true
+        }
+      },
+      "filter": {
+        "self": true
+      },
+      "zones": [
+        "hand"
+      ],
+      "min": 0
+    },
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の墓地のクリーチャーを数える",
+          "type": "count",
+          "zone": "grave",
+          "target": "self",
+          "filter": {
+            "creatureOnly": true
+          },
+          "as": "graveCreatures"
+        },
+        {
+          "label": "相手のクリーチャーを1体選び、自分の墓地のクリーチャー1体につきパワー−1000",
+          "type": "powerBuff",
+          "target": "opponent",
+          "count": 1,
+          "amount": "graveCreatures",
+          "perUnit": -1000,
+          "expires": "endOfTurn"
+        }
+      ]
+    },
+    "id": 86
+  },
+  {
+    "name": "終焉の開闢",
+    "type": "spell",
+    "civ": "darkness",
+    "race": null,
+    "cost": 3,
+    "power": 0,
+    "keywords": [],
+    "effect": "自分の山札の上から3枚を墓地に置く。その後、クリーチャーを1体、自分の墓地から手札に戻す。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から3枚を墓地に置く",
+          "type": "topToGrave",
+          "amount": 3
+        },
+        {
+          "label": "クリーチャーを1体、自分の墓地から手札に戻す",
+          "type": "graveToHand",
+          "target": "self",
+          "amount": 1,
+          "filter": {
+            "creatureOnly": true
+          }
+        }
+      ]
+    },
+    "id": 87
   }
 ]
