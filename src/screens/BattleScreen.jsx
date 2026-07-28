@@ -346,8 +346,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const {templates,ownerPid,srcCard,count}=templateChoiceModal;
     const tpl=templates[tplIdx];
     setTemplateChoiceModal(count>1?{...templateChoiceModal,count:count-1}:null);
-    // 選んだテンプレートの steps を現在の解決として実行（chooseTimes の継続。アイドル時のみ表示されるため直接 set）
-    setActiveSteps({ steps:tpl.steps, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid } });
+    // 選んだテンプレートの effects を現在の解決として実行（chooseTimes の継続。アイドル時のみ表示されるため直接 set）
+    setActiveSteps({ steps: tpl.effects, stepIdx: 0, ownerPid, srcCard, context: { srcCardUid: srcCard?.uid, vars: {} } });
   };
 
   // 相手の常時能力(reactivePassive)を考慮し、新たにBZに出たクリーチャーへcantAttackUntilMyTurnを付与

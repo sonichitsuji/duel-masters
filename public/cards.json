@@ -2703,5 +2703,62 @@
       }
     },
     "id": 87
+  },
+  {
+    "name": "逆転の影ガレック",
+    "type": "creature",
+    "civ": "darkness",
+    "race": "ゴースト",
+    "cost": 10,
+    "power": 5000,
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー\nこのクリーチャーが出た時、次の中から3回選ぶ。（同じものを選んでもよい）\n▶相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-3000する。（パワーが0以下のクリーチャーは破壊される）\n▶自分の山札の上から3枚を墓地に置く。\n▶コスト3以下のクリーチャーを1体、自分の墓地から出す。",
+    "autoEffect": {
+      "trigger": "play",
+      "type": "chooseTimes",
+      "count": 3,
+      "templates": [
+        {
+          "label": "相手のクリーチャーを1体選び、このターン、そのパワーを-3000",
+          "effects": [
+            {
+              "label": "相手のクリーチャーを1体選び、パワーを-3000（このターン）",
+              "type": "powerBuff",
+              "target": "opponent",
+              "count": 1,
+              "amount": -3000,
+              "expires": "endOfTurn"
+            }
+          ]
+        },
+        {
+          "label": "自分の山札の上から3枚を墓地に置く",
+          "effects": [
+            {
+              "label": "自分の山札の上から3枚を墓地に置く",
+              "type": "topToGrave",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "label": "コスト3以下のクリーチャーを1体、自分の墓地から出す",
+          "effects": [
+            {
+              "label": "コスト3以下のクリーチャーを1体、自分の墓地から出す",
+              "type": "graveToBz",
+              "filter": {
+                "type": "creature",
+                "maxCost": 3
+              },
+              "amount": 1
+            }
+          ]
+        }
+      ]
+    },
+    "id": 88
   }
 ]
