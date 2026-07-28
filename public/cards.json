@@ -620,8 +620,12 @@
     "keywords": [
       "wBreaker"
     ],
-    "effect": "W・ブレイカー\n攻撃中、このクリーチャーのパワーは自分の墓地にある火のカード1枚につき+1000される。[例外処理]",
-    "autoEffect": null
+    "effect": "W・ブレイカー\n攻撃中、このクリーチャーのパワーは自分の墓地にある火のカード1枚につき+1000される。",
+    "autoEffect": null,
+    "selfPowerBoostGrave": {
+      "civFilter": "fire",
+      "perCard": 1000
+    }
   },
   {
     "id": 32,
