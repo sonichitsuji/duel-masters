@@ -35,7 +35,9 @@ const EFFECT_TYPES = new Set([
   // バトルゾーンから
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
-  "graveToBz","graveToHand","shieldToHand","shieldToGrave","breakShield",
+  "graveToBz","graveToHand","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
+  // 山札操作
+  "shuffleDeck",
   // 進化元を動かすコスト / 特殊勝利
   "meteorBurn","winGame",
   // 召喚元ゾーンの拡張
@@ -86,6 +88,7 @@ function checkOne(e, where) {
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
   if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
+  if (e.order && !["shuffle", "choose"].includes(e.order)) errors.push(`${where}: order は "shuffle" か "choose"`);
   if (e.type === "meteorBurn") {
     if (e.to && !METEOR_BURN_TO.has(e.to)) errors.push(`${where}: meteorBurn の to は ${[...METEOR_BURN_TO].join("/")}`);
     if (e.count != null && typeof e.count !== "number") errors.push(`${where}: meteorBurn の count は数値`);

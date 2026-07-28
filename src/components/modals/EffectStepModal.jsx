@@ -16,7 +16,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
   const step = steps[stepIdx];
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const otherState = ownerPid === "p1" ? p2 : p1;
-  const { candidates, isAuto, maxSelect: dynMaxSelect } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
+  const { candidates, isAuto, maxSelect: dynMaxSelect, ordered } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
 
   const civs = getCardCivs(srcCard || {});
   const c = CIV[civs[0]] || CIV.fire;
@@ -26,7 +26,8 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
     setSelected(s => s.includes(uid) ? s.filter(u => u !== uid) : s.length < maxSel ? [...s, uid] : maxSel === 1 ? [uid] : s);
   };
 
-  const canConfirm = isAuto || step.optional || selected.length > 0;
+  // ordered（好きな順序で置く）は、選んだ順がそのまま並び順になるので全部選び終えるまで確定できない
+  const canConfirm = isAuto || (ordered ? selected.length === maxSel : (step.optional || selected.length > 0));
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:380, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -45,6 +46,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
           <div style={{ overflowY:"auto", maxHeight:220 }}>
             <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
               {isAuto ? "公開カード：" : `選択（${selected.length}/${maxSel}）：`}
+              {ordered && <span style={{ color: "#ffcc66", marginLeft: 6 }}>選んだ順に上から置かれます</span>}
             </div>
             <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
               {candidates.map((card, i) => (
@@ -56,10 +58,17 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
                     <span style={{fontSize:8,color:"#88aacc"}}>{i+1}</span>
                   </div>
                 ) : (
-                  <CardFace key={card.uid} card={card}
-                    selected={selected.includes(card.uid)}
-                    onClick={isAuto ? undefined : () => toggleSelect(card.uid)}
-                    small />
+                  <div key={card.uid} style={{ position:"relative", display:"flex" }}>
+                    <CardFace card={card}
+                      selected={selected.includes(card.uid)}
+                      onClick={isAuto ? undefined : () => toggleSelect(card.uid)}
+                      small />
+                    {ordered && selected.includes(card.uid) && (
+                      <span style={{ position:"absolute", top:-4, left:-4, width:17, height:17, borderRadius:"50%", background:"#ffe066", color:"#000", fontSize:10, fontWeight:900, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 8px #ffe066" }}>
+                        {selected.indexOf(card.uid) + 1}
+                      </span>
+                    )}
+                  </div>
                 )
               ))}
             </div>

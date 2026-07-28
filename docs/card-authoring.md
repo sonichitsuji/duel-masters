@@ -129,6 +129,7 @@
 - `reveal {amount}` — 山札の上を公開（以降 `revealed*` の対象になる）
 - `search {destination,amount,takeAll,filter}` — 山札から探す。`destination`: `hand`/`deckTop`/`bz`/`mana`（実行後シャッフル）
 - `topToGrave {amount}` / `topToMana {amount,tapped}` / `topToShield {amount}` — 山札の上を各ゾーンへ
+- `shuffleDeck {target}` — 山札をシャッフルする（`target` で自分/相手/おたがい）
 
 **公開カードの行き先**
 - `revealedToHand` / `revealedToBz` / `revealedToMana` / `revealedToGrave` / `revealedToDeckTop` / `revealedToDeckBottom`
@@ -162,6 +163,18 @@
 - `graveToBz {filter,owner,self,tempKeywords,destroyAtEndOfTurn,summoningSickness}` — 墓地から出す
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
 - `graveToHand {target,filter,amount}` — 墓地から手札に戻す
+- `graveToDeckBottom {target,filter,amount,all,order}` — 墓地から山札の下へ
+  - `order: "shuffle"`（既定）… シャッフルしてから置く。`all:true` か `amount` 省略で墓地すべてが対象
+  - `order: "choose"` … **好きな順序で**置く。選んだ順に上から積まれ、全部選ぶまで確定できない
+    （`amount` を書けばその枚数だけ選ぶ）
+  ```jsonc
+  // 自分の墓地をシャッフルして山札の下に置く
+  { "type": "graveToDeckBottom", "all": true }
+  // 自分の墓地のカードを好きな順序で山札の下に置く
+  { "type": "graveToDeckBottom", "order": "choose" }
+  // 自分の墓地から2枚選び、好きな順序で山札の下に置く
+  { "type": "graveToDeckBottom", "amount": 2, "order": "choose" }
+  ```
 - `shieldToHand {target}` / `shieldToGrave {target}` / `breakShield {target}`
 
 **進化元を動かすコスト**
