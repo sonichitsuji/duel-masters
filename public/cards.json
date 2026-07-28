@@ -1198,7 +1198,7 @@
   },
   {
     "id": 55,
-    "name": "堅き革命 ボルシュゴス/「ボルシュゴス・スラッシャー!!」",
+    "name": "堅き革命 ボルシュゴス",
     "race": "アーマード・ドラゴン",
     "cost": 5,
     "power": 4000,
@@ -1321,7 +1321,7 @@
   },
   {
     "id": 58,
-    "name": "ボルシャック・ドラゴン／決闘者デュエリスト・チャージャー",
+    "name": "ボルシャック・ドラゴン",
     "type": "twinpact",
     "civ": "fire",
     "cost": 6,
@@ -1803,7 +1803,7 @@
   },
   {
     "id": 70,
-    "name": "調律師ピーカプ／「♪音速で 本番中に チューニング」",
+    "name": "調律師ピーカプ",
     "type": "twinpact",
     "civ": "fire",
     "race": "マジック・マシン・イーター",
@@ -2568,7 +2568,7 @@
     "id": 85
   },
   {
-    "name": "龍装鬼 オブザ08号／終焉の開闢",
+    "name": "龍装鬼 オブザ08号",
     "type": "twinpact",
     "civ": "darkness",
     "race": "ドラゴンギルド/マフィ・ギャング",
@@ -2643,5 +2643,59 @@
       }
     },
     "id": 86
+  },
+  {
+    "name": "ドアノッカ＝ノアドッカ",
+    "type": "twinpact",
+    "civ": "darkness",
+    "race": "アビスロイヤル",
+    "cost": 7,
+    "power": 4000,
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー\nこのクリーチャーが出た時、次の能力を2回行う。\n▶相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-4000する。（パワー0以下のクリーチャーは破壊される）",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "1回目: 相手のクリーチャーを1体選び、このターン、パワーを-4000",
+          "type": "powerBuff",
+          "target": "opponent",
+          "count": 1,
+          "amount": -4000,
+          "expires": "endOfTurn"
+        },
+        {
+          "label": "2回目: 相手のクリーチャーを1体選び、このターン、パワーを-4000",
+          "type": "powerBuff",
+          "target": "opponent",
+          "count": 1,
+          "amount": -4000,
+          "expires": "endOfTurn"
+        }
+      ]
+    },
+    "spellSide": {
+      "name": "「…開けるか？」",
+      "cost": 2,
+      "civ": "darkness",
+      "race": "アビスへの誘い",
+      "effect": "相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-4000する。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "相手のクリーチャーを1体選び、このターン、パワーを-4000",
+            "type": "powerBuff",
+            "target": "opponent",
+            "count": 1,
+            "amount": -4000,
+            "expires": "endOfTurn"
+          }
+        ]
+      }
+    },
+    "id": 87
   }
 ]
