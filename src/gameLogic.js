@@ -60,8 +60,8 @@ export function makeCardBg(civs) {
   return `linear-gradient(225deg, ${stops.join(', ')})`;
 }
 
-export function canPayCost(mana,card,selfBattle){
-  const effectiveCost=selfBattle?getEffectiveCost(card,selfBattle):card.cost;
+export function canPayCost(mana,card,costSource){
+  const effectiveCost=costSource?getEffectiveCost(card,costSource):card.cost;
   const untapped=mana.filter(c=>!c.tapped);
   if(untapped.length<effectiveCost) return {ok:false,reason:`マナ不足 (必要:${effectiveCost} / 利用可能:${untapped.length})`};
   if(effectiveCost===0) return {ok:true};
@@ -78,15 +78,53 @@ export function tapManaByUids(mana,uids){
   return mana.map(c=>uids.includes(c.uid)?{...c,tapped:true}:c);
 }
 
-export function getEffectiveCost(card, selfBattle) {
-  if (!selfBattle || selfBattle.length === 0) return card.cost;
+// costReduce の軽減元がどのゾーンにいれば有効か（未指定時の既定）
+// バトルゾーン＋シールドゾーンの表向きカード（=継続能力が有効な場所）
+export const COST_REDUCE_DEFAULT_ZONES = ["bz", "shield"];
+
+// 軽減元になりうるカードを {card, zone} の形で集める。
+// source は プレイヤー状態オブジェクト（推奨）か、後方互換のバトルゾーン配列。
+export function collectCostReduceSources(source) {
+  if (!source) return [];
+  if (Array.isArray(source)) return source.map(c => ({ card: c, zone: "bz" }));
+  const out = [];
+  for (const c of source.battle || []) out.push({ card: c, zone: "bz" });
+  for (const c of source.shields || []) if (c.faceUp) out.push({ card: c, zone: "shield" });
+  for (const c of source.mana   || []) out.push({ card: c, zone: "mana" });
+  for (const c of source.grave  || []) out.push({ card: c, zone: "grave" });
+  for (const c of source.hand   || []) out.push({ card: c, zone: "hand" });
+  return out;
+}
+
+// costReduce.filter の判定（gameLogic 内で完結。engine/effects へは依存しない）
+function costReduceMatches(card, filter) {
+  if (!filter) return true;
+  if (filter.raceContains && !card.race?.includes(filter.raceContains)) return false;
+  if (filter.nameContains && !card.name?.includes(filter.nameContains)) return false;
+  if (filter.civ && !getCardCivs(card).includes(filter.civ)) return false;
+  if (filter.keyword && !card.keywords?.includes(filter.keyword)) return false;
+  if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
+  if (filter.type) {
+    if (filter.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
+    else if (filter.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
+    else if (filter.type === "element") { if (!isElement(card)) return false; }
+    else if (card.type !== filter.type) return false;
+  }
+  if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
+  return true;
+}
+
+// card をプレイする際の実効コスト。
+// source: プレイヤー状態（複数ゾーンの軽減元を見る）／配列（旧: バトルゾーンのみ）
+export function getEffectiveCost(card, source) {
+  const sources = collectCostReduceSources(source);
+  if (sources.length === 0) return card.cost;
   let cost = card.cost;
-  for (const c of selfBattle) {
+  for (const { card: c, zone } of sources) {
     if (!c.costReduce) continue;
-    const { amount, filter, min } = c.costReduce;
-    if (filter?.raceContains && !card.race?.includes(filter.raceContains)) continue;
-    if (filter?.nameContains && !card.name?.includes(filter.nameContains)) continue;
-    if (filter?.civ && !getCardCivs(card).includes(filter.civ)) continue;
+    const { amount, filter, min, zones } = c.costReduce;
+    if (!(zones || COST_REDUCE_DEFAULT_ZONES).includes(zone)) continue;
+    if (!costReduceMatches(card, filter)) continue;
     cost = Math.max(min ?? 0, cost - amount);
   }
   return Math.max(cost, getCardCivs(card).length);

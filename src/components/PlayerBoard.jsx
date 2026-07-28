@@ -30,10 +30,10 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const altCostAvailable=selectedCard?.alternateCost&&selectedCard.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=selectedCard.alternateCost.condition.amount;
   const civCheck=selectedCard?(
     selectedCard.type==="twinpact"
-      ?(canPayCost(state.mana,selectedCard,state.battle).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state.battle).ok?{ok:true}:canPayCost(state.mana,selectedCard,state.battle))
-      :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state.battle).ok)
+      ?(canPayCost(state.mana,selectedCard,state).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state).ok?{ok:true}:canPayCost(state.mana,selectedCard,state))
+      :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state).ok)
         ?{ok:true}
-        :canPayCost(state.mana,selectedCard,state.battle)
+        :canPayCost(state.mana,selectedCard,state)
   ):null;
   // G-Zero check
   const gZeroOk=selectedCard?.gZero&&state.battle.some(c=>
@@ -132,7 +132,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
         <ManaPayModal
           card={manaPayModal.card}
           mana={state.mana}
-          selfBattle={state.battle}
+          ownerState={state}
           onConfirm={handleManaConfirm}
           onCancel={()=>setManaPayModal(null)}
         />

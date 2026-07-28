@@ -6,11 +6,11 @@ import { CardFace } from "../CardFace";
 // ===========================
 // MANA PAY MODAL
 // ===========================
-export function ManaPayModal({ card, mana, selfBattle, onConfirm, onCancel }) {
+export function ManaPayModal({ card, mana, ownerState, selfBattle, onConfirm, onCancel }) {
   const [selected, setSelected] = useState([]); // [{uid, assignedCiv}]
   const [civPicker, setCivPicker] = useState(null); // null | {uid, civs:[]}
 
-  const needed = getEffectiveCost(card, selfBattle || []);
+  const needed = getEffectiveCost(card, ownerState || selfBattle || []);
   const requiredCivs = getCardCivs(card);
   const selectedUids = selected.map(s => s.uid);
   const civsSatisfied = requiredCivs.every(civ => selected.some(s => s.assignedCiv === civ));

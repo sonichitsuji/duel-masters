@@ -206,7 +206,18 @@
 
 - `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `notSelf,raceContains,multiColor,nameContains,elementOnly`）
 - `grantPowerBoost` / `grantPowerBoostGrave` / `selfPowerBoostGrave` / `condPower:[{condition,amount}]`
-- `costReduce`: `{amount,filter:{civ|raceContains|nameContains},min}`
+- `costReduce`: `{amount, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
+  - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
+    既定は `["bz","shield"]`（バトルゾーン＋表向きシールド＝継続能力が働く場所）
+  - `filter`: 軽減対象の条件 — `civ` `raceContains` `nameContains` `keyword` `multiColor` `maxCost`
+    `type`(`creature`/`nonCreature`/`element`/`spell`…)
+  - `min`: 下限コスト。複数の軽減は重ねがけされる
+  ```jsonc
+  // バトルゾーンにいる間、自分のドラゴンのコストを2軽減（最低1）
+  "costReduce": { "amount":2, "filter":{"raceContains":"ドラゴン"}, "min":1 }
+  // 墓地にある間だけ、自分の光のカードのコストを1軽減
+  "costReduce": { "amount":1, "zones":["grave"], "filter":{"civ":"light"}, "min":1 }
+  ```
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
 - `evolution`: `{civFilter,raceContains}`
