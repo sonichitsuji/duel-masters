@@ -131,6 +131,12 @@
 - `graveToHand {target,filter,amount}` — 墓地から手札に戻す
 - `shieldToHand {target}` / `shieldToGrave {target}` / `breakShield {target}`
 
+**進化元を動かすコスト**
+- `meteorBurn {count,to,optional,tapped}` — メテオバーン → **§7.9**
+
+**特殊勝利**
+- `winGame {target,reason}` — EXWIN。`target` のプレイヤーがゲームに勝つ（既定 `self`）
+
 **召喚元ゾーンの拡張**
 - `grantSummonFrom {zone,filter,maxPerTurn,timing,target}` — そのターン、指定ゾーン（`grave`/`mana`）から
   クリーチャーを**召喚**できるようにする（コスト支払いあり）→ **§7.7**
@@ -168,6 +174,7 @@
 | `creaturePutBz` | クリーチャーがバトルゾーンに出た時（`method` 指定可） |
 | `castSpell` | 呪文を唱えた時 |
 | `attack` | クリーチャーが攻撃する時（`firstEachTurn` 指定可） |
+| `attackEnd` | **攻撃の終わり**（攻撃終了ステップ）。攻撃したクリーチャーが戦闘で破壊されていた場合、そのクリーチャー自身の能力は誘発しない |
 | `leave` | カードが離れた時 |
 | `destroyed` | 破壊された時 |
 | `battleDestroy` | バトルで破壊された時 |
@@ -189,6 +196,7 @@
 
 ```jsonc
 {"on":"leave"}                      // このクリーチャーが離れた時
+{"on":"attackEnd"}                 // このクリーチャーの攻撃の終わりに（攻撃終了ステップ）
 {"on":"leave","target":"self"}      // 自分のクリーチャーが離れた時
 {"on":"destroyed","target":"opponent"} // 相手のクリーチャーが破壊された時
 ```
@@ -340,6 +348,61 @@
 
 ---
 
+## 7.8. 進化元のゾーンと枚数（`evolution`）
+
+`type:"evo_creature"` のカードに書きます。**進化元がどのゾーンの何体か**を指定します。
+
+```jsonc
+"evolution": { "zone":"grave", "count":1, "filter":{"civ":"darkness"} }  // 墓地進化−闇
+"evolution": { "zone":"mana",  "count":1, "filter":{"civ":"fire"} }      // マナ進化−火
+"evolution": { "zone":"grave", "count":3 }                               // 墓地進化GV
+"evolution": { "zone":"grave", "min":1 }                                 // 超無限墓地進化
+"evolution": { "filter":{"civ":"fire","raceContains":"ドラゴン"} }        // 通常の進化（BZ）
+```
+
+| フィールド | 説明 |
+|---|---|
+| `zone` | `"bz"`(既定) / `"grave"` / `"mana"` |
+| `count` | 進化元の枚数（既定1）。ちょうどこの枚数を選ぶ |
+| `min` | 「N体以上」。上限なし（超無限系）。`count` とは併用不可 |
+| `filter` | 進化元の条件（§2 と同じ filter 語彙）。クリーチャー限定は暗黙に適用 |
+
+### ルール上の注意
+
+- **進化元は「バトルゾーンに出た」ことにならない**。バトルゾーンを経由せず直接下に敷かれるので、
+  進化元の「出た時」は誘発せず、「クリーチャーが出た時」も**出た進化クリーチャー1体分**しか数えません。
+  「手札以外からバトルゾーンに出せない」系の制限も、進化クリーチャー自身が手札から出るなら**かかりません**。
+- **進化クリーチャーなので召喚酔いしない**（出たターンから攻撃できる）。種別は「進化クリーチャー」のまま。
+- **マナ進化の進化元はタップされていても選べる**。ただし進化元にしたマナは**コスト支払いには使えません**。
+- 複数体の進化元は**選んだ順に下から重なります**（バトルゾーンに出た後は順序を変えられない）。
+- コストは通常どおり支払います。
+
+## 7.9. メテオバーン（`meteorBurn`）
+
+そのクリーチャーの**下にあるカード**を指定数だけ動かすことを**コスト**として発動する能力。
+`effects` の**先頭**に置きます。
+
+```jsonc
+{ "on":"attack", "effects":[
+  { "label":"このクリーチャーの下にあるカードを1枚墓地に置いてもよい",
+    "type":"meteorBurn", "count":1, "to":"grave", "optional":true },
+  { "label":"自分の山札の上から3枚を墓地に置く", "type":"topToGrave", "amount":3 },
+  { "label":"相手のクリーチャーを1体選んで破壊する", "type":"destroy", "target":"opponent", "amount":1 } ]}
+```
+
+| フィールド | 説明 |
+|---|---|
+| `count` | 動かす枚数（既定1） |
+| `to` | 移動先。`grave`(既定) / `mana` / `hand` / `shield` / `deck`(山札の下) |
+| `optional` | 「〜してもよい」 |
+| `tapped` | `to:"mana"` の時、タップして置く |
+
+- 動かすカードは**選べます**。順番は変えられず、抜けた場所は**詰められます**。
+- **支払えなければ（辞退・枚数不足・クリーチャーがバトルゾーンにいない）、以降のステップは実行されません**
+  （「そうしたら」の意味）。革命チェンジ等でそのクリーチャーが居なくなっていれば**不発**です。
+
+---
+
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
@@ -373,7 +436,7 @@
   > （2色カードは最低2）。
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
-- `evolution`: `{civFilter,raceContains}`
+- `evolution`: 進化元のゾーンと枚数 → **§7.8**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
 - `zRush` `cantAttackPlayer` `faceUpLeaveTo:"grave"` `reactivePassive` `endOfTurnEffect` `staticDeny:{type:"cantPutCreature"}`
 - `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,autoEffect}`

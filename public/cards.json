@@ -1444,8 +1444,10 @@
     "effect": "G・ゼロ：自分の、名前に《ボルシャック》とあるドラゴンがあれば、このクリーチャーをコストを支払わずに召喚してもよい。\n進化：火のドラゴン・クリーチャー1体の上に置く。\nT・ブレイカー\n自分のクリーチャーすべてに、自分の墓地にある火のカード1枚につき「パワーアタッカー+1000」を与える。",
     "autoEffect": null,
     "evolution": {
-      "civFilter": "fire",
-      "raceContains": "ドラゴン"
+      "filter": {
+        "civ": "fire",
+        "raceContains": "ドラゴン"
+      }
     },
     "gZero": {
       "nameContains": "ボルシャック",

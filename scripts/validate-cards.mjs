@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer"]);
-const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","draw","discard","shieldAdded","shieldLeave","endOfTurn"]);
+const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
 const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
@@ -36,6 +36,8 @@ const EFFECT_TYPES = new Set([
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
   "graveToBz","graveToHand","shieldToHand","shieldToGrave","breakShield",
+  // 進化元を動かすコスト / 特殊勝利
+  "meteorBurn","winGame",
   // 召喚元ゾーンの拡張
   "grantSummonFrom",
   // 遅延
@@ -62,6 +64,8 @@ const SUMMON_ZONES = new Set(["grave","mana"]);
 const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
 // 「〜1枚につき」の数え上げ対象ゾーン（countCardsInZone / count ステップ）
 const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
+const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
+const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 
@@ -80,6 +84,10 @@ function checkOne(e, where) {
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
   if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
+  if (e.type === "meteorBurn") {
+    if (e.to && !METEOR_BURN_TO.has(e.to)) errors.push(`${where}: meteorBurn の to は ${[...METEOR_BURN_TO].join("/")}`);
+    if (e.count != null && typeof e.count !== "number") errors.push(`${where}: meteorBurn の count は数値`);
+  }
 }
 
 // 召喚元ゾーンの拡張（墓地・マナからの召喚許可）
@@ -103,7 +111,14 @@ function checkEffect(eff, where) {
     }
     return;
   }
-  if (eff.effects) { for (const e of eff.effects) checkOne(e, where); return; }
+  if (eff.effects) {
+    eff.effects.forEach((e, i) => {
+      checkOne(e, where);
+      // meteorBurn は支払えないと以降が打ち切られるので、先頭以外に置くのは意図しにくい
+      if (e?.type === "meteorBurn" && i !== 0) warnings.push(`${where}: meteorBurn は effects の先頭に置いてください（以降のステップが打ち切られます）`);
+    });
+    return;
+  }
   if (eff.type) errors.push(`${where}: 単純効果 "${eff.type}" は廃止（effects 配列へ）`);
 }
 
@@ -187,6 +202,17 @@ for (const c of cards) {
 
   // カード直下の能力フィールド（keywords / triggers / activated / condPower / costReduce ...）
   checkAbilityFields(c, tag);
+
+  // 進化（進化元のゾーンと枚数）
+  if (c.evolution) {
+    const ev = c.evolution;
+    if (c.type !== "evo_creature") warnings.push(`${tag}: evolution があるのに type が "evo_creature" ではありません`);
+    if (ev.civFilter != null || ev.raceContains != null)
+      errors.push(`${tag}.evolution: civFilter/raceContains の直書きは廃止（filter:{civ,raceContains,…} へ移行してください）`);
+    if (ev.zone != null && !EVOLUTION_ZONES.has(ev.zone)) errors.push(`${tag}.evolution: 未知の zone "${ev.zone}"（${[...EVOLUTION_ZONES].join("/")}）`);
+    if (ev.count != null && ev.min != null) errors.push(`${tag}.evolution: count と min は同時に指定できません`);
+    for (const k of ["count", "min"]) if (ev[k] != null && typeof ev[k] !== "number") errors.push(`${tag}.evolution: ${k} は数値`);
+  }
 
   // 超魂X(SSX): 任意の能力フィールドを持てる。中身の検証は通常の能力と同じ
   if (c.ssx) {
