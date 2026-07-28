@@ -123,6 +123,10 @@
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
 - `shieldToHand {target}` / `shieldToGrave {target}` / `breakShield {target}`
 
+**召喚元ゾーンの拡張**
+- `grantSummonFrom {zone,filter,maxPerTurn,timing,target}` — そのターン、指定ゾーン（`grave`/`mana`）から
+  クリーチャーを**召喚**できるようにする（コスト支払いあり）→ **§7.7**
+
 **遅延**
 - `scheduleReviveSubjectEndOfTurn` — 「そのクリーチャー」をターン終了時に墓地から出す
 
@@ -288,11 +292,50 @@
 - `oncePerTurn` はターン終了時にリセット、`oncePerGame` はゲーム中リセットされません。
 - `ssx.activated` に書けば、下に敷かれたクリーチャーの起動型能力として上のクリーチャーも使えます。
 
+## 7.7. 墓地・マナゾーンからの召喚（`summonFrom` / `grantSummonFrom`）
+
+通常クリーチャーは手札からしか召喚できません。この2つはその**召喚元ゾーンを追加**します。
+どちらも「召喚」なので、**コストは通常どおり支払い**、召喚酔いも付き、
+`creaturePutBz`（`method:"summon"`）が誘発します。効果でバトルゾーンに「出す」
+（`graveToBz` / `manaToBz`）とは別物です。
+
+### 継続能力 `summonFrom`（例: 貴布人 テブルカッケ＝エディ）
+
+```jsonc
+"ssx": {
+  "summonFrom": [
+    { "zone": "grave",            // "grave" | "mana"
+      "timing": "ownTurn",        // "ownTurn"(既定) | "any"
+      "maxPerTurn": 1,            // 省略すると回数無制限
+      "filter": { "creatureOnly": true },
+      "label": "自分のターン中、クリーチャーを1体、自分の墓地から召喚してもよい" }
+  ]
+}
+```
+- 能力フィールドなので**カード直下にも `ssx` 内にも**書けます（`ssx` なら下のクリーチャーへ伝播）。
+- 有効ゾーンは **バトルゾーン＋表向きのシールド**。
+
+### そのターン限りの許可 `grantSummonFrom`（例: 蛇手の親分ゴエモンキー！）
+
+```jsonc
+"autoEffect": { "trigger":"play", "effects":[
+  { "label":"そのターン、自分のマナゾーンからクリーチャーを召喚してもよい",
+    "type":"grantSummonFrom", "zone":"mana", "filter":{"creatureOnly":true} } ]}
+```
+`maxPerTurn` / `timing` / `target` も指定できます。許可はターン終了時に消えます。
+
+### UI
+
+召喚できるカードがあるゾーン（墓地／マナ）の枠が**黄色く光り ▲ が付き**、
+クリックすると中身の一覧が開いて各カードに「召喚 (コスト)」ボタンが出ます。
+マナから召喚する場合、そのカード自身はコスト支払いには使えません。
+
 ---
 
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
+- `summonFrom`: 墓地・マナからの召喚許可 → **§7.7**
 - `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `notSelf,raceContains,multiColor,nameContains,elementOnly`）
 - `grantPowerBoost` / `grantPowerBoostGrave` / `selfPowerBoostGrave` / `condPower:[{condition,amount}]`
 - `powerAttacker`: `N` — パワーアタッカー+N（**攻撃中のみ**パワー+N）

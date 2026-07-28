@@ -105,6 +105,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [usedThisTurn,setUsedThisTurn]=useState(()=>new Set());
   const [usedThisGame,setUsedThisGame]=useState(()=>new Set());
   const [activatedModal,setActivatedModal]=useState(null);
+  // 墓地・マナからの召喚許可を、そのターンに何回使ったか（{ permKey: 回数 }）
+  const [summonUsed,setSummonUsed]=useState({});
   const usedRef=useRef({turn:usedThisTurn,game:usedThisGame});
   usedRef.current={turn:usedThisTurn,game:usedThisGame};
   const isAbilityUsed=(ab,key)=>(ab.oncePerGame&&usedRef.current.game.has(key))||(ab.oncePerTurn&&usedRef.current.turn.has(key));
@@ -326,11 +328,21 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setTimeout(()=>fireTrigger("draw",{sourcePid:active}),0);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
-  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUid=null)=>{
-    const card=activeState.hand[idx];
-    const newMana=tapManaByUids(activeState.mana,selectedManaUids);
-    const newHand=activeState.hand.filter((_,i)=>i!==idx);
+  // fromZone: "hand"(通常) / "grave" / "mana"。墓地・マナからの召喚は summonFrom 系の許可が必要（PlayerBoard 側で判定済み）。
+  // permKey が来た場合、その許可の使用回数を1つ消費する。
+  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUid=null,fromZone="hand",permKey=null)=>{
+    const srcZone=fromZone==="hand"?activeState.hand:fromZone==="grave"?activeState.grave:activeState.mana;
+    const card=srcZone[idx];
+    if(!card) return true;
     const isSpell=card.type==="spell"||(card.type==="twinpact"&&twinpactSide==="spell");
+    if(fromZone!=="hand"&&(isSpell||card.type==="castle")){addLog(`${active}: ${card.name} は召喚できない`);return true;}
+    let newMana=tapManaByUids(activeState.mana,selectedManaUids);
+    let newHand=activeState.hand;
+    let newGrave=activeState.grave;
+    if(fromZone==="hand") newHand=activeState.hand.filter((_,i)=>i!==idx);
+    else if(fromZone==="grave") newGrave=activeState.grave.filter((_,i)=>i!==idx);
+    else if(fromZone==="mana") newMana=newMana.filter(c=>c.uid!==card.uid);
+    if(permKey) setSummonUsed(u=>({...u,[permKey]:(u[permKey]||0)+1}));
     const isCastle=card.type==="castle";
     const effectiveSide=twinpactSide==="spell"?card.spellSide:card;
     if(isCastle){
@@ -362,11 +374,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       }
       const newCreature={...card,tapped:false,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
       const newBattle=[...battleWithoutBase,newCreature];
-      setActiveState(s=>({...s,hand:newHand,mana:newMana,battle:newBattle}));
-      addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) 召喚！`:"（タマシード）を出した"}`);
+      setActiveState(s=>({...s,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle}));
+      const fromLabel=fromZone==="grave"?"（墓地から）":fromZone==="mana"?"（マナゾーンから）":"";
+      addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) ${fromLabel}召喚！`:"（タマシード）を出した"}`);
       showCutIn({title:isCreature?"召喚！":"タマシード！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
-      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
+      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
       // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）
       if(isCreature) setTimeout(()=>fireTrigger("creaturePutBz",{sourcePid:active,subjectCard:newCreature,method:"summon"}),0);
     }else{
@@ -668,6 +681,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(affected.length>0) addLog(`[反応] ${reactiveCreature.name}: アンタップした${affected.map(c=>c.name).join("、")}は次の自分のターンまで攻撃できない`);
     }
     setAttackingUid(null);setUsedFinalRevThisTurn(false);setAttackedThisTurn(false);setUsedThisTurn(new Set());
+    // 「そのターン限り」の召喚許可と使用回数をリセット
+    setSummonUsed({});setP1(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);setP2(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
     setHandoff({from:active.toUpperCase(),to:next.toUpperCase()});
@@ -758,8 +773,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#4af",background:"rgba(10,30,80,0.35)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>◆ ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
-                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
               }
             </div>
           </div>
@@ -768,8 +783,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#f84",background:"rgba(80,15,10,0.25)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>非ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
-                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
               }
             </div>
           </div>
@@ -779,8 +794,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 22px 1fr",minHeight:0}}>
           <div style={{overflowY:"auto",padding:"6px 10px",borderBottom:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
-              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
             }
           </div>
           <div style={{overflow:"hidden"}}>
@@ -788,8 +803,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           </div>
           <div style={{overflowY:"auto",padding:"6px 10px",borderTop:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
-              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onRevChange={handleRevChangeExec} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
             }
           </div>
         </div>

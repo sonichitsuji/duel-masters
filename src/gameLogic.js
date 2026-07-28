@@ -97,13 +97,16 @@ export function collectCostReduceSources(source) {
 }
 
 // costReduce.filter の判定（gameLogic 内で完結。engine/effects へは依存しない）
-function costReduceMatches(card, filter) {
+// カードのフィルタ判定（gameLogic 内で完結。engine/effects の matchFilter と同じ語彙のうち、
+// ctx(変数参照)を必要としないものだけを扱う）
+export function matchCardFilter(card, filter) {
   if (!filter) return true;
   if (filter.raceContains && !card.race?.includes(filter.raceContains)) return false;
   if (filter.nameContains && !card.name?.includes(filter.nameContains)) return false;
   if (filter.civ && !getCardCivs(card).includes(filter.civ)) return false;
   if (filter.keyword && !hasKeyword(card, filter.keyword)) return false;
   if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
+  if (filter.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
   if (filter.type) {
     if (filter.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
     else if (filter.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
@@ -111,8 +114,10 @@ function costReduceMatches(card, filter) {
     else if (card.type !== filter.type) return false;
   }
   if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
+  if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
   return true;
 }
+const costReduceMatches = matchCardFilter;
 
 // card をプレイする際の実効コスト。
 // source: プレイヤー状態（複数ゾーンの軽減元を見る）／配列（旧: バトルゾーンのみ）
@@ -207,6 +212,42 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
   else if (kw.includes("wBreaker")) n = Math.max(n, 2);
   if (ec.poweredBreaker) n = Math.max(n, Math.max(1, Math.floor((effPower || 0) / 6000)));
   return n;
+}
+
+// ===========================
+// 召喚元ゾーンの拡張（墓地・マナゾーンからの召喚）
+// 通常、クリーチャーは手札からしか召喚できない。summonFrom / turnSummonFrom はその許可を追加する。
+// 「召喚」なので コストは通常どおり支払い、召喚酔いも付き、creaturePutBz(method:"summon") が誘発する。
+//   - summonFrom     : 継続能力。バトルゾーン＋表向きシールドで有効（ssx にも書ける＝下のカードから伝播）
+//   - turnSummonFrom : そのターン限りの許可（効果 grantSummonFrom が積み、ターン終了時に消える）
+// ===========================
+export const SUMMON_ZONES = ["grave", "mana"];
+
+// 今この瞬間に有効な召喚許可を集める。isOwnTurn=false なら timing:"any" のものだけ。
+export function collectSummonPermissions(ownerState, isOwnTurn) {
+  if (!ownerState) return [];
+  const out = [];
+  const add = (perm, key) => {
+    if (!perm?.zone || !SUMMON_ZONES.includes(perm.zone)) return;
+    if ((perm.timing || "ownTurn") === "ownTurn" && !isOwnTurn) return;
+    out.push({ ...perm, key });
+  };
+  const fromCard = c => effectiveCard(c).summonFrom?.forEach((p, i) => add(p, `${c.uid}#sf${i}`));
+  for (const c of ownerState.battle || []) fromCard(c);
+  for (const c of ownerState.shields || []) if (c.faceUp) fromCard(c);
+  (ownerState.turnSummonFrom || []).forEach((p, i) => add(p, `turn#sf${i}`));
+  return out;
+}
+
+// card（zone にあるカード）を召喚できる許可を1つ返す。無ければ null。
+// usedCounts: { [perm.key]: そのターンに使った回数 }
+export function summonPermissionFor(card, zone, perms, usedCounts = {}) {
+  if (!card || !(card.type === "creature" || card.type === "evo_creature")) return null;
+  return perms.find(p =>
+    p.zone === zone &&
+    (p.maxPerTurn == null || (usedCounts[p.key] || 0) < p.maxPerTurn) &&
+    matchCardFilter(card, p.filter)
+  ) || null;
 }
 
 // シビルカウント: 自分の指定文明の「クリーチャーまたはタマシード」の数

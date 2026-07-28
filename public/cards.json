@@ -2504,5 +2504,67 @@
         ]
       }
     ]
+  },
+  {
+    "name": "貴布人 テブルカッケ＝エディ",
+    "type": "creature",
+    "civ": "darkness",
+    "race": "アビスロイヤル/フュージョナー",
+    "cost": 3,
+    "power": 3000,
+    "keywords": [
+      "slayer"
+    ],
+    "effect": "スレイヤー\nこのクリーチャーが出た時、自分の山札の上から3枚を墓地に置いてもよい。\n超魂X（これがクリーチャーの下にあれば、そのクリーチャーにも以下の能力を与える）\n自分のターン中、クリーチャーを1体、自分の墓地から召喚してもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "optional": true,
+      "effects": [
+        {
+          "label": "自分の山札の上から3枚を墓地に置いてもよい",
+          "type": "topToGrave",
+          "amount": 3,
+          "optional": true
+        }
+      ]
+    },
+    "ssx": {
+      "summonFrom": [
+        {
+          "zone": "grave",
+          "timing": "ownTurn",
+          "maxPerTurn": 1,
+          "filter": {
+            "creatureOnly": true
+          },
+          "label": "自分のターン中、クリーチャーを1体、自分の墓地から召喚してもよい"
+        }
+      ]
+    },
+    "id": 84
+  },
+  {
+    "name": "蛇手の親分ゴエモンキー！",
+    "type": "creature",
+    "civ": "nature",
+    "race": "ドリームメイト",
+    "cost": 4,
+    "power": 4000,
+    "keywords": [],
+    "effect": "W・ソウル\nこのクリーチャーをバトルゾーンに出した時、そのターン、自分のマナゾーンからクリーチャーを召喚してもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "そのターン、自分のマナゾーンからクリーチャーを召喚してもよい",
+          "type": "grantSummonFrom",
+          "zone": "mana",
+          "filter": {
+            "creatureOnly": true
+          }
+        }
+      ]
+    },
+    "id": 85
   }
 ]

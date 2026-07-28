@@ -36,6 +36,8 @@ const EFFECT_TYPES = new Set([
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
   "graveToBz","shieldToHand","shieldToGrave","breakShield",
+  // 召喚元ゾーンの拡張
+  "grantSummonFrom",
   // 遅延
   "scheduleReviveSubjectEndOfTurn",
 ]);
@@ -52,10 +54,11 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
+const SUMMON_ZONES = new Set(["grave","mana"]);
 const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
@@ -74,6 +77,19 @@ function checkOne(e, where) {
   if (LEGACY_TYPES.has(e.type)) errors.push(`${where}: 旧記法の効果 "${e.type}"（新語彙へ移行してください）`);
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
+  if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
+}
+
+// 召喚元ゾーンの拡張（墓地・マナからの召喚許可）
+function checkSummonFrom(list, where) {
+  if (!Array.isArray(list)) { errors.push(`${where}.summonFrom: 配列である必要があります`); return; }
+  list.forEach((p, i) => {
+    const w = `${where}.summonFrom[${i}]`;
+    if (!p || typeof p !== "object") { errors.push(`${w}: オブジェクトである必要があります`); return; }
+    if (!SUMMON_ZONES.has(p.zone)) errors.push(`${w}: zone は ${[...SUMMON_ZONES].join("/")} のいずれか`);
+    if (p.timing && !ACTIVATED_TIMINGS.has(p.timing)) errors.push(`${w}: 未知の timing "${p.timing}"`);
+    if (p.maxPerTurn != null && typeof p.maxPerTurn !== "number") errors.push(`${w}: maxPerTurn は数値`);
+  });
 }
 function checkEffect(eff, where) {
   if (!eff || typeof eff !== "object") return;
@@ -132,6 +148,7 @@ function checkAbilityFields(obj, where) {
   for (const k of obj.hyperKeywords || []) if (!KEYWORDS.has(k)) errors.push(`${where}: 未知のhyperKeyword "${k}"`);
   for (const tr of obj.triggers || []) checkTrigger(tr, where);
   if (obj.activated) checkActivated(obj.activated, where);
+  if (obj.summonFrom) checkSummonFrom(obj.summonFrom, where);
   if (obj.powerAttacker != null && typeof obj.powerAttacker !== "number") errors.push(`${where}: powerAttacker は数値`);
   if (obj.poweredBreaker != null && typeof obj.poweredBreaker !== "boolean") errors.push(`${where}: poweredBreaker は真偽値`);
   for (const cp of obj.condPower || []) {

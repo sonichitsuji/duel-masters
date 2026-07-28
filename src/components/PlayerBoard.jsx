@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { EffectText } from "./EffectText";
@@ -11,11 +11,12 @@ import { ManaPayModal } from "./modals/ManaPayModal";
 import { TwinPactChoiceModal } from "./modals/TwinPactChoiceModal";
 import { AlternateCostModal } from "./modals/AlternateCostModal";
 import { EvolutionSelectModal } from "./modals/EvolutionSelectModal";
+import { ZoneViewModal } from "./modals/ZoneViewModal";
 
 // ===========================
 // PLAYER BOARD
 // ===========================
-export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack,onHyperUnlock,activatedCount,onOpenActivated,large}){
+export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack,onHyperUnlock,activatedCount,onOpenActivated,summonUsed,large}){
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
   const [revChangeTarget,setRevChangeTarget]=useState(null);
@@ -23,6 +24,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const [twinPactModal,setTwinPactModal]=useState(null);
   const [evolutionSelectModal,setEvolutionSelectModal]=useState(null);
   const [altCostModal,setAltCostModal]=useState(null);
+  const [zoneModal,setZoneModal]=useState(null); // null | "grave" | "mana"
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
@@ -41,6 +43,21 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     (!selectedCard.gZero.raceContains||c.race?.includes(selectedCard.gZero.raceContains))
   );
   const selBattleCard=selBattle?state.battle.find(c=>c.uid===selBattle):null;
+  // 墓地・マナからの召喚許可（summonFrom / turnSummonFrom）
+  const summonPerms=collectSummonPermissions(state,isActive);
+  const canSummonNow=isActive&&drewThisTurn;
+  // ゾーンの中身を「召喚できるか」付きで列挙する
+  const zoneEntries=zone=>{
+    const list=zone==="grave"?state.grave:state.mana;
+    return list.map((card,idx)=>{
+      const perm=canSummonNow?summonPermissionFor(card,zone,summonPerms,summonUsed||{}):null;
+      // マナから召喚する場合、そのカード自身はコスト支払いに使えない
+      const payMana=zone==="mana"?state.mana.filter(c=>c.uid!==card.uid):state.mana;
+      return { card, idx, perm, payable: !!perm&&canPayCost(payMana,card,state).ok };
+    });
+  };
+  const summonableCount=zone=>zoneEntries(zone).filter(e=>e.perm).length;
+
   const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
   const handleCharge=()=>{if(selHand===null)return;onChargeMana(selHand);setSelHand(null);};
@@ -62,9 +79,25 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   };
   const handleManaConfirm=uids=>{
     if(!manaPayModal)return;
-    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUid||null);
+    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUid||null,manaPayModal.zone||"hand",manaPayModal.permKey||null);
     if(ok!==false)setSelHand(null);
     setManaPayModal(null);
+    setZoneModal(null);
+  };
+  // 墓地・マナからの召喚。手札からのプレイと同じ支払い/進化フローに合流する
+  const handleSummonFromZone=entry=>{
+    const {card,idx,perm}=entry;
+    const common={handIdx:idx,card,zone:zoneModal,permKey:perm.key};
+    if(card.type==="evo_creature"){
+      const eligible=state.battle.filter(c=>
+        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
+        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
+      );
+      if(eligible.length===0)return;
+      setEvolutionSelectModal({...common,eligible});
+    }else{
+      setManaPayModal(common);
+    }
   };
   const handleGZeroPlay=()=>{
     if(!gZeroOk||selHand===null)return;
@@ -131,7 +164,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       {manaPayModal&&(
         <ManaPayModal
           card={manaPayModal.card}
-          mana={state.mana}
+          mana={manaPayModal.zone==="mana"?state.mana.filter(c=>c.uid!==manaPayModal.card.uid):state.mana}
           ownerState={state}
           onConfirm={handleManaConfirm}
           onCancel={()=>setManaPayModal(null)}
@@ -158,16 +191,25 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           eligible={evolutionSelectModal.eligible}
           card={evolutionSelectModal.card}
           onSelect={baseUid=>{
-            const{handIdx,card,gZero}=evolutionSelectModal;
+            const{handIdx,card,gZero,zone,permKey}=evolutionSelectModal;
             setEvolutionSelectModal(null);
             if(gZero){
               const ok=onPlayCard(handIdx,[],null,baseUid);
               if(ok!==false)setSelHand(null);
             }else{
-              setManaPayModal({handIdx,card,evolutionBaseUid:baseUid});
+              setManaPayModal({handIdx,card,evolutionBaseUid:baseUid,zone,permKey});
             }
           }}
           onCancel={()=>setEvolutionSelectModal(null)}
+        />
+      )}
+      {zoneModal&&(
+        <ZoneViewModal
+          zone={zoneModal}
+          entries={zoneEntries(zoneModal)}
+          ownerState={state}
+          onSummon={handleSummonFromZone}
+          onClose={()=>setZoneModal(null)}
         />
       )}
       {/* Header: PID label + DECK/墓地 boxes + Shield */}
@@ -181,8 +223,8 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
             <div style={{fontSize:9,color:"#5588aa"}}>DECK</div>
             <div style={{fontSize:16,fontWeight:700,color:"#7af",lineHeight:1.1}}>{state.deck.length}</div>
           </div>
-          <div onClick={()=>setGraveModal(true)} style={{background:"#150a2e",border:"1px solid #7755aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36,cursor:"pointer"}}>
-            <div style={{fontSize:9,color:"#9966bb"}}>墓地</div>
+          <div onClick={()=>setZoneModal("grave")} style={{background:"#150a2e",border:`1px solid ${summonableCount("grave")>0?"#ffcc66":"#7755aa88"}`,borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36,cursor:"pointer"}}>
+            <div style={{fontSize:9,color:"#9966bb"}}>墓地{summonableCount("grave")>0&&<span style={{color:"#ffcc66"}}> ▲</span>}</div>
             <div style={{fontSize:16,fontWeight:700,color:"#b8f",lineHeight:1.1}}>{state.grave.length}</div>
           </div>
         </div>
@@ -203,8 +245,8 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       </div>
       {/* Mana + Hand row */}
       <div style={{display:"flex",gap:6,flexShrink:0,height:large?112:96}}>
-        <div onClick={()=>setManaModal(true)} style={{flex:`0 0 ${large?130:100}px`,cursor:"pointer",border:"1px solid #27ae60aa",background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length})</div>
+        <div onClick={()=>setZoneModal("mana")} style={{flex:`0 0 ${large?130:100}px`,cursor:"pointer",border:`1px solid ${summonableCount("mana")>0?"#ffcc66":"#27ae60aa"}`,background:"rgba(39,174,96,0.10)",borderRadius:7,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:9,fontWeight:400,color:"#4a8",padding:"3px 6px",borderBottom:"1px solid #27ae6033"}}>マナ ({state.mana.length}){summonableCount("mana")>0&&<span style={{color:"#ffcc66"}}> ▲</span>}</div>
           <div style={{flex:1,overflow:"hidden",padding:"2px 4px",display:"flex",flexDirection:"column",gap:1}}>
             {state.mana.slice(0,large?14:10).map((c,i)=>{
               const civs=getCardCivs(c);

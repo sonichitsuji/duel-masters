@@ -100,7 +100,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom"]);
 
 // ===========================
 // 候補算出（選択UI用）
@@ -437,6 +437,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "untapAllMana": {
       setSelf(s => ({ ...s, mana: s.mana.map(c => ({ ...c, tapped: false })) }));
       addLog(`${pid}: マナゾーンをすべてアンタップ`);
+      break;
+    }
+    // そのターン限り、指定ゾーンからの召喚を許可する（例: 蛇手の親分ゴエモンキー！）
+    case "grantSummonFrom": {
+      const perm = { zone: effect.zone, filter: effect.filter, maxPerTurn: effect.maxPerTurn,
+                     timing: effect.timing, label: effect.label };
+      for (const pidx of pids) setOf(pidx)(s => ({ ...s, turnSummonFrom: [...(s.turnSummonFrom || []), perm] }));
+      addLog(`${pid}: このターン、${effect.zone === "mana" ? "マナゾーン" : "墓地"}からクリーチャーを召喚できる`);
       break;
     }
     case "powerBuff": {
