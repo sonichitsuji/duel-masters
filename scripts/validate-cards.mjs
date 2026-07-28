@@ -64,6 +64,8 @@ const SUMMON_ZONES = new Set(["grave","mana"]);
 const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
 // 「〜1枚につき」の数え上げ対象ゾーン（countCardsInZone / count ステップ）
 const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
+// costReduce.amountPer 専用。「今回の召喚で重ねる進化元の枚数」を数える
+const AMOUNT_PER_ZONES = new Set([...COUNT_ZONES, "evolutionBase"]);
 const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
 const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
@@ -184,7 +186,7 @@ function checkAbilityFields(obj, where) {
     for (const z of cr.zones || []) if (!COST_REDUCE_ZONES.has(z)) errors.push(`${where}.costReduce: 未知のzone "${z}"`);
     if (cr.amount == null && cr.amountPer == null) errors.push(`${where}.costReduce: amount か amountPer が必要です`);
     if (cr.amount != null && typeof cr.amount !== "number") errors.push(`${where}.costReduce: amount は数値`);
-    if (cr.amountPer && !COUNT_ZONES.has(cr.amountPer.zone)) errors.push(`${where}.costReduce.amountPer: 未知のzone "${cr.amountPer.zone}"`);
+    if (cr.amountPer && !AMOUNT_PER_ZONES.has(cr.amountPer.zone)) errors.push(`${where}.costReduce.amountPer: 未知のzone "${cr.amountPer.zone}"`);
     checkCondition(cr.condition, `${where}.costReduce`);
   }
 }

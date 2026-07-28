@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { EffectText } from "./EffectText";
@@ -30,13 +30,17 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
   const selectedCard=selHand!==null?state.hand[selHand]:null;
   const altCostAvailable=selectedCard?.alternateCost&&selectedCard.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=selectedCard.alternateCost.condition.amount;
-  const civCheck=selectedCard?(
-    selectedCard.type==="twinpact"
-      ?(canPayCost(state.mana,selectedCard,state).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state).ok?{ok:true}:canPayCost(state.mana,selectedCard,state))
-      :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state).ok)
+  // 「進化元1体につきコスト-1」のように、重ねる枚数でコストが変わるカードがある。
+  // 進化元を選ぶ前の判定では最大枚数（＝最も軽くなるケース）で見積もり、実際の枚数は支払い画面で確定させる。
+  const costOptsFor=(card,bases)=>({ evolutionBaseCount: bases!=null?bases.length:maxEvolutionBases(card,state) });
+  const civCheck=selectedCard?(()=>{
+    const o=costOptsFor(selectedCard);
+    return selectedCard.type==="twinpact"
+      ?(canPayCost(state.mana,selectedCard,state,o).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state,o).ok?{ok:true}:canPayCost(state.mana,selectedCard,state,o))
+      :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state,o).ok)
         ?{ok:true}
-        :canPayCost(state.mana,selectedCard,state)
-  ):null;
+        :canPayCost(state.mana,selectedCard,state,o);
+  })():null;
   // G-Zero check
   const gZeroOk=selectedCard?.gZero&&state.battle.some(c=>
     (!selectedCard.gZero.nameContains||c.name?.includes(selectedCard.gZero.nameContains))&&
@@ -53,7 +57,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       const perm=canSummonNow?summonPermissionFor(card,zone,summonPerms,summonUsed||{}):null;
       // マナから召喚する場合、そのカード自身はコスト支払いに使えない
       const payMana=zone==="mana"?state.mana.filter(c=>c.uid!==card.uid):state.mana;
-      return { card, idx, perm, payable: !!perm&&canPayCost(payMana,card,state).ok };
+      return { card, idx, perm, payable: !!perm&&canPayCost(payMana,card,state,costOptsFor(card)).ok };
     });
   };
   const summonableCount=zone=>zoneEntries(zone).filter(e=>e.perm).length;
@@ -167,6 +171,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           card={manaPayModal.card}
           mana={payableMana(manaPayModal)}
           ownerState={state}
+          costOpts={costOptsFor(manaPayModal.card,manaPayModal.evolutionBaseUids||[])}
           onConfirm={handleManaConfirm}
           onCancel={()=>setManaPayModal(null)}
         />
@@ -192,6 +197,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           candidates={evolutionSelectModal.candidates}
           card={evolutionSelectModal.card}
           spec={evolutionSelectModal.spec}
+          ownerState={state}
           onConfirm={baseUids=>{
             const{handIdx,card,gZero,zone,permKey}=evolutionSelectModal;
             setEvolutionSelectModal(null);

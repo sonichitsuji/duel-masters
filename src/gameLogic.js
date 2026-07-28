@@ -60,8 +60,8 @@ export function makeCardBg(civs) {
   return `linear-gradient(225deg, ${stops.join(', ')})`;
 }
 
-export function canPayCost(mana,card,costSource){
-  const effectiveCost=costSource?getEffectiveCost(card,costSource):card.cost;
+export function canPayCost(mana,card,costSource,opts={}){
+  const effectiveCost=costSource?getEffectiveCost(card,costSource,opts):card.cost;
   const untapped=mana.filter(c=>!c.tapped);
   if(untapped.length<effectiveCost) return {ok:false,reason:`マナ不足 (必要:${effectiveCost} / 利用可能:${untapped.length})`};
   if(effectiveCost===0) return {ok:true};
@@ -127,9 +127,17 @@ export function countCardsInZone(state, spec) {
   return list.filter(c => matchCardFilter(c, spec.filter)).length;
 }
 
+// amountPer の分母。zone:"evolutionBase" は「今回の召喚で実際に重ねる進化元の数」を参照するので、
+// ゾーンではなく opts から取る（プレイ時にしか決まらない値）。
+function amountPerCount(ownerState, spec, opts) {
+  if (spec?.zone === "evolutionBase") return opts?.evolutionBaseCount || 0;
+  return countCardsInZone(ownerState, spec);
+}
+
 // card をプレイする際の実効コスト。
 // source: プレイヤー状態（複数ゾーンの軽減元を見る）／配列（旧: バトルゾーンのみ）
-export function getEffectiveCost(card, source) {
+// opts.evolutionBaseCount: 今回の召喚で重ねる進化元の枚数（進化元を選ぶ前は最大値を渡す）
+export function getEffectiveCost(card, source, opts = {}) {
   const sources = collectCostReduceSources(source);
   if (sources.length === 0) return card.cost;
   const ownerState = Array.isArray(source) ? null : source;
@@ -142,7 +150,7 @@ export function getEffectiveCost(card, source) {
     if (filter?.self && c.uid !== card.uid) continue;
     if (!costReduceMatches(card, filter)) continue;
     // amountPer: 「〜1枚につき1少なくする」のような可変軽減
-    const n = amountPer ? countCardsInZone(ownerState, amountPer) : (amount || 0);
+    const n = amountPer ? amountPerCount(ownerState, amountPer, opts) : (amount || 0);
     cost = Math.max(min ?? 0, cost - n);
   }
   // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）
@@ -273,6 +281,17 @@ export function canEvolve(card, ownerState) {
   const spec = evolutionSpec(card);
   if (!spec) return true;
   return evolutionCandidates(card, ownerState).length >= evolutionNeeded(spec);
+}
+
+// 今このカードを進化させるとき、重ねられる進化元の最大枚数。
+// count 指定はちょうどその枚数（足りなければ進化自体できないので0）、min 指定は候補すべて。
+// 「進化元1体につきコスト-1」の軽減を、進化元を選ぶ前に見積もるのに使う。
+export function maxEvolutionBases(card, ownerState) {
+  const spec = evolutionSpec(card);
+  if (!spec) return 0;
+  const n = evolutionCandidates(card, ownerState).length;
+  if (spec.min != null) return n >= spec.min ? n : 0;
+  return n >= spec.count ? spec.count : 0;
 }
 
 // ===========================
