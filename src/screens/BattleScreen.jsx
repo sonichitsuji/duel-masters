@@ -367,10 +367,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 先行1ターン目はドロー不要（マナチャージから開始）
   const isFirstTurn = turn===1 && active==="p1";
 
-  // 山札切れによる敗北。「かわりに勝つ」等の置換があれば §0 のとおり必ず例外処理で中止できる形で提示する
+  // ライブラリアウト（LO）: DMでは「山札が0枚になった瞬間」に敗北が成立する（引こうとした時ではない）。
+  // 状態起因処理なので、ドローに限らず山札が減るあらゆる操作の後に判定する。
+  // 「かわりに勝つ」等の置換があれば §0 のとおり必ず例外処理で中止できる形で提示する。
   const resolveDeckOutLoss=(pid)=>{
     const lose=()=>{
-      addLog(`${pid}: 山札が0枚のためドローできず敗北`);
+      addLog(`${pid}: 山札が0枚になった（ライブラリアウト）ため敗北`);
       setWinReason("deckout");
       setWinner(pid==="p1"?"P2":"P1");
     };
@@ -379,7 +381,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setReplacementModal({
       title: "敗北の置換（置換効果）",
       card: rep.card,
-      message: `${pid.toUpperCase()} は山札が0枚でカードを引けず、ゲームに負けます。\nかわりに「${rep.card.name}」の能力でゲームに勝ちます。`,
+      message: `${pid.toUpperCase()} は山札が0枚になり、ゲームに負けます。\nかわりに「${rep.card.name}」の能力でゲームに勝ちます。`,
       applyLabel: "かわりに勝つ（EXWIN）",
       cancelLabel: "例外処理で中止（通常どおり敗北）",
       onApply: () => {
@@ -391,13 +393,24 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       onCancel: () => { setReplacementModal(null); lose(); },
     });
   };
+  // 山札が0枚になった瞬間に判定する。誘発能力(setTimeout)より先に走るので、状態起因処理が優先される。
+  const deckOutRef=useRef(null);
+  useEffect(()=>{
+    if(winner) return;
+    const pid=["p1","p2"].find(x=>(x==="p1"?p1:p2).deck.length===0);
+    if(!pid){ deckOutRef.current=null; return; }
+    if(deckOutRef.current===pid) return; // 解決中/解決済み（置換モーダルを出している間の再入を防ぐ）
+    deckOutRef.current=pid;
+    resolveDeckOutLoss(pid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[p1.deck.length,p2.deck.length,winner]);
+
   const handleDraw=()=>{
     if(drewThisTurn)return;
-    if(activeState.deck.length===0){resolveDeckOutLoss(active);return;}
+    if(activeState.deck.length===0)return; // 0枚ならLOで既に決着している
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
-    if(rest.length===0) addLog(`${active}: 山札が残り0枚になった`);
     setTimeout(()=>fireTrigger("draw",{sourcePid:active,lastCard:rest.length===0}),0);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
