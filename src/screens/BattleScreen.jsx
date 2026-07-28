@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -209,6 +209,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         }
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard}), 0);
       }
+      // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
+      if (updatedCtx.drewCards && updatedCtx.drewCards.length) {
+        const list = updatedCtx.drewCards;
+        delete updatedCtx.drewCards;
+        list.forEach(d => setTimeout(() => fireTriggerRef.current("draw", { sourcePid: d.pid, lastCard: d.lastCard }), 0));
+      }
       // 効果でクリーチャーがバトルゾーンに出た時（method:"put"/"summon"）
       if (updatedCtx.creatureEnteredBz && updatedCtx.creatureEnteredBz.length) {
         const list = updatedCtx.creatureEnteredBz;
@@ -361,13 +367,38 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 先行1ターン目はドロー不要（マナチャージから開始）
   const isFirstTurn = turn===1 && active==="p1";
 
+  // 山札切れによる敗北。「かわりに勝つ」等の置換があれば §0 のとおり必ず例外処理で中止できる形で提示する
+  const resolveDeckOutLoss=(pid)=>{
+    const lose=()=>{
+      addLog(`${pid}: 山札が0枚のためドローできず敗北`);
+      setWinReason("deckout");
+      setWinner(pid==="p1"?"P2":"P1");
+    };
+    const rep=findLoseReplacement(stateRef.current[pid],"deckOut");
+    if(!rep){ lose(); return; }
+    setReplacementModal({
+      title: "敗北の置換（置換効果）",
+      card: rep.card,
+      message: `${pid.toUpperCase()} は山札が0枚でカードを引けず、ゲームに負けます。\nかわりに「${rep.card.name}」の能力でゲームに勝ちます。`,
+      applyLabel: "かわりに勝つ（EXWIN）",
+      cancelLabel: "例外処理で中止（通常どおり敗北）",
+      onApply: () => {
+        setReplacementModal(null);
+        addLog(`[EXWIN] ${rep.card.name}: 敗北するかわりに ${pid.toUpperCase()} の勝利！`);
+        setWinReason("exwin");
+        setWinner(pid.toUpperCase());
+      },
+      onCancel: () => { setReplacementModal(null); lose(); },
+    });
+  };
   const handleDraw=()=>{
     if(drewThisTurn)return;
-    if(activeState.deck.length===0){addLog(`${active}: 山札が0枚のためドローできず敗北`);setWinReason("deckout");setWinner(otherPid==="p1"?"P1":"P2");return;}
+    if(activeState.deck.length===0){resolveDeckOutLoss(active);return;}
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
-    setTimeout(()=>fireTrigger("draw",{sourcePid:active}),0);
+    if(rest.length===0) addLog(`${active}: 山札が残り0枚になった`);
+    setTimeout(()=>fireTrigger("draw",{sourcePid:active,lastCard:rest.length===0}),0);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
   // fromZone: "hand"(通常) / "grave" / "mana"。墓地・マナからの召喚は summonFrom 系の許可が必要（PlayerBoard 側で判定済み）。

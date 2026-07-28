@@ -232,7 +232,7 @@
 | `leave` | カードが離れた時 |
 | `destroyed` | 破壊された時 |
 | `battleDestroy` | バトルで破壊された時 |
-| `draw` | カードを引いた時 |
+| `draw` | カードを引いた時。`"lastCard": true` で「**それが最後の1枚だったら**」（引いた結果、山札が0枚になった時）に限定できる |
 | `discard` | 手札を捨てた時 |
 | `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時 |
 | `startOfTurn` | ターンのはじめ（アンタップ後・ドロー前）。`target` で**誰のターンか**を指定（`self`=自分のターン(既定) / `opponent`=相手のターン / `both`=各ターン） |
@@ -271,6 +271,7 @@
 | `hyperOnly` | ハイパーモード時のみ発火 |
 | `oncePerTurn` | 「各ターンに一度」。実際に解決した時だけ消費（辞退しても消費しない） |
 | `oncePerGame` | 「ゲーム中に一度」（終極宣言など） |
+| `lastCard` | `on:"draw"` 専用。引いた結果、山札が0枚になった時だけ誘発 |
 | `condition` | `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"shieldAddedThisTurn"}` |
 
 ```jsonc
@@ -462,12 +463,37 @@
   メテオバーンはコストなので、後続に `ifPrevious`(§3.5) を書かなくても常にこうなります。
   革命チェンジ等でそのクリーチャーが居なくなっていれば**不発**です。
 
+## 7.10. 敗北の置換（`replaceLose`）
+
+「〜でゲームに負ける時、かわりに勝つ」を表現します。能力フィールドなので `ssx` にも書けます。
+有効なゾーンは**バトルゾーン＋表向きのシールド**です。
+
+```jsonc
+"replaceLose": [
+  { "from": "deckOut", "to": "win",
+    "label": "自分の山札の最後の1枚を引いたことによってゲームに負ける時、かわりに勝つ" }
+]
+```
+
+| フィールド | 説明 |
+|---|---|
+| `from` | 置換する敗北の原因。現状 `"deckOut"`（山札が0枚でカードを引けない）のみ |
+| `to` | `"win"`（EXWIN として勝利） |
+
+置換効果なので、**必ず「例外処理で中止（通常どおり敗北）」を選べるモーダル**が出ます。
+勝利画面は **EXTRA WIN!** 表示になります。
+
+> 山札切れの敗北は DM のルールどおり「**山札が0枚の状態で引こうとした時**」に起こります。
+> 最後の1枚を引いた瞬間ではありません。「最後の1枚を引いた時」に何かしたい場合は
+> `{"on":"draw","lastCard":true}` を使ってください。
+
 ---
 
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
 - `summonFrom`: 墓地・マナからの召喚許可 → **§7.7**
+- `replaceLose`: `[{from,to,label}]` — 敗北の置換 → **§7.10**
 - `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `notSelf,raceContains,multiColor,nameContains,elementOnly`）
 - `grantPowerBoost` / `grantPowerBoostGrave` / `selfPowerBoostGrave` / `condPower:[{condition,amount}]`
 - `powerAttacker`: `N` — パワーアタッカー+N（**攻撃中のみ**パワー+N）

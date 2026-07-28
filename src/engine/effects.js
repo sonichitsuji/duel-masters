@@ -230,6 +230,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const n = Math.min(amount, selfState.deck.length);
       if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
       addLog(`${pid}: ${n}枚ドロー`);
+      // 効果によるドローでも draw トリガーを誘発させる（lastCard は山札が0枚になったか）
+      if (n > 0) ctx.drewCards = [...(ctx.drewCards || []), { pid: ownerPid, lastCard: selfState.deck.length - n === 0 }];
       ctx.stepDone = n > 0;
       break;
     }

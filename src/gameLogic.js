@@ -239,6 +239,25 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
 }
 
 // ===========================
+// 敗北の置換（「〜でゲームに負ける時、かわりに勝つ」）
+// 能力フィールドなので ssx にも書ける。バトルゾーン＋表向きシールドで有効。
+//   replaceLose: [{ from: "deckOut", to: "win", label }]
+// 置換は必ず例外処理で中止できる形で提示すること（BattleScreen の ReplacementModal）。
+// ===========================
+export const LOSE_CAUSES = ["deckOut"];
+
+export function findLoseReplacement(ownerState, cause) {
+  if (!ownerState) return null;
+  const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    for (const rule of effectiveCard(c).replaceLose || []) {
+      if ((rule.from || "deckOut") === cause) return { card: c, rule };
+    }
+  }
+  return null;
+}
+
+// ===========================
 // 進化（進化元のゾーンと枚数）
 // 通常の進化はバトルゾーンのクリーチャー1体を進化元にするが、墓地進化 / マナ進化 /
 // 墓地進化GV(3体) / 超無限墓地進化(1体以上) のように、ゾーンと枚数が変わるものがある。

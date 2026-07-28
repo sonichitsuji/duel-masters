@@ -58,7 +58,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","replaceLose","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -72,6 +72,7 @@ const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
 const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
+const LOSE_CAUSES = new Set(["deckOut"]);
 
 const errors = [];
 const warnings = [];
@@ -145,6 +146,10 @@ function checkTrigger(tr, where) {
   if (tr.method && !["summon","put"].includes(tr.method)) errors.push(`${where}(${tr.on}): 未知のmethod "${tr.method}"`);
   if (tr.effect) errors.push(`${where}(${tr.on}): 旧記法 effect（effects へ）`);
   if (tr.oncePerTurn != null && typeof tr.oncePerTurn !== "boolean") errors.push(`${where}(${tr.on}): oncePerTurn は真偽値`);
+  if (tr.lastCard != null) {
+    if (typeof tr.lastCard !== "boolean") errors.push(`${where}(${tr.on}): lastCard は真偽値`);
+    if (tr.on !== "draw") errors.push(`${where}(${tr.on}): lastCard は on:"draw" でのみ使えます`);
+  }
   if (tr.oncePerGame != null && typeof tr.oncePerGame !== "boolean") errors.push(`${where}(${tr.on}): oncePerGame は真偽値`);
   checkCondition(tr.condition, `${where}(${tr.on})`);
   checkEffect(tr, `${where}(${tr.on})`);
@@ -174,6 +179,14 @@ function checkAbilityFields(obj, where) {
   for (const tr of obj.triggers || []) checkTrigger(tr, where);
   if (obj.activated) checkActivated(obj.activated, where);
   if (obj.summonFrom) checkSummonFrom(obj.summonFrom, where);
+  if (obj.replaceLose) {
+    if (!Array.isArray(obj.replaceLose)) errors.push(`${where}.replaceLose: 配列である必要があります`);
+    else obj.replaceLose.forEach((r, i) => {
+      const w = `${where}.replaceLose[${i}]`;
+      if (r.from != null && !LOSE_CAUSES.has(r.from)) errors.push(`${w}: 未知の from "${r.from}"（${[...LOSE_CAUSES].join("/")}）`);
+      if (r.to != null && r.to !== "win") errors.push(`${w}: to は "win" のみ`);
+    });
+  }
   if (obj.powerAttacker != null && typeof obj.powerAttacker !== "number") errors.push(`${where}: powerAttacker は数値`);
   if (obj.poweredBreaker != null && typeof obj.poweredBreaker !== "boolean") errors.push(`${where}: poweredBreaker は真偽値`);
   for (const cp of obj.condPower || []) {
