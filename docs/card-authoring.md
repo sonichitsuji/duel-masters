@@ -222,7 +222,7 @@
 | `draw` | カードを引いた時 |
 | `discard` | 手札を捨てた時 |
 | `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時 |
-| `endOfTurn` | 各ターンの終わり |
+| `endOfTurn` | ターンの終わり。`target` で**誰のターンか**を指定（`self`=自分のターン(既定) / `opponent`=相手のターン / `both`=各ターン） |
 
 ### `target`（誰のイベントに反応するか）
 | 値 | 意味 |
@@ -234,6 +234,7 @@
 
 **既定値**：カード自身のイベント（`creaturePutBz` `leave` `destroyed` `battleDestroy` `attack`）は **`this`**、
 プレイヤーのイベント（`castSpell` `draw` `discard` `shieldAdded` `shieldLeave` `endOfTurn`）は **`self`**。
+`endOfTurn` の `self` は「**自分のターンの**終わりに」。「各ターンの終わりに」は `"target":"both"` を明示します。
 
 ```jsonc
 {"on":"leave"}                      // このクリーチャーが離れた時

@@ -2189,6 +2189,7 @@
       },
       {
         "on": "endOfTurn",
+        "target": "both",
         "hyperOnly": true,
         "condition": {
           "flag": "shieldAddedThisTurn"

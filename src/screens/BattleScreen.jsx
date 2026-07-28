@@ -676,9 +676,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const setSelf=pid==="p1"?setP1:setP2;const oPid=pid==="p1"?"p2":"p1";const setOther=pid==="p1"?setP2:setP1;
       [...st.battle,...st.shields.filter(s=>s.faceUp)].forEach(card=>{
         getCardTriggers(card).forEach(tr=>{
-          if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:pid})) return;
+          // sourcePid はターンを終えるプレイヤー。target:"self"=自分のターンの終わり /
+          // "opponent"=相手のターンの終わり / "both"=各ターンの終わり
+          if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:active})) return;
           if(tr.hyperOnly&&!card.hyperMode) return;
-          if(tr.condition&&!checkGrantCondition(tr.condition,st)) return;
+          if(tr.condition&&!checkGrantCondition(tr.condition,st,card)) return;
           setTimeout(()=>triggerEffect(tr,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);
         });
       });
