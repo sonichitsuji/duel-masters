@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { EffectText } from "./EffectText";
@@ -58,6 +58,23 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   };
   const summonableCount=zone=>zoneEntries(zone).filter(e=>e.perm).length;
 
+  // コスト支払いに使えるマナ。マナから召喚したカード自身と、マナ進化の進化元は使えない
+  const payableMana=(m)=>{
+    const excluded=new Set();
+    if(m?.zone==="mana") excluded.add(m.card.uid);
+    if(evolutionSpec(m?.card)?.zone==="mana") (m.evolutionBaseUids||[]).forEach(u=>excluded.add(u));
+    return excluded.size?state.mana.filter(c=>!excluded.has(c.uid)):state.mana;
+  };
+
+  // 進化元の選択を開く（BZ/墓地/マナのどれでも同じ入口）。候補が足りなければ false を返す
+  const openEvolutionSelect=(common)=>{
+    const spec=evolutionSpec(common.card);
+    const candidates=evolutionCandidates(common.card,state);
+    if(candidates.length===0) return false;
+    setEvolutionSelectModal({...common,spec,candidates});
+    return true;
+  };
+
   const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
   const handleCharge=()=>{if(selHand===null)return;onChargeMana(selHand);setSelHand(null);};
@@ -65,13 +82,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     if(selHand===null||!civCheck?.ok)return;
     const card=state.hand[selHand];
     if(card.type==="evo_creature"){
-      // Evolution flow
-      const eligible=state.battle.filter(c=>
-        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
-        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
-      );
-      if(eligible.length===0)return;
-      setEvolutionSelectModal({handIdx:selHand,card,eligible});
+      if(!openEvolutionSelect({handIdx:selHand,card}))return;
     }else if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
     else if(card.type==="twinpact"){setTwinPactModal({handIdx:selHand,card});}
     else if(card.alternateCost&&card.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=card.alternateCost.condition.amount){setAltCostModal({handIdx:selHand,card});}
@@ -79,7 +90,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   };
   const handleManaConfirm=uids=>{
     if(!manaPayModal)return;
-    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUid||null,manaPayModal.zone||"hand",manaPayModal.permKey||null);
+    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUids||null,manaPayModal.zone||"hand",manaPayModal.permKey||null);
     if(ok!==false)setSelHand(null);
     setManaPayModal(null);
     setZoneModal(null);
@@ -89,12 +100,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     const {card,idx,perm}=entry;
     const common={handIdx:idx,card,zone:zoneModal,permKey:perm.key};
     if(card.type==="evo_creature"){
-      const eligible=state.battle.filter(c=>
-        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
-        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
-      );
-      if(eligible.length===0)return;
-      setEvolutionSelectModal({...common,eligible});
+      openEvolutionSelect(common);
     }else{
       setManaPayModal(common);
     }
@@ -103,12 +109,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     if(!gZeroOk||selHand===null)return;
     const card=state.hand[selHand];
     if(card.type==="evo_creature"){
-      const eligible=state.battle.filter(c=>
-        (!card.evolution?.civFilter||getCardCivs(c).includes(card.evolution.civFilter))&&
-        (!card.evolution?.raceContains||c.race?.includes(card.evolution.raceContains))
-      );
-      if(eligible.length===0)return;
-      setEvolutionSelectModal({handIdx:selHand,card,eligible,gZero:true});
+      if(!openEvolutionSelect({handIdx:selHand,card,gZero:true}))return;
     }else{
       const ok=onPlayCard(selHand,[],null,null);
       if(ok!==false)setSelHand(null);
@@ -164,7 +165,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       {manaPayModal&&(
         <ManaPayModal
           card={manaPayModal.card}
-          mana={manaPayModal.zone==="mana"?state.mana.filter(c=>c.uid!==manaPayModal.card.uid):state.mana}
+          mana={payableMana(manaPayModal)}
           ownerState={state}
           onConfirm={handleManaConfirm}
           onCancel={()=>setManaPayModal(null)}
@@ -188,16 +189,17 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       )}
       {evolutionSelectModal&&(
         <EvolutionSelectModal
-          eligible={evolutionSelectModal.eligible}
+          candidates={evolutionSelectModal.candidates}
           card={evolutionSelectModal.card}
-          onSelect={baseUid=>{
+          spec={evolutionSelectModal.spec}
+          onConfirm={baseUids=>{
             const{handIdx,card,gZero,zone,permKey}=evolutionSelectModal;
             setEvolutionSelectModal(null);
             if(gZero){
-              const ok=onPlayCard(handIdx,[],null,baseUid);
+              const ok=onPlayCard(handIdx,[],null,baseUids);
               if(ok!==false)setSelHand(null);
             }else{
-              setManaPayModal({handIdx,card,evolutionBaseUid:baseUid,zone,permKey});
+              setManaPayModal({handIdx,card,evolutionBaseUids:baseUids,zone,permKey});
             }
           }}
           onCancel={()=>setEvolutionSelectModal(null)}

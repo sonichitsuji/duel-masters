@@ -56,6 +56,9 @@ function zoneCards(state, zone, ctx) {
     case "deck": return state?.deck || [];
     case "revealed": return ctx?.revealed || [];
     case "lastMoved": return ctx?.lastMoved || [];
+    // メテオバーン用。スナップショットではなく「今バトルゾーンにいる」カードの下を見る。
+    // 革命チェンジ等で入れ替わっていれば空 = 不発になる。
+    case "under": return (state?.battle || []).find(c => c.uid === ctx?.srcCardUid)?.evolutionBase || [];
     default: return [];
   }
 }
@@ -84,6 +87,8 @@ const SOURCE = {
   untap:          { zone: "bz",       target: "self" },
   tapToggle:      { zone: "bz",       target: "both" },
   graveToBz:      { zone: "grave",    target: "self" },
+  graveToHand:    { zone: "grave",    target: "self" },
+  meteorBurn:     { zone: "under",    target: "self" },
   shieldToHand:   { zone: "shield",   target: "self" },
   shieldToGrave:  { zone: "shield",   target: "self" },
   battle:         { zone: "bz",       target: "opponent" },
@@ -100,7 +105,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","winGame"]);
 
 // ===========================
 // 候補算出（選択UI用）
@@ -135,8 +140,23 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   cards = cards.filter(c => matchFilter(c, effect.filter, c2));
   // 一括処理（選択不要）
   if (effect.all || effect.random || effect.takeAll) return { candidates: cards, isAuto: true };
-  const maxSelect = resolveAmount(c2, effect.amount, 1) || 1;
+  // 選択枚数は通常 amount。ただし powerBuff の amount は「パワー増減値」なので count で指定する（既定1体）
+  const countSpec = type === "powerBuff" ? (effect.count ?? 1) : (effect.count ?? effect.amount);
+  const maxSelect = Math.max(1, resolveAmount(c2, countSpec, 1) || 1);
   return { candidates: cards, isAuto: cards.length === 0, maxSelect, optional: effect.optional };
+}
+
+// ===========================
+// 「そうしたら」「そうした場合」
+// 直前のステップを実際に行わなかった場合、そこから後ろのステップは実行しない。
+//   - 後続ステップに ifPrevious:true を書くと、その手前のステップに依存する
+//   - meteorBurn は「コスト」なので、支払わなければ常に以降を打ち切る（ifPrevious 不要）
+// ===========================
+export function shouldStopChain(steps, doneIdx, ctx) {
+  if (ctx?.stepDone !== false) return false;
+  const cur = steps?.[doneIdx];
+  const next = steps?.[doneIdx + 1];
+  return cur?.type === "meteorBurn" || !!next?.ifPrevious;
 }
 
 // ===========================
@@ -150,6 +170,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const oppPid     = ownerPid === "p1" ? "p2" : "p1";
   const pid = ownerPid === "p1" ? "P1" : "P2";
   const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name };
+  // 「そうしたら」判定用。このステップを実際に行ったか。各 case が明示しなければ末尾で既定値を入れる
+  ctx.stepDone = undefined;
   const type = effect.type;
   const spec = SOURCE[type] || {};
   const tgt = effect.target || spec.target || "self";
@@ -195,6 +217,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const n = Math.min(amount, selfState.deck.length);
       if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
       addLog(`${pid}: ${n}枚ドロー`);
+      ctx.stepDone = n > 0;
       break;
     }
     case "reveal": {
@@ -434,6 +457,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       }
       break;
     }
+    // EXWIN: ダイレクトアタック以外の特殊勝利。executeEffect は setWinner を持たないので
+    // ctx フラグを立て、BattleScreen 側（advanceStep）で勝敗を確定させる。
+    case "winGame": {
+      const winner = tgt === "opponent" ? oppPid : ownerPid;
+      ctx.winGame = { pid: winner, reason: effect.reason || "exwin" };
+      addLog(`${pid}: [EXWIN] ${winner.toUpperCase()} はゲームに勝利する`);
+      break;
+    }
     case "untapAllMana": {
       setSelf(s => ({ ...s, mana: s.mana.map(c => ({ ...c, tapped: false })) }));
       addLog(`${pid}: マナゾーンをすべてアンタップ`);
@@ -448,19 +479,21 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "powerBuff": {
+      // amount は数値でも変数参照でもよい。perUnit を付けると「1つにつき N」（例: 墓地のクリーチャー1体につき-1000）
+      const delta = resolveAmount(ctx, effect.amount, 0) * (effect.perUnit ?? 1);
       for (const pidx of pids) {
         const st = stateOf(pidx);
         const targets = st.battle.filter(c => selectedUids.includes(c.uid));
         for (const card of targets) {
-          const newBuff = { power: (card.tempBuff?.power || 0) + (effect.amount || 0), keywords: effect.keywords || card.tempBuff?.keywords, expires: effect.expires || "endOfTurn" };
+          const newBuff = { power: (card.tempBuff?.power || 0) + delta, keywords: effect.keywords || card.tempBuff?.keywords, expires: effect.expires || "endOfTurn" };
           const projected = getEffectivePower({ ...card, tempBuff: newBuff }, st, st.battle);
           if (projected <= 0) {
             setOf(pidx)(s => { const { newBattle, extracted } = extractFromBattle(s.battle, card.uid); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
-            addLog(`${pid}: ${card.name} のパワーを${effect.amount}（パワー0以下のため破壊）`);
+            addLog(`${pid}: ${card.name} のパワーを${delta}（パワー0以下のため破壊）`);
             markDestroyed(card, pidx, false);
           } else {
             setOf(pidx)(s => ({ ...s, battle: s.battle.map(c => c.uid === card.uid ? { ...c, tempBuff: newBuff } : c) }));
-            addLog(`${pid}: ${card.name} のパワーを${effect.amount > 0 ? "+" : ""}${effect.amount}`);
+            addLog(`${pid}: ${card.name} のパワーを${delta > 0 ? "+" : ""}${delta}`);
           }
         }
       }
@@ -506,6 +539,53 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: ownerOfGrave, method: "put" }))];
       break;
     }
+    // メテオバーン: このクリーチャーの下のカードを指定数、指定ゾーンへ動かす「コスト」。
+    // 支払えなければ ctx.meteorBurnFailed を立て、呼び出し側が以降のステップを打ち切る（＝「そうしたら」）。
+    case "meteorBurn": {
+      const need = resolveAmount(ctx, effect.count, 1) || 1;
+      const live = selfState.battle.find(c => c.uid === ctx.srcCardUid);
+      const under = live?.evolutionBase || [];
+      const picked = under.filter(c => selectedUids.includes(c.uid));
+      if (!live || under.length < need || picked.length < need) {
+        ctx.stepDone = false;
+        addLog(`${pid}: メテオバーン不発（${!live ? "クリーチャーがバトルゾーンにいない" : "下のカードが足りない/支払わなかった"}）`);
+        break;
+      }
+      const uids = new Set(picked.map(c => c.uid));
+      // filter で抜くので残りの順序は保たれ、抜けた場所は自然に詰まる
+      const rest = under.filter(c => !uids.has(c.uid));
+      const moved = picked.map(c => {
+        const m = { ...c, tapped: false, faceUp: false };
+        delete m.evolutionBase; delete m.tempBuff;
+        return m;
+      });
+      const to = effect.to || "grave";
+      setSelf(s => {
+        const battle = s.battle.map(c => c.uid === live.uid ? { ...c, evolutionBase: rest } : c);
+        if (to === "mana")   return { ...s, battle, mana:   [...s.mana,   ...moved.map(c => ({ ...c, tapped: !!effect.tapped }))] };
+        if (to === "hand")   return { ...s, battle, hand:   [...s.hand,   ...moved] };
+        if (to === "shield") return { ...s, battle, shields:[...s.shields,...moved], shieldAddedThisTurn: true };
+        if (to === "deck")   return { ...s, battle, deck:   [...s.deck,   ...moved] };  // 山札の下
+        return { ...s, battle, grave: [...s.grave, ...moved] };
+      });
+      if (to === "shield") ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), ownerPid];
+      const ZONE_JP = { grave:"墓地", mana:"マナゾーン", hand:"手札", shield:"シールドゾーン", deck:"山札の下" };
+      addLog(`${pid}: [メテオバーン] ${live.name} の下から「${picked.map(c => c.name).join("、")}」を${ZONE_JP[to] || "墓地"}へ`);
+      ctx.lastMoved = moved;
+      ctx.stepDone = true;
+      break;
+    }
+    case "graveToHand": {
+      for (const pidx of pids) {
+        const cards = stateOf(pidx).grave.filter(c => selectedUids.includes(c.uid));
+        if (!cards.length) continue;
+        const uids = cards.map(c => c.uid);
+        setOf(pidx)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false }))] }));
+        addLog(`${pid}: 墓地から「${cards.map(c => c.name).join(", ")}」を手札へ`);
+        ctx.lastMoved = cards;
+      }
+      break;
+    }
     case "shieldToHand": {
       for (const pidx of pids) {
         const cards = stateOf(pidx).shields.filter(c => selectedUids.includes(c.uid));
@@ -547,5 +627,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     default: addLog(`[未実装効果] ${type}`);
   }
+  // 既定: 自動実行のステップは「行った」、選択が要るステップは1枚以上選ばれていれば「行った」
+  if (ctx.stepDone === undefined) ctx.stepDone = AUTO_TYPES.has(type) || selectedUids.length > 0;
   return ctx;
 }

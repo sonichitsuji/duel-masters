@@ -119,19 +119,33 @@ export function matchCardFilter(card, filter) {
 }
 const costReduceMatches = matchCardFilter;
 
+// ゾーン内の該当カード枚数（costReduce.amountPer 等、「〜1枚につき」の分母）
+export function countCardsInZone(state, spec) {
+  if (!state || !spec) return 0;
+  const list = { grave: state.grave, mana: state.mana, hand: state.hand,
+                 bz: state.battle, shield: state.shields, deck: state.deck }[spec.zone] || [];
+  return list.filter(c => matchCardFilter(c, spec.filter)).length;
+}
+
 // card をプレイする際の実効コスト。
 // source: プレイヤー状態（複数ゾーンの軽減元を見る）／配列（旧: バトルゾーンのみ）
 export function getEffectiveCost(card, source) {
   const sources = collectCostReduceSources(source);
   if (sources.length === 0) return card.cost;
+  const ownerState = Array.isArray(source) ? null : source;
   let cost = card.cost;
   for (const { card: c, zone } of sources) {
     if (!c.costReduce) continue;
-    const { amount, filter, min, zones } = c.costReduce;
+    const { amount, amountPer, filter, min, zones } = c.costReduce;
     if (!(zones || COST_REDUCE_DEFAULT_ZONES).includes(zone)) continue;
+    // filter.self: 「このクリーチャーの召喚コストを〜」= 軽減元自身にだけ効く
+    if (filter?.self && c.uid !== card.uid) continue;
     if (!costReduceMatches(card, filter)) continue;
-    cost = Math.max(min ?? 0, cost - amount);
+    // amountPer: 「〜1枚につき1少なくする」のような可変軽減
+    const n = amountPer ? countCardsInZone(ownerState, amountPer) : (amount || 0);
+    cost = Math.max(min ?? 0, cost - n);
   }
+  // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）
   return Math.max(cost, getCardCivs(card).length);
 }
 
@@ -212,6 +226,53 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
   else if (kw.includes("wBreaker")) n = Math.max(n, 2);
   if (ec.poweredBreaker) n = Math.max(n, Math.max(1, Math.floor((effPower || 0) / 6000)));
   return n;
+}
+
+// ===========================
+// 進化（進化元のゾーンと枚数）
+// 通常の進化はバトルゾーンのクリーチャー1体を進化元にするが、墓地進化 / マナ進化 /
+// 墓地進化GV(3体) / 超無限墓地進化(1体以上) のように、ゾーンと枚数が変わるものがある。
+//   evolution: { zone:"bz"|"grave"|"mana", count:N | min:N, filter:{…} }
+// 進化元は「バトルゾーンに出た」ことにならない（battle を経由せず evolutionBase に直接積む）。
+// ===========================
+export const EVOLUTION_ZONES = ["bz", "grave", "mana"];
+
+// evolution を正規化。zone 既定 "bz" / count 既定 1 / min を書くと「min枚以上、上限なし」
+export function evolutionSpec(card) {
+  const e = card?.evolution;
+  if (!e) return null;
+  const zone = EVOLUTION_ZONES.includes(e.zone) ? e.zone : "bz";
+  const min = typeof e.min === "number" ? e.min : null;
+  return { zone, min, count: min != null ? null : (e.count ?? 1), filter: e.filter || null };
+}
+
+// 進化の呼び名（UI表示用）
+export function evolutionLabel(spec) {
+  if (!spec) return "進化";
+  const base = spec.zone === "grave" ? "墓地進化" : spec.zone === "mana" ? "マナ進化" : "進化";
+  if (spec.min != null) return `超無限${base}`;
+  if (spec.count >= 3) return `${base}GV`;
+  return base;
+}
+
+// 進化元の候補。マナゾーンはタップ状態を問わない。進化元は常にクリーチャー限定。
+export function evolutionCandidates(card, ownerState) {
+  const spec = evolutionSpec(card);
+  if (!spec || !ownerState) return [];
+  const list = spec.zone === "grave" ? ownerState.grave : spec.zone === "mana" ? ownerState.mana : ownerState.battle;
+  return (list || []).filter(c =>
+    (c.type === "creature" || c.type === "evo_creature") && matchCardFilter(c, spec.filter)
+  );
+}
+
+// 進化元に必要な枚数（min 指定なら最低枚数）
+export function evolutionNeeded(spec) { return spec ? (spec.min != null ? spec.min : spec.count) : 0; }
+
+// 進化元が足りているか
+export function canEvolve(card, ownerState) {
+  const spec = evolutionSpec(card);
+  if (!spec) return true;
+  return evolutionCandidates(card, ownerState).length >= evolutionNeeded(spec);
 }
 
 // ===========================

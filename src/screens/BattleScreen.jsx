@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount } from "../gameLogic";
-import { executeEffect, matchFilter } from "../engine/effects";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec } from "../gameLogic";
+import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
 import { EffectStepModal } from "../components/modals/EffectStepModal";
@@ -20,9 +20,12 @@ import { StepIndicator } from "../components/BoardWidgets";
 // tr.filter: 主体カードの条件（効果と同じ filter 語彙） / tr.method: creaturePutBz の "summon"|"put"
 // ev: { sourcePid, subjectCard?, method?, firstThisTurn? }
 const DEFAULT_TRIGGER_SCOPE = {
-  creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this",
+  creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this", attackEnd:"this",
   castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self", endOfTurn:"self",
 };
+// 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
+// （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
+const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd"]);
 function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   if(tr.on !== event) return false;
   const scope = tr.target || DEFAULT_TRIGGER_SCOPE[event] || "self";
@@ -43,12 +46,20 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
 // #3 常在型能力の事前適用（枠組み）。例: 相手の「クリーチャーを出せない」常在型を、
 // クリーチャーを出す処理に先んじてチェックして中止する。現状は該当カードが無いため常に false。
 // データ形: カードに staticDeny:{ type:"cantPutCreature", filter? } を持たせ、その支配者の「相手」に効く。
-function checkStaticDeny(state, targetPid, type){
+// 判定対象は「出るクリーチャー自身の出所(fromZone)」だけ。進化元のゾーンは一切見ない
+// （進化元はバトルゾーンに出たことにならないため）。
+function checkStaticDeny(state, targetPid, type, fromZone="hand"){
   for(const pid of ["p1","p2"]){
     if(pid===targetPid) continue; // 自分の常在型は自分のプレイを止めない（「相手は〜できない」想定）
     const st=state?.[pid]; if(!st) continue;
     const sources=[...(st.battle||[]),...((st.shields||[]).filter(s=>s.faceUp))];
-    if(sources.some(c=>c.staticDeny?.type===type)) return true;
+    if(sources.some(c=>{
+      const d=c.staticDeny;
+      if(d?.type!==type) return false;
+      // 「手札以外からバトルゾーンに出せない」は手札から出す場合には効かない
+      if(type==="cantPutCreatureFromNonHand") return fromZone!=="hand";
+      return true;
+    })) return true;
   }
   return false;
 }
@@ -66,6 +77,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
   const [message,setMessage]=useState("P1: マナチャージorカードをプレイ");
   const [winner,setWinner]=useState(null);
+  const [winReason,setWinReason]=useState(null); // "direct" | "deckout" | "exwin"
   const [handoff,setHandoff]=useState(null);
   const [turn,setTurn]=useState(1);
   const [cutin,setCutin]=useState(null);
@@ -203,6 +215,22 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         list.filter(e => e.card.type === "creature" || e.card.type === "evo_creature")
             .forEach(e => setTimeout(() => fireTriggerRef.current("creaturePutBz",{sourcePid:e.ownerPid,subjectCard:e.card,method:e.method}), 0));
       }
+      // EXWIN: 能力による特殊勝利
+      if (updatedCtx.winGame) {
+        const { pid: wpid, reason } = updatedCtx.winGame;
+        delete updatedCtx.winGame;
+        addLog(`[EXWIN] ${wpid.toUpperCase()} の勝利！`);
+        setWinReason(reason);
+        setWinner(wpid.toUpperCase());
+        return null;
+      }
+      // 「そうしたら」「そうした場合」: 直前のステップを実際に行わなかったら以降は起こらない
+      if (shouldStopChain(prev.steps, prev.stepIdx, updatedCtx)) {
+        addLog(prev.steps[prev.stepIdx].type === "meteorBurn"
+          ? "メテオバーンを支払わなかったため、以降の効果は発生しない"
+          : "直前の効果を行わなかったため、「そうしたら」以降の効果は発生しない");
+        return null;
+      }
       let nextIdx = prev.stepIdx + 1;
       // Skip conditional steps when their precondition is not met
       while (nextIdx < prev.steps.length && (
@@ -246,7 +274,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     };
     const subj=ev.subjectCard;
     // 1) 主体カード自身の triggers（target:"this" もここで成立。離脱後でゾーンに無くても発火できる）
-    if(subj&&ev.sourcePid){
+    //    ただし SUBJECT_MUST_BE_IN_BZ のイベントは、主体がバトルゾーンに残っている時だけ発火する。
+    const subjInBz=!subj||!ev.sourcePid||(cur[ev.sourcePid]?.battle||[]).some(c=>c.uid===subj.uid);
+    if(subj&&ev.sourcePid&&(subjInBz||!SUBJECT_MUST_BE_IN_BZ.has(event))){
       getCardTriggers(subj).forEach(tr=>{ if(matchTrigger(tr,event,ev.sourcePid,subj,ev)) runOne(subj,ev.sourcePid,tr,subj); });
     }
     // 2) 監視カード（バトルゾーン＋表向きシールド。shieldAdded は墓地の自己蘇生系も対象）
@@ -321,7 +351,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   const handleDraw=()=>{
     if(drewThisTurn)return;
-    if(activeState.deck.length===0){setWinner(otherPid==="p1"?"P1":"P2");return;}
+    if(activeState.deck.length===0){addLog(`${active}: 山札が0枚のためドローできず敗北`);setWinReason("deckout");setWinner(otherPid==="p1"?"P1":"P2");return;}
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
@@ -330,7 +360,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
   // fromZone: "hand"(通常) / "grave" / "mana"。墓地・マナからの召喚は summonFrom 系の許可が必要（PlayerBoard 側で判定済み）。
   // permKey が来た場合、その許可の使用回数を1つ消費する。
-  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUid=null,fromZone="hand",permKey=null)=>{
+  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUids=null,fromZone="hand",permKey=null)=>{
     const srcZone=fromZone==="hand"?activeState.hand:fromZone==="grave"?activeState.grave:activeState.mana;
     const card=srcZone[idx];
     if(!card) return true;
@@ -357,20 +387,28 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
       // #3 常在型: 相手の「クリーチャーを出せない」常在型を解決に先んじて適用（枠組み・現状該当カード無し）
       const isCre=card.type==="creature"||card.type==="evo_creature";
-      if(isCre&&checkStaticDeny(stateRef.current,active,"cantPutCreature")){
+      if(isCre&&(checkStaticDeny(stateRef.current,active,"cantPutCreature",fromZone)
+              ||checkStaticDeny(stateRef.current,active,"cantPutCreatureFromNonHand",fromZone))){
         addLog(`${active}: 相手の常在型能力によりクリーチャーを出せない`);setMessage("相手の常在型能力でクリーチャーを出せません");return true;
       }
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
       const isEvo=card.type==="evo_creature";
       const isCreature=card.type==="creature"||card.type==="evo_creature";
+      // 進化元は「バトルゾーンに出た」ことにならないので、battle を経由せず evolutionBase へ直接積む。
+      // 選択順がそのまま重ねる順。進化元のゾーンは bz / grave / mana のいずれか。
       let evoBase=undefined;
       let battleWithoutBase=activeState.battle;
-      if(evolutionBaseUid){
-        const baseCard=activeState.battle.find(c=>c.uid===evolutionBaseUid);
-        if(baseCard){
-          evoBase=[baseCard,...(baseCard.evolutionBase||[])].map(({evolutionBase:_,...c})=>c);
-          battleWithoutBase=activeState.battle.filter(c=>c.uid!==evolutionBaseUid);
-        }
+      const baseUids=Array.isArray(evolutionBaseUids)?evolutionBaseUids:evolutionBaseUids?[evolutionBaseUids]:[];
+      if(baseUids.length){
+        const spec=evolutionSpec(card)||{zone:"bz"};
+        const from=spec.zone==="grave"?newGrave:spec.zone==="mana"?newMana:activeState.battle;
+        const bases=baseUids.map(uid=>from.find(c=>c.uid===uid)).filter(Boolean);
+        const used=new Set(bases.map(c=>c.uid));
+        // 下に敷かれたカードはタップ状態や表裏を持たない（マナ進化はタップ済みでも進化元にできる）
+        evoBase=bases.flatMap(b=>[b,...(b.evolutionBase||[])]).map(({evolutionBase,...c})=>({...c,tapped:false,faceUp:false}));
+        if(spec.zone==="grave")      newGrave=newGrave.filter(c=>!used.has(c.uid));
+        else if(spec.zone==="mana")  newMana=newMana.filter(c=>!used.has(c.uid));
+        else                         battleWithoutBase=activeState.battle.filter(c=>!used.has(c.uid));
       }
       const newCreature={...card,tapped:false,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
       const newBattle=[...battleWithoutBase,newCreature];
@@ -472,12 +510,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     return card.keywords?.includes("escape")||computeGrantedKeywords(card,st.battle,st).includes("escape");
   };
   // 破壊対象列を順に処理。エスケープ持ちは置換モーダル（§0: 必ず例外中止可）を挟む。
-  const processVictims=(victims,idx)=>{
-    if(idx>=victims.length){return;}
+  const processVictims=(victims,idx,onDone)=>{
+    if(idx>=victims.length){onDone&&onDone();return;}
     const v=victims[idx];
     const ownerSt=stateRef.current[v.ownerPid];
     const stillThere=ownerSt.battle.some(c=>c.uid===v.card.uid);
-    if(!stillThere){processVictims(victims,idx+1);return;}
+    if(!stillThere){processVictims(victims,idx+1,onDone);return;}
     if(hasEscapeNow(v.card,v.ownerPid)&&ownerSt.shields.length>0){
       setReplacementModal({
         title:"エスケープ（置換効果）",
@@ -491,17 +529,17 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           setSt(s=>{if(s.shields.length===0)return s;const sh=s.shields[0];return {...s,shields:s.shields.slice(1),hand:[...s.hand,{...sh,tapped:false,faceUp:false}]};});
           addLog(`[ESCAPE] ${v.card.name} エスケープ：シールド1枚を手札へ（破壊を回避）`);
           setTimeout(()=>onShieldLeave(v.ownerPid),0);
-          processVictims(victims,idx+1);
+          processVictims(victims,idx+1,onDone);
         },
         onCancel:()=>{
           setReplacementModal(null);
           destroyNow(v.card,v.ownerPid,v.viaBattle);
-          processVictims(victims,idx+1);
+          processVictims(victims,idx+1,onDone);
         },
       });
     }else{
       destroyNow(v.card,v.ownerPid,v.viaBattle);
-      processVictims(victims,idx+1);
+      processVictims(victims,idx+1,onDone);
     }
   };
 
@@ -522,7 +560,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       addLog(`${attacker.name}: 攻撃後にアンタップ`);
     }
     setAttackingUid(null);
-    setTimeout(()=>processVictims(victims,0),0);
+    // 攻撃の終わり（攻撃終了ステップ）は破壊の解決が全部終わってから
+    setTimeout(()=>processVictims(victims,0,()=>fireTrigger("attackEnd",{sourcePid:active,subjectCard:attacker})),0);
   };
   const handleAttackCreature=targetUid=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
@@ -570,6 +609,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         addLog(`${attacker.name}: 攻撃後にアンタップ`);
       }
       setAttackingUid(null);
+      setTimeout(()=>fireTrigger("attackEnd",{sourcePid:active,subjectCard:attacker}),0);
     };
 
     const isBolmetheus=attacker.name.includes("ボルメテウス");
@@ -615,6 +655,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(attacker?.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません");return;}
     addLog(`[DIRECT] ${attacker?.name??""} ダイレクトアタック！${active.toUpperCase()} の勝利！`);
     setAttackingUid(null);
+    setWinReason("direct");
     setWinner(active.toUpperCase());
   };
   const handleEndTurn=()=>{
@@ -696,10 +737,20 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {hyperModeCutIn&&<HyperModeCutIn creature={hyperModeCutIn} onDismiss={()=>setHyperModeCutIn(null)}/>}
       {winner&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:700}}>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:72,fontWeight:900,color:"#ffe066",textShadow:"0 0 40px #ffe066aa",lineHeight:1,letterSpacing:4}}>✦</div>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:48,fontWeight:900,color:"#ffe066",textShadow:"0 0 30px #ffe066",marginTop:12}}>{winner} WIN!</div>
+          {(()=>{
+            // EXWIN（ダイレクトアタック以外の特殊勝利）は演出を分ける
+            const ex=winReason==="exwin";
+            const col=ex?"#c9f":"#ffe066";
+            const label=ex?`${winner} EXTRA WIN!`:`${winner} WIN!`;
+            const sub=winReason==="deckout"?"山札切れ":winReason==="direct"?"ダイレクトアタック":ex?"特殊勝利":null;
+            return(<>
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:72,fontWeight:900,color:col,textShadow:`0 0 40px ${col}aa`,lineHeight:1,letterSpacing:4}}>{ex?"✧":"✦"}</div>
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:ex?40:48,fontWeight:900,color:col,textShadow:`0 0 30px ${col}`,marginTop:12}}>{label}</div>
+              {sub&&<div style={{fontSize:13,color:"#888",marginTop:8,letterSpacing:2}}>{sub}</div>}
+            </>);
+          })()}
           <div style={{display:"flex",gap:12,marginTop:32}}>
-            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
+            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setWinReason(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
             <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
           </div>
         </div>

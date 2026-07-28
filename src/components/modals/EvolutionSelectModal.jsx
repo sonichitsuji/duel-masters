@@ -1,34 +1,83 @@
+import { useState } from "react";
 import { CIV } from "../../constants";
-import { getCardCivs } from "../../gameLogic";
+import { getCardCivs, evolutionLabel, evolutionNeeded } from "../../gameLogic";
 import { CardFace } from "../CardFace";
+
+const ZONE_LABEL = { bz:"バトルゾーン", grave:"墓地", mana:"マナゾーン" };
+
+// 進化元の条件を人が読める形に
+function describeFilter(filter) {
+  if (!filter) return "クリーチャー";
+  const parts = [];
+  if (filter.civ) parts.push(`${CIV[filter.civ]?.label ?? filter.civ}文明`);
+  if (filter.raceContains) parts.push(filter.raceContains);
+  if (filter.nameContains) parts.push(`名前に「${filter.nameContains}」`);
+  if (filter.maxCost != null) parts.push(`コスト${filter.maxCost}以下`);
+  parts.push("クリーチャー");
+  return parts.join("の");
+}
 
 // ===========================
 // EVOLUTION SELECT MODAL
+// 進化元を選ぶ。選んだ順がそのまま重ねる順になる（バトルゾーンに出た後は変更できない）。
 // ===========================
-export function EvolutionSelectModal({ eligible, card, onSelect, onCancel }) {
+export function EvolutionSelectModal({ candidates, card, spec, onConfirm, onCancel }) {
+  const [picked, setPicked] = useState([]); // uid[] 選択順
   const civs = getCardCivs(card);
   const c = CIV[civs[0]] || CIV.fire;
+  const need = evolutionNeeded(spec);
+  const exact = spec?.min == null;                       // count 指定なら「ちょうど need 枚」
+  const canConfirm = exact ? picked.length === need : picked.length >= need;
+
+  const toggle = uid => setPicked(p => {
+    if (p.includes(uid)) return p.filter(u => u !== uid);       // 解除すると以降の番号は詰まる
+    if (exact && p.length >= need) return need === 1 ? [uid] : p;
+    return [...p, uid];
+  });
+
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:395, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:420, width:"100%", boxShadow:`0 0 30px ${c.glow}55` }}>
-        <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900, marginBottom:4 }}>🔺 進化元を選択</div>
-        <div style={{ fontSize:11, color:"#ccc", marginBottom:4 }}>{card.name} の進化元となるクリーチャーを選んでください</div>
-        <div style={{ fontSize:10, color:"#555", marginBottom:10 }}>
-          条件: {card.evolution?.civFilter ? `${CIV[card.evolution.civFilter]?.label}文明` : ""}
-          {card.evolution?.raceContains ? ` ${card.evolution.raceContains}` : ""}
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:520, width:"100%", boxShadow:`0 0 30px ${c.glow}55`, maxHeight:"88vh", display:"flex", flexDirection:"column", gap:8 }}>
+        <div>
+          <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900 }}>🔺 {evolutionLabel(spec)}</div>
+          <div style={{ fontSize:11, color:"#ccc", marginTop:3 }}>
+            {card.name} の進化元を{ZONE_LABEL[spec?.zone] || "バトルゾーン"}から
+            {exact ? `${need}体` : `${need}体以上`}選んでください
+          </div>
+          <div style={{ fontSize:10, color:"#666", marginTop:2 }}>
+            条件: {describeFilter(spec?.filter)}
+            {need > 1 && <span style={{ color:"#ffcc66" }}>／選んだ順に下から重なります</span>}
+            {spec?.zone === "mana" && <span style={{ color:"#4a8" }}>／タップ済みでも選べます</span>}
+          </div>
         </div>
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
-          {eligible.map(bc => (
-            <div key={bc.uid} onClick={() => onSelect(bc.uid)} style={{ cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
-              <CardFace card={bc} small />
-              <div style={{ fontSize:8, color:"#aaa", textAlign:"center", maxWidth:52, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{bc.name}</div>
-            </div>
-          ))}
-          {eligible.length === 0 && <div style={{ color:"#f84", fontSize:12 }}>進化元なし</div>}
+
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", overflowY:"auto", alignContent:"flex-start", minHeight:80 }}>
+          {candidates.map(bc => {
+            const idx = picked.indexOf(bc.uid);
+            return (
+              <div key={bc.uid} onClick={() => toggle(bc.uid)} style={{ cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:2, position:"relative" }}>
+                <CardFace card={bc} small selected={idx >= 0} />
+                {idx >= 0 && (
+                  <span style={{ position:"absolute", top:-4, left:-4, width:17, height:17, borderRadius:"50%", background:"#ffe066", color:"#000", fontSize:10, fontWeight:900, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 8px #ffe066" }}>
+                    {idx + 1}
+                  </span>
+                )}
+                <div style={{ fontSize:8, color:"#aaa", textAlign:"center", maxWidth:52, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{bc.name}</div>
+              </div>
+            );
+          })}
+          {candidates.length === 0 && <div style={{ color:"#f84", fontSize:12, alignSelf:"center" }}>進化元なし</div>}
         </div>
-        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
-          キャンセル
-        </button>
+
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={() => canConfirm && onConfirm(picked)} disabled={!canConfirm}
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
+            ✓ 決定 ({picked.length}/{exact ? need : `${need}+`})
+          </button>
+          <button onClick={onCancel} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #666", color:"#ddd", cursor:"pointer", fontSize:12 }}>
+            キャンセル
+          </button>
+        </div>
       </div>
     </div>
   );

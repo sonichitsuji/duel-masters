@@ -45,6 +45,7 @@
 | `filter` | 対象条件（下記） |
 | `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `revealed` `lastMoved`） |
 | `all` | 条件一致すべてに適用（選択不要） |
+| `ifPrevious` | **「そうしたら」「そうした場合」**。直前のステップを実際に行わなかった場合、このステップ以降を実行しない → **§3.5** |
 
 **filter**: `civ` `civNot` `raceContains` `nameContains` `keyword` `type`(`creature`/`nonCreature`/`spell`/`tamaseed`…)
 `element`(クリーチャー/タマシード) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `notNameSelf`
@@ -81,6 +82,31 @@
 
 ---
 
+## 3.5. 「そうしたら」「そうした場合」（`ifPrevious`）
+
+「〜してもよい。**そうしたら**、…」のように、**前の効果を実際に行った場合だけ**続きが起きる書き方です。
+続きのステップに `"ifPrevious": true` を付けます。行わなかった場合は**そのステップ以降がすべて実行されません**。
+
+```jsonc
+// 自分の手札を1枚捨ててもよい。そうしたら、カードを2枚引く。
+[ {"label":"手札を1枚捨ててもよい","type":"handToGrave","target":"self","amount":1,"optional":true},
+  {"label":"そうしたら、カードを2枚引く","type":"drawCards","amount":2,"ifPrevious":true} ]
+```
+
+「行った」の判定は次のとおりです。
+
+| ステップの種類 | 「行った」とみなす条件 |
+|---|---|
+| 対象を選ぶステップ | 1枚以上選ばれた（スキップ・0枚選択は「行っていない」） |
+| `drawCards` | 実際に1枚以上引けた（山札切れは「行っていない」） |
+| `meteorBurn` | コストを支払えた → **§7.9** |
+| その他の自動ステップ | 常に「行った」 |
+
+> **メテオバーンは `ifPrevious` を書く必要がありません。** コストなので、支払わなければ
+> 常に以降のステップが打ち切られます。
+
+---
+
 ## 4. 命名規則
 
 - **ゾーン移動は `<from>To<To>`**（「出す」「置く」「戻す」「捨てる」）。`play` は使わない。
@@ -114,14 +140,28 @@
 - `bzToHand` / `bzToMana` / `bzToShield`（`target,filter,amount,all`）
 - `tap` / `untap` / `tapToggle`（`target,zone,filter,all,noUntapNextTurn`）
 - `untapAllMana` — 自分のマナを全アンタップ
-- `powerBuff {target,amount,expires,keywords}` — パワー増減（負値で弱体、0以下で破壊）
+- `powerBuff {target,count,amount,perUnit,expires,keywords}` — パワー増減（負値で弱体、0以下で破壊）
+  - `amount` は**パワー増減値**（他の効果と違い選択枚数ではない）。選ぶ体数は `count`（既定1体）
+  - `perUnit` を付けると「1つにつきN」。`amount` に変数を渡して掛ける
+    ```jsonc
+    // 自分の墓地のクリーチャー1体につき −1000（相手1体に、このターン）
+    {"type":"count","zone":"grave","target":"self","filter":{"creatureOnly":true},"as":"graveCre"},
+    {"type":"powerBuff","target":"opponent","count":1,"amount":"graveCre","perUnit":-1000,"expires":"endOfTurn"}
+    ```
 - `grant {keywords,untapAfterAttack,untap,expires}` — 能力付与
 - `battle {target}` — このクリーチャーと相手1体をバトル
 
 **墓地・シールド**
 - `graveToBz {filter,owner,self,tempKeywords,destroyAtEndOfTurn,summoningSickness}` — 墓地から出す
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
+- `graveToHand {target,filter,amount}` — 墓地から手札に戻す
 - `shieldToHand {target}` / `shieldToGrave {target}` / `breakShield {target}`
+
+**進化元を動かすコスト**
+- `meteorBurn {count,to,optional,tapped}` — メテオバーン → **§7.9**
+
+**特殊勝利**
+- `winGame {target,reason}` — EXWIN。`target` のプレイヤーがゲームに勝つ（既定 `self`）
 
 **召喚元ゾーンの拡張**
 - `grantSummonFrom {zone,filter,maxPerTurn,timing,target}` — そのターン、指定ゾーン（`grave`/`mana`）から
@@ -160,6 +200,7 @@
 | `creaturePutBz` | クリーチャーがバトルゾーンに出た時（`method` 指定可） |
 | `castSpell` | 呪文を唱えた時 |
 | `attack` | クリーチャーが攻撃する時（`firstEachTurn` 指定可） |
+| `attackEnd` | **攻撃の終わり**（攻撃終了ステップ）。攻撃したクリーチャーが戦闘で破壊されていた場合、そのクリーチャー自身の能力は誘発しない |
 | `leave` | カードが離れた時 |
 | `destroyed` | 破壊された時 |
 | `battleDestroy` | バトルで破壊された時 |
@@ -181,6 +222,7 @@
 
 ```jsonc
 {"on":"leave"}                      // このクリーチャーが離れた時
+{"on":"attackEnd"}                 // このクリーチャーの攻撃の終わりに（攻撃終了ステップ）
 {"on":"leave","target":"self"}      // 自分のクリーチャーが離れた時
 {"on":"destroyed","target":"opponent"} // 相手のクリーチャーが破壊された時
 ```
@@ -332,6 +374,62 @@
 
 ---
 
+## 7.8. 進化元のゾーンと枚数（`evolution`）
+
+`type:"evo_creature"` のカードに書きます。**進化元がどのゾーンの何体か**を指定します。
+
+```jsonc
+"evolution": { "zone":"grave", "count":1, "filter":{"civ":"darkness"} }  // 墓地進化−闇
+"evolution": { "zone":"mana",  "count":1, "filter":{"civ":"fire"} }      // マナ進化−火
+"evolution": { "zone":"grave", "count":3 }                               // 墓地進化GV
+"evolution": { "zone":"grave", "min":1 }                                 // 超無限墓地進化
+"evolution": { "filter":{"civ":"fire","raceContains":"ドラゴン"} }        // 通常の進化（BZ）
+```
+
+| フィールド | 説明 |
+|---|---|
+| `zone` | `"bz"`(既定) / `"grave"` / `"mana"` |
+| `count` | 進化元の枚数（既定1）。ちょうどこの枚数を選ぶ |
+| `min` | 「N体以上」。上限なし（超無限系）。`count` とは併用不可 |
+| `filter` | 進化元の条件（§2 と同じ filter 語彙）。クリーチャー限定は暗黙に適用 |
+
+### ルール上の注意
+
+- **進化元は「バトルゾーンに出た」ことにならない**。バトルゾーンを経由せず直接下に敷かれるので、
+  進化元の「出た時」は誘発せず、「クリーチャーが出た時」も**出た進化クリーチャー1体分**しか数えません。
+  「手札以外からバトルゾーンに出せない」系の制限も、進化クリーチャー自身が手札から出るなら**かかりません**。
+- **進化クリーチャーなので召喚酔いしない**（出たターンから攻撃できる）。種別は「進化クリーチャー」のまま。
+- **マナ進化の進化元はタップされていても選べる**。ただし進化元にしたマナは**コスト支払いには使えません**。
+- 複数体の進化元は**選んだ順に下から重なります**（バトルゾーンに出た後は順序を変えられない）。
+- コストは通常どおり支払います。
+
+## 7.9. メテオバーン（`meteorBurn`）
+
+そのクリーチャーの**下にあるカード**を指定数だけ動かすことを**コスト**として発動する能力。
+`effects` の**先頭**に置きます。
+
+```jsonc
+{ "on":"attack", "effects":[
+  { "label":"このクリーチャーの下にあるカードを1枚墓地に置いてもよい",
+    "type":"meteorBurn", "count":1, "to":"grave", "optional":true },
+  { "label":"自分の山札の上から3枚を墓地に置く", "type":"topToGrave", "amount":3 },
+  { "label":"相手のクリーチャーを1体選んで破壊する", "type":"destroy", "target":"opponent", "amount":1 } ]}
+```
+
+| フィールド | 説明 |
+|---|---|
+| `count` | 動かす枚数（既定1） |
+| `to` | 移動先。`grave`(既定) / `mana` / `hand` / `shield` / `deck`(山札の下) |
+| `optional` | 「〜してもよい」 |
+| `tapped` | `to:"mana"` の時、タップして置く |
+
+- 動かすカードは**選べます**。順番は変えられず、抜けた場所は**詰められます**。
+- **支払えなければ（辞退・枚数不足・クリーチャーがバトルゾーンにいない）、以降のステップは実行されません。**
+  メテオバーンはコストなので、後続に `ifPrevious`(§3.5) を書かなくても常にこうなります。
+  革命チェンジ等でそのクリーチャーが居なくなっていれば**不発**です。
+
+---
+
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
@@ -343,21 +441,29 @@
   W/Tブレイカーと併用した場合は**大きい方**が採用される
 - `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"…"}`
   - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
-- `costReduce`: `{amount, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
+- `costReduce`: `{amount | amountPer, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
   - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
     既定は `["bz","shield"]`（バトルゾーン＋表向きシールド＝継続能力が働く場所）
   - `filter`: 軽減対象の条件 — `civ` `raceContains` `nameContains` `keyword` `multiColor` `maxCost`
-    `type`(`creature`/`nonCreature`/`element`/`spell`…)
+    `type`(`creature`/`nonCreature`/`element`/`spell`…)、
+    **`self:true`** =「このクリーチャーの召喚コストを〜」（軽減元自身にだけ効く）
+  - `amountPer`: `{zone,filter}` — 「〜1枚につき1少なくする」の可変軽減（`amount` の代わりに書く）
   - `min`: 下限コスト。複数の軽減は重ねがけされる
   ```jsonc
   // バトルゾーンにいる間、自分のドラゴンのコストを2軽減（最低1）
   "costReduce": { "amount":2, "filter":{"raceContains":"ドラゴン"}, "min":1 }
   // 墓地にある間だけ、自分の光のカードのコストを1軽減
   "costReduce": { "amount":1, "zones":["grave"], "filter":{"civ":"light"}, "min":1 }
+  // このクリーチャー自身の召喚コストを、自分の墓地のクリーチャー1体につき1軽減
+  "costReduce": { "amountPer":{"zone":"grave","filter":{"creatureOnly":true}},
+                  "filter":{"self":true}, "zones":["hand"], "min":1 }
   ```
+  > **`min` の読み方**: カードに「コストは**0以下**にはならない」とあれば **0にならない** ので `min:1`、
+  > 「**1以下**にならない」なら `min:2` です。実際の下限はさらに文明数で抑えられます
+  > （2色カードは最低2）。
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
-- `evolution`: `{civFilter,raceContains}`
+- `evolution`: 進化元のゾーンと枚数 → **§7.8**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
 - `zRush` `cantAttackPlayer` `faceUpLeaveTo:"grave"` `reactivePassive` `endOfTurnEffect` `staticDeny:{type:"cantPutCreature"}`
 - `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,autoEffect}`
