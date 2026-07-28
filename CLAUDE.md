@@ -1,21 +1,32 @@
 # コーディング規約
 
-## 記法
+## 基本方針
 
-- **`:` の後ろに空白を入れない。** オブジェクトリテラル・JSON・JSX の props すべてに適用する。
+**その言語で一般的とされる、読みやすい書き方に合わせる。** 独自の圧縮スタイルは新しく作らない。
 
-  ```js
-  // ✅
-  const spec = {zone:"grave", count:1, filter:{civ:"darkness"}};
-  <div style={{position:"fixed", inset:0, padding:16}}/>
-  getEffectiveCost(card, state, {evolutionBaseCount:3})
-  ```
-  ```js
-  // ❌
-  const spec = { zone: "grave", count: 1, filter: { civ: "darkness" } };
-  ```
+### JavaScript / JSX / JSON
 
-  既存コードの一括修正はしない（差分が膨大になるため）。**新規に書く箇所・触った行だけ**この形にする。
+コロンの後ろとブレースの内側に空白を入れる（Prettier / ESLint `key-spacing` の既定と同じ）。
+
+```js
+// ✅
+const spec = { zone: "grave", count: 1, filter: { civ: "darkness" } };
+getEffectiveCost(card, state, { evolutionBaseCount: 3 });
+```
+```js
+// ❌
+const spec = {zone:"grave", count:1, filter:{civ:"darkness"}};
+```
+
+JSX の style プロパティも同様。ただし1行が極端に長くなる場合は、詰めるのではなく改行で整える。
+
+## 既存コードの扱い
+
+このリポジトリには詰めた書き方（`{position:"fixed", inset:0}`）が多く残っており、**現状は混在している**。
+
+- **一括整形はしない。** 混在は軽い戒めとしてそのまま残す
+- **新規に書く箇所と、実際に触った行だけ**上記のスタイルにする
+- 無関係な行のスタイル修正を差分に混ぜない
 
 ## このリポジトリについて
 
