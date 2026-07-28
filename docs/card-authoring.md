@@ -202,6 +202,37 @@
 {"on":"castSpell","target":"opponent","effects":[ … ]}
 ```
 
+## 7.5. 超魂X（SSX / Super Soul Cross）
+
+`ssx` に書いた能力は **そのカードが持つ「通常の能力」**（`keywords` / `triggers` に書いたものと同じ扱い）。
+特別なゾーン処理はありません。**SSX 固有のルールは1つだけ**——
+
+> **このカードがクリーチャーの「下」に置かれている間、その上のクリーチャーもこの能力を持つ。**
+
+```jsonc
+// 例: ガヤルドスカイ-A3 — 超魂X の「ブロッカー」
+{ "name":"ガヤルドスカイ-A3", "type":"creature", "civ":"light", "cost":3, "power":4500,
+  "keywords":[],                       // 通常表記の能力は無し
+  "ssx": { "keywords":["blocker"] } }  // 超魂X の能力（＝このカードの通常能力）
+```
+
+- このカード自身は、`keywords:["blocker"]` と書いたのと同じようにブロッカーとして扱われます。
+- **加えて**、このカードを下に持つクリーチャー（進化元など）もブロッカーを得ます。
+
+```jsonc
+// 誘発能力も持てる（通常の triggers と同じ書式。下のクリーチャーにも伝播する）
+"ssx": { "triggers":[ { "on":"attack", "optional":true, "effects":[ … ] } ] }
+```
+
+| フィールド | 説明 |
+|---|---|
+| `ssx.keywords` | 超魂Xで持つキーワード能力（`§6` のキーワード名） |
+| `ssx.triggers` | 超魂Xで持つ誘発能力（`§7` と同じ書式） |
+
+カード表示では紫の **SSX** バッジが付き、キーワードのバッジは通常能力と同じ色で表示されます。
+
+---
+
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `notSelf,raceContains,multiColor,nameContains,elementOnly`）

@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword } from "../gameLogic";
 import { KEYWORD_LABELS } from "../constants";
 
 // ===========================
@@ -29,7 +29,7 @@ export function matchFilter(card, filter, ctx) {
   if (f.raceContains && !card.race?.includes(f.raceContains)) return false;
   if (f.nameContains && !card.name?.includes(f.nameContains)) return false;
   if (f.notNameSelf && ctx?.srcName && card.name === ctx.srcName) return false;
-  if (f.keyword && !card.keywords?.includes(f.keyword)) return false;
+  if (f.keyword && !hasKeyword(card, f.keyword)) return false;
   if (f.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (f.element && !isElement(card)) return false;
   if (f.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;

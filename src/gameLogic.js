@@ -102,7 +102,7 @@ function costReduceMatches(card, filter) {
   if (filter.raceContains && !card.race?.includes(filter.raceContains)) return false;
   if (filter.nameContains && !card.name?.includes(filter.nameContains)) return false;
   if (filter.civ && !getCardCivs(card).includes(filter.civ)) return false;
-  if (filter.keyword && !card.keywords?.includes(filter.keyword)) return false;
+  if (filter.keyword && !hasKeyword(card, filter.keyword)) return false;
   if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (filter.type) {
     if (filter.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
@@ -146,6 +146,35 @@ export function extractFromBattle(battle, uid) {
 
 // 「エレメント」= クリーチャー(進化含む)またはタマシード
 export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed"; }
+
+// ===========================
+// 超魂X (SSX / Super Soul Cross)
+// ssx に書いた能力は、そのカードが持つ「通常の能力」（keywords/triggers と同じ扱い）。
+// SSX 固有のルールは1つだけ:
+//   このカードがクリーチャーの「下」に置かれている間、その上のクリーチャーもこの能力を持つ。
+// データ形: "ssx": { "keywords":[...], "triggers":[...] }
+// ===========================
+export function ssxKeywords(card){
+  if(!card) return [];
+  const out=[...(card.ssx?.keywords || [])];
+  for(const under of card.evolutionBase || []) out.push(...(under.ssx?.keywords || []));
+  return out;
+}
+export function ssxTriggers(card){
+  if(!card) return [];
+  const out=[...(card.ssx?.triggers || [])];
+  for(const under of card.evolutionBase || []) out.push(...(under.ssx?.triggers || []));
+  return out;
+}
+// カードが持つ誘発能力（通常 + 超魂X + 下にあるカードの超魂X）
+export function getCardTriggers(card){
+  return [...(card?.triggers || []), ...ssxTriggers(card)];
+}
+// カードが持つキーワード判定（通常 + 超魂X(自身/下のカード) + 一時付与）。
+// 他カードからの継続付与は computeGrantedKeywords を併用すること。
+export function hasKeyword(card, kw){
+  return !!card?.keywords?.includes(kw) || ssxKeywords(card).includes(kw) || !!card?.tempBuff?.keywords?.includes(kw);
+}
 
 // シビルカウント: 自分の指定文明の「クリーチャーまたはタマシード」の数
 // （バトルゾーン＋シールドゾーンの表向きカードを数える。種別非依存で faceUp を見る）
@@ -197,7 +226,7 @@ export function getEffectivePower(card, ownerState, allOwnBattle) {
 // ownerState を渡すと condition(civicCount等) と表向きシールドの付与源も評価できる。
 // 後方互換: battleZone のみでも動作（その場合 condition は battle だけで評価、表向きシールド源は無し）。
 export function computeGrantedKeywords(card, battleZone, ownerState) {
-  const granted = [...(card.tempBuff?.keywords || [])];
+  const granted = [...(card.tempBuff?.keywords || []), ...ssxKeywords(card)];
   const zone = battleZone || ownerState?.battle;
   if (!zone) return granted;
   const evalState = ownerState || { battle: zone, shields: [] };

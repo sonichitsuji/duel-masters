@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, computeGrantedKeywords } from "../gameLogic";
+import { getCardCivs, computeGrantedKeywords, ssxKeywords } from "../gameLogic";
 import { EffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -13,9 +13,10 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
   const isCreature=card.type==="creature"||card.type==="evo_creature";
-  const effectiveSA=card.keywords?.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[],ownerState).includes("speedAttacker");
-  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!card.keywords?.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
-  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":card.keywords?.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
+  const ownKw=[...(card.keywords||[]), ...ssxKeywords(card)];
+  const effectiveSA=ownKw.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[],ownerState).includes("speedAttacker");
+  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
+  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
   const hyper=card.hyperMode;
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
@@ -61,10 +62,10 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
               <span style={{fontSize:12,color:c.textColor,fontWeight:600}}>POWER</span>
             </div>
             <div style={{display:"flex",gap:4}}>
-              {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#ff440022",border:"1px solid #ff4444",color:"#ff8877"}}>SA</span>}
-              {!(card.keywords?.includes("tBreaker")||hyperTBreaker)&&(card.keywords?.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>W.BRK</span>}
-              {(card.keywords?.includes("tBreaker")||hyperTBreaker)&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>T.BRK</span>}
-              {card.keywords?.includes("blocker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#4444ff22",border:"1px solid #4444ff",color:"#8888ff"}}>BLK</span>}
+              {ownKw.includes("speedAttacker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#ff440022",border:"1px solid #ff4444",color:"#ff8877"}}>SA</span>}
+              {!(ownKw.includes("tBreaker")||hyperTBreaker)&&(ownKw.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>W.BRK</span>}
+              {(ownKw.includes("tBreaker")||hyperTBreaker)&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:`${c.color}22`,border:`1px solid ${c.color}`,color:c.textColor}}>T.BRK</span>}
+              {ownKw.includes("blocker")&&<span style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:"#4444ff22",border:"1px solid #4444ff",color:"#8888ff"}}>BLK</span>}
             </div>
           </div>
         )}
@@ -72,7 +73,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
         {/* Status indicators */}
         <div style={{padding:"0 12px 8px",display:"flex",gap:6,flexWrap:"wrap"}}>
           {card.tapped&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>TAPPED</div>}
-          {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>召喚酔い</div>}
+          {card.summonedThisTurn&&!ownKw.includes("speedAttacker")&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>召喚酔い</div>}
         </div>
 
         {/* Evolution base viewer */}

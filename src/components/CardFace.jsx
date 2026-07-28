@@ -1,5 +1,5 @@
 import { CIV } from "../constants";
-import { getCardCivs, makeCardBg } from "../gameLogic";
+import { getCardCivs, makeCardBg, ssxKeywords } from "../gameLogic";
 
 // ===========================
 // CARD COMPONENTS
@@ -8,6 +8,8 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const w=small?52:74;const h=small?72:106;
+  // 超魂X(SSX)はそのカードの通常能力。下のカードの超魂Xもここに合流する
+  const ownKw=[...(card.keywords||[]), ...ssxKeywords(card)];
   const hyper=card.hyperMode;
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
@@ -25,22 +27,23 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
       <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${effPower}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="castle"?"城":"SPELL"}</div>
       {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
-        {card.keywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}
-        {!card.keywords?.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SA</span>}
-        {card.keywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#8888ff",letterSpacing:0}}>BK</span>}
-        {!card.keywords?.includes("blocker")&&grantedKeywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>BK</span>}
-        {card.keywords?.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#e066ff",letterSpacing:0}}>SL</span>}
-        {!card.keywords?.includes("slayer")&&grantedKeywords?.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SL</span>}
-        {!card.keywords?.includes("escape")&&grantedKeywords?.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>ES</span>}
-        {card.keywords?.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#66ddff",letterSpacing:0}}>ES</span>}
-        {!(card.keywords?.includes("tBreaker")||hyperTBreaker)&&(card.keywords?.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:7}}>✦✦</span>}
-        {(card.keywords?.includes("tBreaker")||hyperTBreaker)&&<span style={{fontSize:7}}>✦✦✦</span>}
-        {card.keywords?.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
-        {card.keywords?.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
-        {card.keywords?.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
+        {ownKw.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}
+        {!ownKw.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SA</span>}
+        {ownKw.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#8888ff",letterSpacing:0}}>BK</span>}
+        {!ownKw.includes("blocker")&&grantedKeywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>BK</span>}
+        {ownKw.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#e066ff",letterSpacing:0}}>SL</span>}
+        {!ownKw.includes("slayer")&&grantedKeywords?.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SL</span>}
+        {!ownKw.includes("escape")&&grantedKeywords?.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>ES</span>}
+        {ownKw.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#66ddff",letterSpacing:0}}>ES</span>}
+        {!(ownKw.includes("tBreaker")||hyperTBreaker)&&(ownKw.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:7}}>✦✦</span>}
+        {(ownKw.includes("tBreaker")||hyperTBreaker)&&<span style={{fontSize:7}}>✦✦✦</span>}
+        {ownKw.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
+        {ownKw.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
+        {ownKw.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
+        {card.ssx&&<span style={{fontSize:6,fontWeight:900,color:"#c9f",textShadow:"0 0 4px #a0f"}}>SSX</span>}
       </div>
       {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>HYPER</div>}
-      {card.summonedThisTurn&&!card.keywords?.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
+      {card.summonedThisTurn&&!ownKw.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
       {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:7,background:"rgba(0,0,0,0.75)",color:"#ffe066",borderRadius:3,padding:"1px 3px",fontWeight:700,letterSpacing:0}}>EVO×{card.evolutionBase.length + 1}</div>}
     </div>
   );

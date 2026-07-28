@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, hasKeyword } from "../gameLogic";
 import { executeEffect, matchFilter } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -225,7 +225,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const subj=ev.subjectCard;
     // 1) 主体カード自身の triggers（target:"this" もここで成立。離脱後でゾーンに無くても発火できる）
     if(subj&&ev.sourcePid){
-      (subj.triggers||[]).forEach(tr=>{ if(matchTrigger(tr,event,ev.sourcePid,subj,ev)) runOne(subj,ev.sourcePid,tr,subj); });
+      getCardTriggers(subj).forEach(tr=>{ if(matchTrigger(tr,event,ev.sourcePid,subj,ev)) runOne(subj,ev.sourcePid,tr,subj); });
     }
     // 2) 監視カード（バトルゾーン＋表向きシールド。shieldAdded は墓地の自己蘇生系も対象）
     ["p1","p2"].forEach(watcherPid=>{
@@ -233,7 +233,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const watchers=[...st.battle,...st.shields.filter(s=>s.faceUp),...(event==="shieldAdded"?st.grave:[])];
       watchers.forEach(card=>{
         if(subj&&card.uid===subj.uid) return; // 1) で処理済み
-        (card.triggers||[]).forEach(tr=>{ if(matchTrigger(tr,event,watcherPid,card,ev)) runOne(card,watcherPid,tr,subj); });
+        getCardTriggers(card).forEach(tr=>{ if(matchTrigger(tr,event,watcherPid,card,ev)) runOne(card,watcherPid,tr,subj); });
       });
     });
   };
@@ -243,9 +243,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const onShieldLeave=(ownerPid)=>{
     const st=stateRef.current[ownerPid];
     const setSelf=ownerPid==="p1"?setP1:setP2;
-    const zs=(st.battle||[]).filter(c=>c.keywords?.includes("zRush")&&!c.hyperMode);
+    const zs=(st.battle||[]).filter(c=>hasKeyword(c,"zRush")&&!c.hyperMode);
     if(zs.length>0){
-      setSelf(s=>({...s,battle:s.battle.map(c=>c.keywords?.includes("zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
+      setSelf(s=>({...s,battle:s.battle.map(c=>hasKeyword(c,"zRush")&&!c.hyperMode?{...c,hyperMode:true}:c)}));
       zs.forEach(c=>addLog(`[ZR] Zラッシュ: ${c.name} ハイパーモード解放！（自分のシールドが離れた）`));
       setHyperModeCutIn(zs[0]);
     }
@@ -390,7 +390,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const blockers=otherState.battle.filter(c=>
       !c.tapped &&
       (c.type==="creature"||c.type==="evo_creature") &&
-      (c.keywords?.includes("blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
+      (hasKeyword(c,"blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
     );
     if(blockers.length>0){
       setBlockerModal({attackerUid:uid,blockerUids:blockers.map(b=>b.uid)});
@@ -492,8 +492,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const gset=graveSet||new Set();
       const toGraveCards=broken.filter(c=>gset.has(c.uid));
       const toHandAll=broken.filter(c=>!gset.has(c.uid));
-      const sTriggers=toHandAll.filter(c=>c.keywords?.includes("sTrigger")&&!c.keywords?.includes("gStrike"));
-      const gStrikeCards=toHandAll.filter(c=>c.keywords?.includes("gStrike"));
+      const sTriggers=toHandAll.filter(c=>hasKeyword(c,"sTrigger")&&!hasKeyword(c,"gStrike"));
+      const gStrikeCards=toHandAll.filter(c=>hasKeyword(c,"gStrike"));
       const toHand=toHandAll.map(c=>({...c,tapped:false,faceUp:false}));
       setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand],grave:[...s.grave,...toGraveCards]}));
       if(toGraveCards.length>0) addLog(`[BURN] ${toGraveCards.length}枚を墓地へ（置換効果）`);
@@ -565,7 +565,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     [{pid:"p1",st:p1},{pid:"p2",st:p2}].forEach(({pid,st})=>{
       const setSelf=pid==="p1"?setP1:setP2;const oPid=pid==="p1"?"p2":"p1";const setOther=pid==="p1"?setP2:setP1;
       [...st.battle,...st.shields.filter(s=>s.faceUp)].forEach(card=>{
-        (card.triggers||[]).forEach(tr=>{
+        getCardTriggers(card).forEach(tr=>{
           if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:pid})) return;
           if(tr.hyperOnly&&!card.hyperMode) return;
           if(tr.condition&&!checkGrantCondition(tr.condition,st)) return;

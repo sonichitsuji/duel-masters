@@ -93,6 +93,17 @@ for (const c of cards) {
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
   for (const cv of civs) if (!["light","water","darkness","fire","nature"].includes(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
 
+  // 超魂X(SSX): keywords は既知のもの、triggers は通常トリガーと同じ検証
+  if (c.ssx) {
+    if (typeof c.ssx !== "object" || Array.isArray(c.ssx)) errors.push(`${tag}.ssx: オブジェクトである必要があります`);
+    for (const k of c.ssx.keywords || []) if (!KEYWORDS.has(k)) errors.push(`${tag}.ssx: 未知のkeyword "${k}"`);
+    for (const tr of c.ssx.triggers || []) {
+      if (LEGACY_ONS.has(tr.on)) errors.push(`${tag}.ssx: 旧トリガー名 "${tr.on}"`);
+      else if (!TRIGGER_ONS.has(tr.on)) errors.push(`${tag}.ssx: 未知のtrigger on "${tr.on}"`);
+      checkEffect(tr, `${tag}.ssx.triggers(${tr.on})`);
+    }
+    if (!c.ssx.keywords && !c.ssx.triggers) warnings.push(`${tag}.ssx: keywords も triggers もありません`);
+  }
   checkEffect(c.autoEffect, `${tag}.autoEffect`);
   checkEffect(c.spellSide?.autoEffect, `${tag}.spellSide`);
   checkEffect(c.finalRevolution, `${tag}.finalRevolution`);
