@@ -21,7 +21,8 @@ import { StepIndicator } from "../components/BoardWidgets";
 // ev: { sourcePid, subjectCard?, method?, firstThisTurn? }
 const DEFAULT_TRIGGER_SCOPE = {
   creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this", attackEnd:"this",
-  castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self", endOfTurn:"self",
+  castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self",
+  startOfTurn:"self", endOfTurn:"self",
 };
 // 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
 // （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
@@ -742,6 +743,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
     setHandoff({from:active.toUpperCase(),to:next.toUpperCase()});
     setActive(next);setTurn(newTurn);setDrewThisTurn(false);setChargedThisTurn(false);
+    // ターンのはじめに（アンタップとフラグのリセットが済んでから発火。sourcePid はターンを始めるプレイヤー）
+    // 解決はハンドオフ画面を閉じたあと（resolverBusy に handoff が含まれるため）
+    setTimeout(()=>fireTrigger("startOfTurn",{sourcePid:next}),0);
   };
 
   return(
