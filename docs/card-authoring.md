@@ -35,6 +35,12 @@
   "templates":[ { "label":"…", "effects":[ … ] } ] }
 ```
 
+> **`autoEffect` と `triggers` の違い**
+> `autoEffect` は**そのカード自身をプレイした時**の効果（`trigger` は `play` / `cast` の2つだけ）。
+> `triggers` は**汎用のイベント誘発**で、`on` で契機を選び `target` で誰のイベントかを指定します（§7）。
+> クリーチャーの「出た時」は `autoEffect{trigger:"play"}` でも
+> `triggers:[{on:"creaturePutBz"}]` でも書けます。**どちらも、効果でバトルゾーンに出された場合にも誘発します。**
+
 ### 共通パラメータ（effects の各要素）
 | パラメータ | 説明 |
 |---|---|

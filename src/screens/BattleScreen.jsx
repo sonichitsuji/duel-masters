@@ -212,8 +212,19 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if (updatedCtx.creatureEnteredBz && updatedCtx.creatureEnteredBz.length) {
         const list = updatedCtx.creatureEnteredBz;
         delete updatedCtx.creatureEnteredBz;
-        list.filter(e => e.card.type === "creature" || e.card.type === "evo_creature")
-            .forEach(e => setTimeout(() => fireTriggerRef.current("creaturePutBz",{sourcePid:e.ownerPid,subjectCard:e.card,method:e.method}), 0));
+        list.forEach(e => {
+          // 「出た時」は出し方を問わず誘発する。autoEffect{trigger:"play"} で書かれた cip も発火させる
+          // （手札からのプレイは handlePlayCard が別途呼ぶので、ここと二重にはならない）
+          if (e.card.autoEffect?.trigger === "play") {
+            setTimeout(() => enqueueEffectRef.current({
+              kind: "trigger", effect: e.card.autoEffect, ownerPid: e.ownerPid,
+              srcCard: { ...e.card, srcCardUid: e.card.uid }, sourceName: e.card.name,
+            }), 0);
+          }
+          if (e.card.type === "creature" || e.card.type === "evo_creature") {
+            setTimeout(() => fireTriggerRef.current("creaturePutBz", { sourcePid: e.ownerPid, subjectCard: e.card, method: e.method }), 0);
+          }
+        });
       }
       // EXWIN: 能力による特殊勝利
       if (updatedCtx.winGame) {
