@@ -1123,7 +1123,7 @@
       "filter": {
         "raceContains": "ドラゴン"
       },
-      "min": 0
+      "min": 1
     }
   },
   {
@@ -2568,8 +2568,8 @@
     "id": 85
   },
   {
-    "name": "龍装鬼 オブザ08号",
-    "type": "creature",
+    "name": "龍装鬼 オブザ08号／終焉の開闢",
+    "type": "twinpact",
     "civ": "darkness",
     "race": "ドラゴンギルド/マフィ・ギャング",
     "cost": 9,
@@ -2591,7 +2591,7 @@
       "zones": [
         "hand"
       ],
-      "min": 0
+      "min": 1
     },
     "autoEffect": {
       "trigger": "play",
@@ -2617,36 +2617,31 @@
         }
       ]
     },
-    "id": 86
-  },
-  {
-    "name": "終焉の開闢",
-    "type": "spell",
-    "civ": "darkness",
-    "race": null,
-    "cost": 3,
-    "power": 0,
-    "keywords": [],
-    "effect": "自分の山札の上から3枚を墓地に置く。その後、クリーチャーを1体、自分の墓地から手札に戻す。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分の山札の上から3枚を墓地に置く",
-          "type": "topToGrave",
-          "amount": 3
-        },
-        {
-          "label": "クリーチャーを1体、自分の墓地から手札に戻す",
-          "type": "graveToHand",
-          "target": "self",
-          "amount": 1,
-          "filter": {
-            "creatureOnly": true
+    "spellSide": {
+      "name": "終焉の開闢",
+      "cost": 3,
+      "civ": "darkness",
+      "effect": "自分の山札の上から3枚を墓地に置く。その後、クリーチャーを1体、自分の墓地から手札に戻す。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から3枚を墓地に置く",
+            "type": "topToGrave",
+            "amount": 3
+          },
+          {
+            "label": "クリーチャーを1体、自分の墓地から手札に戻す",
+            "type": "graveToHand",
+            "target": "self",
+            "amount": 1,
+            "filter": {
+              "creatureOnly": true
+            }
           }
-        }
-      ]
+        ]
+      }
     },
-    "id": 87
+    "id": 86
   }
 ]

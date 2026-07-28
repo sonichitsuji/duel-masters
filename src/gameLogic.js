@@ -145,8 +145,7 @@ export function getEffectiveCost(card, source) {
     const n = amountPer ? countCardsInZone(ownerState, amountPer) : (amount || 0);
     cost = Math.max(min ?? 0, cost - n);
   }
-  // コストが0まで下がったらマナの支払い自体が発生しないので、文明ぶんの下限もかからない
-  if (cost <= 0) return 0;
+  // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）
   return Math.max(cost, getCardCivs(card).length);
 }
 

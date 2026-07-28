@@ -364,12 +364,13 @@
   "costReduce": { "amount":2, "filter":{"raceContains":"ドラゴン"}, "min":1 }
   // 墓地にある間だけ、自分の光のカードのコストを1軽減
   "costReduce": { "amount":1, "zones":["grave"], "filter":{"civ":"light"}, "min":1 }
-  // このクリーチャー自身の召喚コストを、自分の墓地のクリーチャー1体につき1軽減（0以下にはならない）
+  // このクリーチャー自身の召喚コストを、自分の墓地のクリーチャー1体につき1軽減
   "costReduce": { "amountPer":{"zone":"grave","filter":{"creatureOnly":true}},
-                  "filter":{"self":true}, "zones":["hand"], "min":0 }
+                  "filter":{"self":true}, "zones":["hand"], "min":1 }
   ```
-  > コストが**0まで下がった場合は文明ぶんの下限もかからず0**になります（支払いが発生しないため）。
-  > 0でなければ下限は文明数（2色カードは最低2）です。
+  > **`min` の読み方**: カードに「コストは**0以下**にはならない」とあれば **0にならない** ので `min:1`、
+  > 「**1以下**にならない」なら `min:2` です。実際の下限はさらに文明数で抑えられます
+  > （2色カードは最低2）。
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
 - `evolution`: `{civFilter,raceContains}`
