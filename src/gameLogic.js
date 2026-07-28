@@ -110,6 +110,8 @@ export function matchCardFilter(card, filter) {
   if (filter.type) {
     if (filter.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
     else if (filter.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
+    // 「進化ではないクリーチャー」。"creature" は進化クリーチャーも含むので別に用意する
+    else if (filter.type === "nonEvoCreature") { if (card.type !== "creature") return false; }
     else if (filter.type === "element") { if (!isElement(card)) return false; }
     else if (card.type !== filter.type) return false;
   }

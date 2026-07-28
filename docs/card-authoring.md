@@ -47,7 +47,8 @@
 | `all` | 条件一致すべてに適用（選択不要） |
 | `ifPrevious` | **「そうしたら」「そうした場合」**。直前のステップを実際に行わなかった場合、このステップ以降を実行しない → **§3.5** |
 
-**filter**: `civ` `civNot` `raceContains` `nameContains` `keyword` `type`(`creature`/`nonCreature`/`spell`/`tamaseed`…)
+**filter**: `civ` `civNot` `raceContains` `nameContains` `keyword`
+`type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
 `element`(クリーチャー/タマシード) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `notNameSelf`
 ※ `maxCost` 等にも**変数名の文字列**を書けます。
 

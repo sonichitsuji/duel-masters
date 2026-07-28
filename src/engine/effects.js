@@ -40,6 +40,8 @@ export function matchFilter(card, filter, ctx) {
   if (f.type) {
     if (f.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
     else if (f.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
+    // 「進化ではないクリーチャー」。"creature" は進化クリーチャーも含むので別に用意する
+    else if (f.type === "nonEvoCreature") { if (card.type !== "creature") return false; }
     else if (card.type !== f.type) return false;
   }
   return true;
@@ -540,7 +542,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     // メテオバーン: このクリーチャーの下のカードを指定数、指定ゾーンへ動かす「コスト」。
-    // 支払えなければ ctx.meteorBurnFailed を立て、呼び出し側が以降のステップを打ち切る（＝「そうしたら」）。
+    // 支払えなければ ctx.stepDone=false を立て、呼び出し側が以降のステップを打ち切る（＝「そうしたら」）。
     case "meteorBurn": {
       const need = resolveAmount(ctx, effect.count, 1) || 1;
       const live = selfState.battle.find(c => c.uid === ctx.srcCardUid);
