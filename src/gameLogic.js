@@ -111,7 +111,7 @@ const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
 // ただしプレイ中はどちらの面かが確定するので、その時は card.side("creature"/"spell") を見る。
 // （バトルゾーンのツインパクトも side を持たないため type:"spell" に一致するが、
 //   バトルゾーンの呪文を探す効果は存在しないため実害はない）
-function isCreatureSide(card) {
+export function isCreatureSide(card) {
   if (card.side) return card.side === "creature";
   return card.type === "creature" || card.type === "evo_creature" || card.type === "twinpact";
 }
@@ -319,13 +319,12 @@ export function evolutionLabel(spec) {
 }
 
 // 進化元の候補。マナゾーンはタップ状態を問わない。進化元は常にクリーチャー限定。
+// ツインパクトはクリーチャー側を参照されるので進化元にできる（isCreatureSide）。
 export function evolutionCandidates(card, ownerState) {
   const spec = evolutionSpec(card);
   if (!spec || !ownerState) return [];
   const list = spec.zone === "grave" ? ownerState.grave : spec.zone === "mana" ? ownerState.mana : ownerState.battle;
-  return (list || []).filter(c =>
-    (c.type === "creature" || c.type === "evo_creature") && matchCardFilter(c, spec.filter)
-  );
+  return (list || []).filter(c => isCreatureSide(c) && matchCardFilter(c, spec.filter));
 }
 
 // 進化元に必要な枚数（min 指定なら最低枚数）
@@ -377,7 +376,7 @@ export function collectSummonPermissions(ownerState, isOwnTurn) {
 // card（zone にあるカード）を召喚できる許可を1つ返す。無ければ null。
 // usedCounts: { [perm.key]: そのターンに使った回数 }
 export function summonPermissionFor(card, zone, perms, usedCounts = {}) {
-  if (!card || !(card.type === "creature" || card.type === "evo_creature")) return null;
+  if (!card || !isCreatureSide(card)) return null;   // ツインパクトはクリーチャー側で召喚できる
   return perms.find(p =>
     p.zone === zone &&
     (p.maxPerTurn == null || (usedCounts[p.key] || 0) < p.maxPerTurn) &&
