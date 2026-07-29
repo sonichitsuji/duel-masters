@@ -2760,5 +2760,42 @@
       ]
     },
     "id": 88
+  },
+  {
+    "name": "コースター＝コーデキター",
+    "type": "creature",
+    "civ": "darkness",
+    "race": "アビスロイヤル/フュージョナー",
+    "cost": 1,
+    "power": 1000,
+    "keywords": [],
+    "effect": "超魂X（これがクリーチャーの下にあれば、そのクリーチャーにも以下の能力を与える）\nこのクリーチャーの攻撃の終わりに、このクリーチャーに含まれるカードと同じ枚数のカードを引く。その後、このクリーチャーを破壊する。",
+    "autoEffect": null,
+    "ssx": {
+      "triggers": [
+        {
+          "on": "attackEnd",
+          "effects": [
+            {
+              "label": "このクリーチャーに含まれるカードを数える",
+              "type": "count",
+              "zone": "stack",
+              "as": "stackCards"
+            },
+            {
+              "label": "その枚数のカードを引く",
+              "type": "drawCards",
+              "amount": "stackCards"
+            },
+            {
+              "label": "その後、このクリーチャーを破壊する",
+              "type": "destroy",
+              "self": true
+            }
+          ]
+        }
+      ]
+    },
+    "id": 89
   }
 ]

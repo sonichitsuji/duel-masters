@@ -68,6 +68,11 @@ function zoneCards(state, zone, ctx) {
     // メテオバーン用。スナップショットではなく「今バトルゾーンにいる」カードの下を見る。
     // 革命チェンジ等で入れ替わっていれば空 = 不発になる。
     case "under": return (state?.battle || []).find(c => c.uid === ctx?.srcCardUid)?.evolutionBase || [];
+    // 「このクリーチャーに含まれるカード」= 自身＋下に敷かれたカード
+    case "stack": {
+      const me = (state?.battle || []).find(c => c.uid === ctx?.srcCardUid);
+      return me ? [me, ...(me.evolutionBase || [])] : [];
+    }
     default: return [];
   }
 }
@@ -144,6 +149,8 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
     const states = tgt === "opponent" ? [otherState] : tgt === "both" ? [selfState, otherState] : [selfState];
     for (const st of states) cards.push(...zoneCards(st, zone, c2));
   }
+  // 「このクリーチャーを破壊する」は選択不要
+  if (type === "destroy" && effect.self) return { candidates: [], isAuto: true };
   // 墓地から出す：破壊されたクリーチャーの持ち主 / 自分自身のみ
   if (type === "graveToBz") {
     if (effect.owner === "destroyed") {
@@ -417,11 +424,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     // ---------- バトルゾーンから ----------
     case "destroy": {
-      for (const pidx of pids) {
+      // self:true =「このクリーチャーを破壊する」。target の既定(opponent)ではなく能力の持ち主を見る
+      for (const pidx of (effect.self ? [ownerPid] : pids)) {
         const st = stateOf(pidx);
-        const targets = effect.all
-          ? st.battle.filter(c => matchFilter(c, effect.filter, ctx))
-          : st.battle.filter(c => selectedUids.includes(c.uid));
+        const targets = effect.self
+          ? st.battle.filter(c => c.uid === ctx.srcCardUid)
+          : effect.all
+            ? st.battle.filter(c => matchFilter(c, effect.filter, ctx))
+            : st.battle.filter(c => selectedUids.includes(c.uid));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });

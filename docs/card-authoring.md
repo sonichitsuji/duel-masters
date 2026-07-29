@@ -49,9 +49,13 @@
 | `target` | **`"self"` / `"opponent"` / `"both"`**（どちらも） |
 | `amount` | 数値、**または変数名の文字列**（例 `"count"`）。選択枚数の上限にもなる |
 | `filter` | 対象条件（下記） |
-| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `revealed` `lastMoved`） |
+| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `revealed` `lastMoved` `under` `stack`） |
 | `all` | 条件一致すべてに適用（選択不要） |
 | `ifPrevious` | **「そうしたら」「そうした場合」**。直前のステップを実際に行わなかった場合、このステップ以降を実行しない → **§3.5** |
+
+> `under` = **このクリーチャーの下にあるカード**（メテオバーン用）、
+> `stack` = **このクリーチャーに含まれるカード**（自身＋下に敷かれたカード）。
+> どちらも「いまバトルゾーンにいる能力の持ち主」を見るので、離れていれば空になります。
 
 **filter**: `civ` `civNot` `raceContains` `nameContains` `keyword`
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
@@ -158,7 +162,7 @@
 **マナから**：`manaToBz {filter}` / `manaToHand {amount}`
 
 **バトルゾーンから**
-- `destroy {target,filter,amount,all}` — 破壊
+- `destroy {target,filter,amount,all,self}` — 破壊。**`self:true` で「このクリーチャーを破壊する」**（選択不要・自分を対象）
 - `bzToHand` / `bzToMana` / `bzToShield`（`target,filter,amount,all`）
 - `tap` / `untap` / `tapToggle`（`target,zone,filter,all,noUntapNextTurn`）
 - `untapAllMana` — 自分のマナを全アンタップ
