@@ -664,7 +664,6 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, shields: s.shields.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false, faceUp: false }))] }));
         addLog(`${pid}: シールド「${cards.map(c => c.name).join(", ")}」を手札へ（S・トリガー不使用）`);
-        ctx.shieldLeftFor = [...(ctx.shieldLeftFor || []), pidx];
       }
       break;
     }
@@ -675,7 +674,6 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, shields: s.shields.filter(c => !uids.includes(c.uid)), grave: [...s.grave, ...cards] }));
         addLog(`${pid}: シールドを墓地へ`);
-        ctx.shieldLeftFor = [...(ctx.shieldLeftFor || []), pidx];
       }
       break;
     }
@@ -685,7 +683,6 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       if (!shield) break;
       setOf(targetPid)(s => ({ ...s, shields: s.shields.filter(c => c.uid !== shield.uid), hand: [...s.hand, { ...shield, tapped: false, faceUp: false }] }));
       addLog(`[BREAK] ${srcCard?.name}: シールドブレイク`);
-      ctx.shieldLeftFor = [...(ctx.shieldLeftFor || []), targetPid];
       break;
     }
 
