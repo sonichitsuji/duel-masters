@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, sTriggerSide } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -645,12 +645,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const gset=graveSet||new Set();
       const toGraveCards=broken.filter(c=>gset.has(c.uid));
       const toHandAll=broken.filter(c=>!gset.has(c.uid));
-      const sTriggers=toHandAll.filter(c=>hasKeyword(c,"sTrigger")&&!hasKeyword(c,"gStrike"));
+      // ツインパクトは呪文面が「S・トリガー」を持つことがあるので、唱える面を解決してから絞る
+      const sTriggers=toHandAll.map(c=>({card:c,side:sTriggerSide(c)})).filter(x=>x.side&&!hasKeyword(x.card,"gStrike"));
       const gStrikeCards=toHandAll.filter(c=>hasKeyword(c,"gStrike"));
       const toHand=toHandAll.map(c=>({...c,tapped:false,faceUp:false}));
       setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand],grave:[...s.grave,...toGraveCards]}));
       if(toGraveCards.length>0) addLog(`[BURN] ${toGraveCards.length}枚を墓地へ（置換効果）`);
-      sTriggers.forEach(c=>{addLog(`ST 「${c.name}」`);showCutIn({title:"S-TRIGGER!",cardName:c.name,civ:c.civ});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,stateRef.current[otherPid],setOtherState,stateRef.current[active],setActiveState,c.name),800);});
+      sTriggers.forEach(({side})=>{addLog(`ST 「${side.name}」`);showCutIn({title:"S-TRIGGER!",cardName:side.name,civ:Array.isArray(side.civ)?side.civ[0]:side.civ});if(side.autoEffect)setTimeout(()=>triggerEffect(side.autoEffect,otherPid,stateRef.current[otherPid],setOtherState,stateRef.current[active],setActiveState,side.name,{...side}),800);});
       if(gStrikeCards.length>0){
         gStrikeCards.forEach(c=>addLog(`[GS] G・ストライク「${c.name}」`));
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});

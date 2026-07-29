@@ -9,7 +9,9 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
   const c=CIV[civs[0]]||CIV.fire;
   const w=small?52:74;const h=small?72:106;
   // 超魂X(SSX)はそのカードの通常能力。下のカードの超魂Xもここに合流する
-  const ownKw=[...(card.keywords||[]), ...ssxKeywords(card)];
+  const ownKw=[...(card.keywords||[]), ...ssxKeywords(card),
+    // ツインパクトの呪文面が持つS・トリガーはシールドゾーンで機能するのでバッジに出す
+    ...((card.spellSide?.keywords||[]).filter(k=>k==="sTrigger"))];
   const hyper=card.hyperMode;
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");

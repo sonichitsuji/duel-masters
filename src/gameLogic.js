@@ -176,6 +176,15 @@ export function extractFromBattle(battle, uid) {
   return extractManyFromBattle(battle, [uid]);
 }
 
+// S・トリガーとして唱えられる面を返す（無ければ null）。
+// ツインパクトは呪文面だけが「S・トリガー」を持つことがあるので、その場合は呪文面を返す。
+export function sTriggerSide(card) {
+  if (!card) return null;
+  if (hasKeyword(card, "sTrigger")) return card;
+  if (card.spellSide?.keywords?.includes("sTrigger")) return { ...card, ...card.spellSide, uid: card.uid };
+  return null;
+}
+
 // 「エレメント」= クリーチャー(進化含む)またはタマシード
 export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed"; }
 

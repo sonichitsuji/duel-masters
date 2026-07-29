@@ -2797,5 +2797,438 @@
       ]
     },
     "id": 89
+  },
+  {
+    "name": "ブラッディ・タイフーン",
+    "race": null,
+    "cost": 2,
+    "power": 0,
+    "type": "spell",
+    "civ": [
+      "water",
+      "darkness"
+    ],
+    "keywords": [],
+    "effect": "自分の山札の上から三枚を見る。そのうちの一枚を自分の手札に加え、残りを墓地に置く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から三枚を見る",
+          "type": "reveal",
+          "amount": 3
+        },
+        {
+          "label": "そのうちの一枚を自分の手札に加える",
+          "type": "revealedToHand",
+          "amount": 1
+        },
+        {
+          "label": "残りを墓地に置く",
+          "type": "revealedToGrave",
+          "takeAll": true
+        }
+      ]
+    },
+    "id": 90
+  },
+  {
+    "name": "氷牙レオポル・ディーネ公",
+    "type": "twinpact",
+    "civ": "water",
+    "cost": 6,
+    "race": "サイバー・ウイルス/ナイト",
+    "power": 2000,
+    "keywords": [],
+    "effect": "自分が呪文を唱えた時、カードを1枚引いてもよい。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "castSpell",
+        "target": "self",
+        "optional": true,
+        "effects": [
+          {
+            "label": "カードを1枚引いてもよい",
+            "type": "drawCards",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "エマージェンシー・タイフーン",
+      "cost": 2,
+      "civ": "water",
+      "keywords": [
+        "sTrigger"
+      ],
+      "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nカードを2枚まで引く。その後、自分の手札を1枚捨てる。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "カードを1枚引いてもよい（2枚まで・1枚目）",
+            "type": "drawCards",
+            "amount": 1,
+            "optional": true
+          },
+          {
+            "label": "カードを1枚引いてもよい（2枚まで・2枚目）",
+            "type": "drawCards",
+            "amount": 1,
+            "optional": true
+          },
+          {
+            "label": "自分の手札を1枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 1
+          }
+        ]
+      }
+    },
+    "id": 91
+  },
+  {
+    "name": "愛銀河プルート・タイドロック",
+    "race": "シノビ/フェニックス",
+    "cost": 4,
+    "power": 13000,
+    "type": "evo_creature",
+    "civ": "darkness",
+    "keywords": [
+      "tBreaker"
+    ],
+    "effect": "墓地進化GV：クリーチャーを3体自分の墓地から選び、このクリーチャーをその上に重ねつつ出す。\nT・ブレイカー\nメテオバーン：このクリーチャーが攻撃する時、このクリーチャーの下にあるカードを1枚墓地に置いてもよい。そうしたら、自分の山札の上から3枚を墓地に置く。その後、相手のクリーチャーを1体選んで破壊する。",
+    "evolution": {
+      "zone": "grave",
+      "count": 3
+    },
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "attack",
+        "effects": [
+          {
+            "label": "このクリーチャーの下にあるカードを1枚墓地に置いてもよい",
+            "type": "meteorBurn",
+            "count": 1,
+            "to": "grave",
+            "optional": true
+          },
+          {
+            "label": "そうしたら、自分の山札の上から3枚を墓地に置く",
+            "type": "topToGrave",
+            "amount": 3
+          },
+          {
+            "label": "その後、相手のクリーチャーを1体選んで破壊する",
+            "type": "destroy",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    ],
+    "id": 92
+  },
+  {
+    "name": "超神星DOOM・ドラゲリオン",
+    "race": "フェニックス/デーモン・コマンド/ドラゴン・ゾンビ",
+    "cost": 12,
+    "power": 12000,
+    "type": "evo_creature",
+    "civ": "darkness",
+    "keywords": [
+      "tBreaker"
+    ],
+    "effect": "このクリーチャーの進化元クリーチャー1体につき、このクリーチャーの召喚コストを1少なくする。ただし、コストは0以下にはならない。\n超無限墓地進化：クリーチャーを1体以上自分の墓地から選び、このクリーチャーをその上に重ねつつ出す。\nT・ブレイカー\nメテオバーン：このクリーチャーが攻撃する時、このクリーチャーの下にあるカードを1枚、墓地に置いてもよい。そうしたら、相手のクリーチャーを1体選ぶ。このターン、その選んだクリーチャーのパワーを-9000する。その後、進化ではないクリーチャーを1体、自分の墓地から出す。",
+    "evolution": {
+      "zone": "grave",
+      "min": 1
+    },
+    "costReduce": {
+      "amountPer": {
+        "zone": "evolutionBase"
+      },
+      "filter": {
+        "self": true
+      },
+      "zones": [
+        "hand"
+      ],
+      "min": 1
+    },
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "attack",
+        "effects": [
+          {
+            "label": "このクリーチャーの下にあるカードを1枚墓地に置いてもよい",
+            "type": "meteorBurn",
+            "count": 1,
+            "to": "grave",
+            "optional": true
+          },
+          {
+            "label": "相手のクリーチャーを1体選ぶ。このターン、その選んだクリーチャーのパワーを-9000する",
+            "type": "powerBuff",
+            "target": "opponent",
+            "count": 1,
+            "amount": -9000,
+            "expires": "endOfTurn"
+          },
+          {
+            "label": "その後、進化ではないクリーチャーを1体、自分の墓地から出す",
+            "type": "graveToBz",
+            "target": "self",
+            "filter": {
+              "type": "nonEvoCreature"
+            },
+            "amount": 1
+          }
+        ]
+      }
+    ],
+    "id": 93
+  },
+  {
+    "name": "堕∞魔 ヴォゲンム",
+    "type": "creature",
+    "cost": 4,
+    "civ": "darkness",
+    "race": "マフィ・ギャング/デーモン・コマンド/魔導具",
+    "power": 13000,
+    "effect": "T・ブレイカー\n自分のターンの終わりに、自分の山札の上から13枚を墓地に置く。",
+    "keywords": [
+      "tBreaker"
+    ],
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "endOfTurn",
+        "target": "self",
+        "effects": [
+          {
+            "label": "自分の山札の上から13枚を墓地に置く",
+            "type": "topToGrave",
+            "amount": 13
+          }
+        ]
+      }
+    ],
+    "id": 94
+  },
+  {
+    "name": "水上第九院 シャコガイル",
+    "type": "creature",
+    "cost": 9,
+    "civ": "water",
+    "race": "ムートピア",
+    "power": 13000,
+    "effect": "T・ブレイカー\nこのクリーチャーが出た時、自分の墓地にあるカードをすべて山札に加え、シャッフルする。\n相手のターンのはじめに、カードを5枚引き、その後、自分の手札を3枚捨てる。\n自分の山札の最後の1枚を引いたことによってゲームに負ける時、かわりに勝つ。",
+    "keywords": [
+      "tBreaker"
+    ],
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の墓地にあるカードをすべて山札に加える",
+          "type": "graveToDeckBottom",
+          "target": "self",
+          "all": true
+        },
+        {
+          "label": "山札をシャッフルする",
+          "type": "shuffleDeck",
+          "target": "self"
+        }
+      ]
+    },
+    "triggers": [
+      {
+        "on": "startOfTurn",
+        "target": "opponent",
+        "effects": [
+          {
+            "label": "カードを5枚引く",
+            "type": "drawCards",
+            "amount": 5
+          },
+          {
+            "label": "自分の手札を3枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 3
+          }
+        ]
+      }
+    ],
+    "replaceLose": [
+      {
+        "from": "deckOut",
+        "to": "win",
+        "label": "自分の山札の最後の1枚を引いたことによってゲームに負ける時、かわりに勝つ"
+      }
+    ],
+    "id": 95
+  },
+  {
+    "name": "龍頭星雲人",
+    "type": "twinpact",
+    "civ": "darkness",
+    "cost": 10,
+    "race": "デーモン・コマンド/ゼロリスト",
+    "power": 12000,
+    "keywords": [
+      "tBreaker"
+    ],
+    "effect": "自分の墓地にある水または闇のカード1枚につき、このクリーチャーの召喚コストを1少なくする。ただし、コストは0以下にはならない。\nこのクリーチャーが出た時または攻撃する時、相手は自身の手札を2枚選んで捨てる。\nT・ブレイカー",
+    "costReduce": {
+      "amountPer": {
+        "zone": "grave",
+        "filter": {
+          "civ": [
+            "water",
+            "darkness"
+          ]
+        }
+      },
+      "filter": {
+        "self": true
+      },
+      "zones": [
+        "hand"
+      ],
+      "min": 1
+    },
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "target": "this",
+        "effects": [
+          {
+            "label": "相手は自身の手札を2枚選んで捨てる",
+            "type": "handToGrave",
+            "target": "opponent",
+            "amount": 2
+          }
+        ]
+      },
+      {
+        "on": "attack",
+        "target": "this",
+        "effects": [
+          {
+            "label": "相手は自身の手札を2枚選んで捨てる",
+            "type": "handToGrave",
+            "target": "opponent",
+            "amount": 2
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "零誕祭",
+      "cost": 4,
+      "civ": "darkness",
+      "keywords": [
+        "sTrigger"
+      ],
+      "effect": "S・トリガー\n自分のクリーチャーを1体破壊する。その後、相手のクリーチャーを1体破壊する。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分のクリーチャーを1体破壊する",
+            "type": "destroy",
+            "target": "self",
+            "amount": 1
+          },
+          {
+            "label": "その後、相手のクリーチャーを1体破壊する",
+            "type": "destroy",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    },
+    "id": 96
+  },
+  {
+    "name": "防ぐ混沌 タタミマントラ",
+    "type": "twinpact",
+    "civ": "darkness",
+    "cost": 3,
+    "race": "メカ・デル・ステラ/シノビ",
+    "power": 1000,
+    "keywords": [
+      "blocker",
+      "slayer"
+    ],
+    "effect": "ブロッカー\nスレイヤー\nこのクリーチャーが出た時、自分の山札の上から3枚を墓地に置いてもよい。その後、シノビ・カードを1枚、自分の墓地から手札に戻してもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の山札の上から3枚を墓地に置いてもよい",
+          "type": "topToGrave",
+          "amount": 3,
+          "optional": true
+        },
+        {
+          "label": "シノビ・カードを1枚、自分の墓地から手札に戻してもよい",
+          "type": "graveToHand",
+          "target": "self",
+          "amount": 1,
+          "filter": {
+            "raceContains": "シノビ"
+          },
+          "optional": true
+        }
+      ]
+    },
+    "spellSide": {
+      "name": "「ここは行かせません！」",
+      "cost": 4,
+      "civ": "darkness",
+      "keywords": [
+        "sTrigger"
+      ],
+      "effect": "S・トリガー\n自分の山札の上から4枚を墓地に置く。その後、自分の墓地にあるカードの枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊する。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から4枚を墓地に置く",
+            "type": "topToGrave",
+            "amount": 4
+          },
+          {
+            "label": "その後、自分の墓地にあるカードの枚数を数える",
+            "type": "count",
+            "zone": "grave",
+            "target": "self",
+            "as": "graveCount"
+          },
+          {
+            "label": "墓地の枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊する",
+            "type": "destroy",
+            "target": "opponent",
+            "amount": 1,
+            "filter": {
+              "maxCost": "graveCount"
+            }
+          }
+        ]
+      }
+    },
+    "id": 97
   }
 ]

@@ -552,6 +552,8 @@
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
 - `zRush` `cantAttackPlayer` `faceUpLeaveTo:"grave"` `reactivePassive` `endOfTurnEffect` `staticDeny:{type:"cantPutCreature"}`
 - `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,autoEffect}`
+  - **呪文面が `sTrigger` を持つ場合**、シールドをブレイクされた時にその呪文面が唱えられます
+    （カード表示の ST バッジにも出ます）。クリーチャー面の能力は `triggers` 側に書きます。
 
 ---
 
