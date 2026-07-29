@@ -25,16 +25,22 @@ export function resolveAmount(ctx, val, fallback = 1) {
 // 例: "civ": ["water", "darkness"] = 水または闇
 const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
 
-// type の判定。"creature" は進化クリーチャーも含み、"nonEvoCreature" は含まない。
-// ツインパクトをプレイ中の card には side("creature"/"spell") が付くので、その面で判定する。
+// ツインパクトは「クリーチャーであり呪文でもある」ので、どちらの type にも一致する。
+// プレイ中はどちらの面かが確定するので card.side("creature"/"spell") を見る。
 function isCreatureSide(card) {
-  return card.side ? card.side === "creature" : (card.type === "creature" || card.type === "evo_creature");
+  if (card.side) return card.side === "creature";
+  return card.type === "creature" || card.type === "evo_creature" || card.type === "twinpact";
+}
+function isSpellSide(card) {
+  if (card.side) return card.side === "spell";
+  return card.type === "spell" || card.type === "twinpact";
 }
 function matchesType(card, t) {
   if (t === "creature") return isCreatureSide(card);
   if (t === "nonCreature") return !isCreatureSide(card);
-  if (t === "nonEvoCreature") return card.side ? card.side === "creature" : card.type === "creature";
-  if (t === "spell") return card.side ? card.side === "spell" : card.type === "spell";
+  if (t === "nonEvoCreature") return card.side ? card.side === "creature"
+                                               : (card.type === "creature" || card.type === "twinpact");
+  if (t === "spell") return isSpellSide(card);
   return card.type === t;
 }
 
@@ -52,7 +58,7 @@ export function matchFilter(card, filter, ctx) {
   if (f.keyword && !anyOf(f.keyword, x => hasKeyword(card, x))) return false;
   if (f.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (f.element && !isElement(card)) return false;
-  if (f.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
+  if (f.creatureOnly && !isCreatureSide(card)) return false;
   if (f.tapped != null && !!card.tapped !== !!f.tapped) return false;
   if (f.maxCost != null && !(card.cost <= resolveAmount(ctx, f.maxCost, f.maxCost))) return false;
   if (f.minCost != null && !(card.cost >= resolveAmount(ctx, f.minCost, f.minCost))) return false;

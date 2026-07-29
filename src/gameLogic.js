@@ -101,17 +101,26 @@ export function collectCostReduceSources(source) {
 // civ / raceContains / nameContains / keyword / type は配列で書くと「いずれか」(OR) になる
 const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
 
-// ツインパクトをプレイする時、その card には side("creature"/"spell") が付く。
-// 「このクリーチャーの召喚コスト」のように面を区別したい判定はこれを見る。
+// ツインパクトは「クリーチャーであり呪文でもある」。どちらの特性も参照できるので、
+// 「墓地からクリーチャーを手札に戻す」でも「墓地から呪文を唱える」でも対象になる。
+// ただしプレイ中はどちらの面かが確定するので、その時は card.side("creature"/"spell") を見る。
+// （バトルゾーンのツインパクトも side を持たないため type:"spell" に一致するが、
+//   バトルゾーンの呪文を探す効果は存在しないため実害はない）
 function isCreatureSide(card) {
-  return card.side ? card.side === "creature" : (card.type === "creature" || card.type === "evo_creature");
+  if (card.side) return card.side === "creature";
+  return card.type === "creature" || card.type === "evo_creature" || card.type === "twinpact";
+}
+function isSpellSide(card) {
+  if (card.side) return card.side === "spell";
+  return card.type === "spell" || card.type === "twinpact";
 }
 function matchesType(card, t) {
   if (t === "creature") return isCreatureSide(card);
   if (t === "nonCreature") return !isCreatureSide(card);
-  if (t === "nonEvoCreature") return card.side ? card.side === "creature" : card.type === "creature";
+  if (t === "nonEvoCreature") return card.side ? card.side === "creature"
+                                               : (card.type === "creature" || card.type === "twinpact");
   if (t === "element") return isElement(card);
-  if (t === "spell") return card.side ? card.side === "spell" : card.type === "spell";
+  if (t === "spell") return isSpellSide(card);
   return card.type === t;
 }
 
@@ -124,7 +133,7 @@ export function matchCardFilter(card, filter) {
   if (filter.civ && !anyOf(filter.civ, x => getCardCivs(card).includes(x))) return false;
   if (filter.keyword && !anyOf(filter.keyword, x => hasKeyword(card, x))) return false;
   if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
-  if (filter.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
+  if (filter.creatureOnly && !isCreatureSide(card)) return false;
   if (filter.type && !anyOf(filter.type, t => matchesType(card, t))) return false;
   if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
   if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
@@ -193,8 +202,8 @@ export function sTriggerSide(card) {
   return null;
 }
 
-// 「エレメント」= クリーチャー(進化含む)またはタマシード
-export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed"; }
+// 「エレメント」= クリーチャー(進化・ツインパクトのクリーチャー面を含む)またはタマシード
+export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed" || (card.type === "twinpact" && card.side !== "spell"); }
 
 // ===========================
 // 超魂X (SSX / Super Soul Cross)
