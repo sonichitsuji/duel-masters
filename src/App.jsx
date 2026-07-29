@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import INITIAL_CARD_DB from "../public/cards.json";
-import { DECK_BOLSHACK, DECK_MIRADANTE, DECK_HEAVENS } from "./decks";
+import { DECK_BOLSHACK, DECK_MIRADANTE, DECK_HEAVENS, DECK_DOOM } from "./decks";
 import { BattleScreen } from "./screens/BattleScreen";
 import { MenuScreen } from "./screens/MenuScreen";
 
@@ -25,6 +25,7 @@ export default function App(){
       { name:"サンプルデッキA (ボルシャック)", ids:DECK_BOLSHACK },
       { name:"サンプルデッキB (ミラダンテ)", ids:DECK_MIRADANTE },
       { name:"サンプルデッキC (光 超化獣)", ids:DECK_HEAVENS },
+      { name:"サンプルデッキD (闇水 DOOM墓地進化)", ids:DECK_DOOM },
     ];
   });
 
