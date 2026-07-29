@@ -5,8 +5,13 @@ import { CIV, CIVS } from "./constants";
 // ===========================
 let _uid = 1;
 export const mkUid = () => `c${_uid++}`;
+// 同梱カードは 1〜200、ユーザーが追加したカードは 201〜 を使う
 let _cardId = 200;
 export const mkCardId = () => ++_cardId;
+// 保存済みDBを読み直した後に呼ぶ。既存の最大idより後ろから採番を再開する
+export function syncCardIdSeed(cardDb) {
+  for (const c of cardDb || []) if (Number.isFinite(c?.id) && c.id > _cardId) _cardId = c.id;
+}
 
 export function shuffle(arr) {
   const a=[...arr];
