@@ -6,11 +6,12 @@ import { CardFace } from "../CardFace";
 // ===========================
 // MANA PAY MODAL
 // ===========================
-export function ManaPayModal({ card, mana, ownerState, selfBattle, onConfirm, onCancel }) {
+export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onConfirm, onCancel }) {
   const [selected, setSelected] = useState([]); // [{uid, assignedCiv}]
   const [civPicker, setCivPicker] = useState(null); // null | {uid, civs:[]}
 
-  const needed = getEffectiveCost(card, ownerState || selfBattle || []);
+  // costOpts.evolutionBaseCount: 今回重ねる進化元の枚数（「進化元1体につきコスト-1」用）
+  const needed = getEffectiveCost(card, ownerState || selfBattle || [], costOpts);
   const requiredCivs = getCardCivs(card);
   const selectedUids = selected.map(s => s.uid);
   const civsSatisfied = requiredCivs.every(civ => selected.some(s => s.assignedCiv === civ));

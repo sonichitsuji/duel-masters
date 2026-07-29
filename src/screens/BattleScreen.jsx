@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, sTriggerSide } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -21,7 +21,8 @@ import { StepIndicator } from "../components/BoardWidgets";
 // ev: { sourcePid, subjectCard?, method?, firstThisTurn? }
 const DEFAULT_TRIGGER_SCOPE = {
   creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this", attackEnd:"this",
-  castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self", endOfTurn:"self",
+  castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self",
+  startOfTurn:"self", endOfTurn:"self",
 };
 // 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
 // （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
@@ -208,12 +209,29 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         }
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard}), 0);
       }
+      // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
+      if (updatedCtx.drewCards && updatedCtx.drewCards.length) {
+        const list = updatedCtx.drewCards;
+        delete updatedCtx.drewCards;
+        list.forEach(d => setTimeout(() => fireTriggerRef.current("draw", { sourcePid: d.pid, lastCard: d.lastCard }), 0));
+      }
       // 効果でクリーチャーがバトルゾーンに出た時（method:"put"/"summon"）
       if (updatedCtx.creatureEnteredBz && updatedCtx.creatureEnteredBz.length) {
         const list = updatedCtx.creatureEnteredBz;
         delete updatedCtx.creatureEnteredBz;
-        list.filter(e => e.card.type === "creature" || e.card.type === "evo_creature")
-            .forEach(e => setTimeout(() => fireTriggerRef.current("creaturePutBz",{sourcePid:e.ownerPid,subjectCard:e.card,method:e.method}), 0));
+        list.forEach(e => {
+          // 「出た時」は出し方を問わず誘発する。autoEffect{trigger:"play"} で書かれた cip も発火させる
+          // （手札からのプレイは handlePlayCard が別途呼ぶので、ここと二重にはならない）
+          if (e.card.autoEffect?.trigger === "play") {
+            setTimeout(() => enqueueEffectRef.current({
+              kind: "trigger", effect: e.card.autoEffect, ownerPid: e.ownerPid,
+              srcCard: { ...e.card, srcCardUid: e.card.uid }, sourceName: e.card.name,
+            }), 0);
+          }
+          if (e.card.type === "creature" || e.card.type === "evo_creature") {
+            setTimeout(() => fireTriggerRef.current("creaturePutBz", { sourcePid: e.ownerPid, subjectCard: e.card, method: e.method }), 0);
+          }
+        });
       }
       // EXWIN: 能力による特殊勝利
       if (updatedCtx.winGame) {
@@ -335,8 +353,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const {templates,ownerPid,srcCard,count}=templateChoiceModal;
     const tpl=templates[tplIdx];
     setTemplateChoiceModal(count>1?{...templateChoiceModal,count:count-1}:null);
-    // 選んだテンプレートの steps を現在の解決として実行（chooseTimes の継続。アイドル時のみ表示されるため直接 set）
-    setActiveSteps({ steps:tpl.steps, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid } });
+    // 選んだテンプレートの effects を現在の解決として実行（chooseTimes の継続。アイドル時のみ表示されるため直接 set）
+    setActiveSteps({ steps: tpl.effects, stepIdx: 0, ownerPid, srcCard, context: { srcCardUid: srcCard?.uid, vars: {} } });
   };
 
   // 相手の常時能力(reactivePassive)を考慮し、新たにBZに出たクリーチャーへcantAttackUntilMyTurnを付与
@@ -349,13 +367,51 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 先行1ターン目はドロー不要（マナチャージから開始）
   const isFirstTurn = turn===1 && active==="p1";
 
+  // ライブラリアウト（LO）: DMでは「山札が0枚になった瞬間」に敗北が成立する（引こうとした時ではない）。
+  // 状態起因処理なので、ドローに限らず山札が減るあらゆる操作の後に判定する。
+  // 「かわりに勝つ」等の置換があれば §0 のとおり必ず例外処理で中止できる形で提示する。
+  const resolveDeckOutLoss=(pid)=>{
+    const lose=()=>{
+      addLog(`${pid}: 山札が0枚になった（ライブラリアウト）ため敗北`);
+      setWinReason("deckout");
+      setWinner(pid==="p1"?"P2":"P1");
+    };
+    const rep=findLoseReplacement(stateRef.current[pid],"deckOut");
+    if(!rep){ lose(); return; }
+    setReplacementModal({
+      title: "敗北の置換（置換効果）",
+      card: rep.card,
+      message: `${pid.toUpperCase()} は山札が0枚になり、ゲームに負けます。\nかわりに「${rep.card.name}」の能力でゲームに勝ちます。`,
+      applyLabel: "かわりに勝つ（EXWIN）",
+      cancelLabel: "例外処理で中止（通常どおり敗北）",
+      onApply: () => {
+        setReplacementModal(null);
+        addLog(`[EXWIN] ${rep.card.name}: 敗北するかわりに ${pid.toUpperCase()} の勝利！`);
+        setWinReason("exwin");
+        setWinner(pid.toUpperCase());
+      },
+      onCancel: () => { setReplacementModal(null); lose(); },
+    });
+  };
+  // 山札が0枚になった瞬間に判定する。誘発能力(setTimeout)より先に走るので、状態起因処理が優先される。
+  const deckOutRef=useRef(null);
+  useEffect(()=>{
+    if(winner) return;
+    const pid=["p1","p2"].find(x=>(x==="p1"?p1:p2).deck.length===0);
+    if(!pid){ deckOutRef.current=null; return; }
+    if(deckOutRef.current===pid) return; // 解決中/解決済み（置換モーダルを出している間の再入を防ぐ）
+    deckOutRef.current=pid;
+    resolveDeckOutLoss(pid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[p1.deck.length,p2.deck.length,winner]);
+
   const handleDraw=()=>{
     if(drewThisTurn)return;
-    if(activeState.deck.length===0){addLog(`${active}: 山札が0枚のためドローできず敗北`);setWinReason("deckout");setWinner(otherPid==="p1"?"P1":"P2");return;}
+    if(activeState.deck.length===0)return; // 0枚ならLOで既に決着している
     const[card,...rest]=activeState.deck;
     setActiveState(s=>({...s,hand:[...s.hand,{...card,tapped:false}],deck:rest}));
     setDrewThisTurn(true);addLog(`${active}: ${card.name} ドロー`);setMessage(`${active}: マナチャージorプレイ`);
-    setTimeout(()=>fireTrigger("draw",{sourcePid:active}),0);
+    setTimeout(()=>fireTrigger("draw",{sourcePid:active,lastCard:rest.length===0}),0);
   };
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
   // fromZone: "hand"(通常) / "grave" / "mana"。墓地・マナからの召喚は summonFrom 系の許可が必要（PlayerBoard 側で判定済み）。
@@ -463,7 +519,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const manaUids=selected.filter(x=>x.from==="mana").map(x=>x.uid);
     const fromHand=activeState.hand.filter(c=>handUids.includes(c.uid));
     const fromMana=activeState.mana.filter(c=>manaUids.includes(c.uid));
-    const newCards=[...fromHand,...fromMana].map(c=>({...c,tapped:false,summonedThisTurn:false}));
+    // ファイナル革命で出したクリーチャーも召喚酔いする
+    const newCards=[...fromHand,...fromMana].map(c=>({ ...c, tapped: false, summonedThisTurn: true }));
     setActiveState(s=>({...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]}));
     addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
     maybeFlagCantAttack(newCards.map(c=>c.uid),setActiveState,otherState.battle);
@@ -588,12 +645,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const gset=graveSet||new Set();
       const toGraveCards=broken.filter(c=>gset.has(c.uid));
       const toHandAll=broken.filter(c=>!gset.has(c.uid));
-      const sTriggers=toHandAll.filter(c=>hasKeyword(c,"sTrigger")&&!hasKeyword(c,"gStrike"));
+      // ツインパクトは呪文面が「S・トリガー」を持つことがあるので、唱える面を解決してから絞る
+      const sTriggers=toHandAll.map(c=>({card:c,side:sTriggerSide(c)})).filter(x=>x.side&&!hasKeyword(x.card,"gStrike"));
       const gStrikeCards=toHandAll.filter(c=>hasKeyword(c,"gStrike"));
       const toHand=toHandAll.map(c=>({...c,tapped:false,faceUp:false}));
       setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand],grave:[...s.grave,...toGraveCards]}));
       if(toGraveCards.length>0) addLog(`[BURN] ${toGraveCards.length}枚を墓地へ（置換効果）`);
-      sTriggers.forEach(c=>{addLog(`ST 「${c.name}」`);showCutIn({title:"S-TRIGGER!",cardName:c.name,civ:c.civ});if(c.autoEffect)setTimeout(()=>triggerEffect(c.autoEffect,otherPid,stateRef.current[otherPid],setOtherState,stateRef.current[active],setActiveState,c.name),800);});
+      sTriggers.forEach(({side})=>{addLog(`ST 「${side.name}」`);showCutIn({title:"S-TRIGGER!",cardName:side.name,civ:Array.isArray(side.civ)?side.civ[0]:side.civ});if(side.autoEffect)setTimeout(()=>triggerEffect(side.autoEffect,otherPid,stateRef.current[otherPid],setOtherState,stateRef.current[active],setActiveState,side.name,{...side}),800);});
       if(gStrikeCards.length>0){
         gStrikeCards.forEach(c=>addLog(`[GS] G・ストライク「${c.name}」`));
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
@@ -664,9 +722,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const setSelf=pid==="p1"?setP1:setP2;const oPid=pid==="p1"?"p2":"p1";const setOther=pid==="p1"?setP2:setP1;
       [...st.battle,...st.shields.filter(s=>s.faceUp)].forEach(card=>{
         getCardTriggers(card).forEach(tr=>{
-          if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:pid})) return;
+          // sourcePid はターンを終えるプレイヤー。target:"self"=自分のターンの終わり /
+          // "opponent"=相手のターンの終わり / "both"=各ターンの終わり
+          if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:active})) return;
           if(tr.hyperOnly&&!card.hyperMode) return;
-          if(tr.condition&&!checkGrantCondition(tr.condition,st)) return;
+          if(tr.condition&&!checkGrantCondition(tr.condition,st,card)) return;
           setTimeout(()=>triggerEffect(tr,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);
         });
       });
@@ -728,6 +788,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     addLog(`--- ${next.toUpperCase()} のターン (T${newTurn}) ---`);
     setHandoff({from:active.toUpperCase(),to:next.toUpperCase()});
     setActive(next);setTurn(newTurn);setDrewThisTurn(false);setChargedThisTurn(false);
+    // ターンのはじめに（アンタップとフラグのリセットが済んでから発火。sourcePid はターンを始めるプレイヤー）
+    // 解決はハンドオフ画面を閉じたあと（resolverBusy に handoff が含まれるため）
+    setTimeout(()=>fireTrigger("startOfTurn",{sourcePid:next}),0);
   };
 
   return(

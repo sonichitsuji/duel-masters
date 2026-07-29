@@ -60,8 +60,8 @@ export function makeCardBg(civs) {
   return `linear-gradient(225deg, ${stops.join(', ')})`;
 }
 
-export function canPayCost(mana,card,costSource){
-  const effectiveCost=costSource?getEffectiveCost(card,costSource):card.cost;
+export function canPayCost(mana,card,costSource,opts={}){
+  const effectiveCost=costSource?getEffectiveCost(card,costSource,opts):card.cost;
   const untapped=mana.filter(c=>!c.tapped);
   if(untapped.length<effectiveCost) return {ok:false,reason:`マナ不足 (必要:${effectiveCost} / 利用可能:${untapped.length})`};
   if(effectiveCost===0) return {ok:true};
@@ -96,23 +96,45 @@ export function collectCostReduceSources(source) {
   return out;
 }
 
-// costReduce.filter の判定（gameLogic 内で完結。engine/effects へは依存しない）
 // カードのフィルタ判定（gameLogic 内で完結。engine/effects の matchFilter と同じ語彙のうち、
 // ctx(変数参照)を必要としないものだけを扱う）
+// civ / raceContains / nameContains / keyword / type は配列で書くと「いずれか」(OR) になる
+const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
+
+// ツインパクトは「クリーチャーであり呪文でもある」。どちらの特性も参照できるので、
+// 「墓地からクリーチャーを手札に戻す」でも「墓地から呪文を唱える」でも対象になる。
+// ただしプレイ中はどちらの面かが確定するので、その時は card.side("creature"/"spell") を見る。
+// （バトルゾーンのツインパクトも side を持たないため type:"spell" に一致するが、
+//   バトルゾーンの呪文を探す効果は存在しないため実害はない）
+function isCreatureSide(card) {
+  if (card.side) return card.side === "creature";
+  return card.type === "creature" || card.type === "evo_creature" || card.type === "twinpact";
+}
+function isSpellSide(card) {
+  if (card.side) return card.side === "spell";
+  return card.type === "spell" || card.type === "twinpact";
+}
+function matchesType(card, t) {
+  if (t === "creature") return isCreatureSide(card);
+  if (t === "nonCreature") return !isCreatureSide(card);
+  if (t === "nonEvoCreature") return card.side ? card.side === "creature"
+                                               : (card.type === "creature" || card.type === "twinpact");
+  if (t === "element") return isElement(card);
+  if (t === "spell") return isSpellSide(card);
+  return card.type === t;
+}
+
 export function matchCardFilter(card, filter) {
   if (!filter) return true;
-  if (filter.raceContains && !card.race?.includes(filter.raceContains)) return false;
-  if (filter.nameContains && !card.name?.includes(filter.nameContains)) return false;
-  if (filter.civ && !getCardCivs(card).includes(filter.civ)) return false;
-  if (filter.keyword && !hasKeyword(card, filter.keyword)) return false;
+  // side: ツインパクトのどちらの面としてプレイしているか（"creature" / "spell"）
+  if (filter.side && card.side !== filter.side) return false;
+  if (filter.raceContains && !anyOf(filter.raceContains, x => !!card.race?.includes(x))) return false;
+  if (filter.nameContains && !anyOf(filter.nameContains, x => !!card.name?.includes(x))) return false;
+  if (filter.civ && !anyOf(filter.civ, x => getCardCivs(card).includes(x))) return false;
+  if (filter.keyword && !anyOf(filter.keyword, x => hasKeyword(card, x))) return false;
   if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
-  if (filter.creatureOnly && !(card.type === "creature" || card.type === "evo_creature")) return false;
-  if (filter.type) {
-    if (filter.type === "creature") { if (!(card.type === "creature" || card.type === "evo_creature")) return false; }
-    else if (filter.type === "nonCreature") { if (card.type === "creature" || card.type === "evo_creature") return false; }
-    else if (filter.type === "element") { if (!isElement(card)) return false; }
-    else if (card.type !== filter.type) return false;
-  }
+  if (filter.creatureOnly && !isCreatureSide(card)) return false;
+  if (filter.type && !anyOf(filter.type, t => matchesType(card, t))) return false;
   if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
   if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
   return true;
@@ -127,9 +149,17 @@ export function countCardsInZone(state, spec) {
   return list.filter(c => matchCardFilter(c, spec.filter)).length;
 }
 
+// amountPer の分母。zone:"evolutionBase" は「今回の召喚で実際に重ねる進化元の数」を参照するので、
+// ゾーンではなく opts から取る（プレイ時にしか決まらない値）。
+function amountPerCount(ownerState, spec, opts) {
+  if (spec?.zone === "evolutionBase") return opts?.evolutionBaseCount || 0;
+  return countCardsInZone(ownerState, spec);
+}
+
 // card をプレイする際の実効コスト。
 // source: プレイヤー状態（複数ゾーンの軽減元を見る）／配列（旧: バトルゾーンのみ）
-export function getEffectiveCost(card, source) {
+// opts.evolutionBaseCount: 今回の召喚で重ねる進化元の枚数（進化元を選ぶ前は最大値を渡す）
+export function getEffectiveCost(card, source, opts = {}) {
   const sources = collectCostReduceSources(source);
   if (sources.length === 0) return card.cost;
   const ownerState = Array.isArray(source) ? null : source;
@@ -142,7 +172,7 @@ export function getEffectiveCost(card, source) {
     if (filter?.self && c.uid !== card.uid) continue;
     if (!costReduceMatches(card, filter)) continue;
     // amountPer: 「〜1枚につき1少なくする」のような可変軽減
-    const n = amountPer ? countCardsInZone(ownerState, amountPer) : (amount || 0);
+    const n = amountPer ? amountPerCount(ownerState, amountPer, opts) : (amount || 0);
     cost = Math.max(min ?? 0, cost - n);
   }
   // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）
@@ -163,8 +193,17 @@ export function extractFromBattle(battle, uid) {
   return extractManyFromBattle(battle, [uid]);
 }
 
-// 「エレメント」= クリーチャー(進化含む)またはタマシード
-export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed"; }
+// S・トリガーとして唱えられる面を返す（無ければ null）。
+// ツインパクトは呪文面だけが「S・トリガー」を持つことがあるので、その場合は呪文面を返す。
+export function sTriggerSide(card) {
+  if (!card) return null;
+  if (hasKeyword(card, "sTrigger")) return card;
+  if (card.spellSide?.keywords?.includes("sTrigger")) return { ...card, ...card.spellSide, uid: card.uid };
+  return null;
+}
+
+// 「エレメント」= クリーチャー(進化・ツインパクトのクリーチャー面を含む)またはタマシード
+export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed" || (card.type === "twinpact" && card.side !== "spell"); }
 
 // ===========================
 // 超魂X (SSX / Super Soul Cross)
@@ -229,6 +268,25 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
 }
 
 // ===========================
+// 敗北の置換（「〜でゲームに負ける時、かわりに勝つ」）
+// 能力フィールドなので ssx にも書ける。バトルゾーン＋表向きシールドで有効。
+//   replaceLose: [{ from: "deckOut", to: "win", label }]
+// 置換は必ず例外処理で中止できる形で提示すること（BattleScreen の ReplacementModal）。
+// ===========================
+export const LOSE_CAUSES = ["deckOut"];
+
+export function findLoseReplacement(ownerState, cause) {
+  if (!ownerState) return null;
+  const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    for (const rule of effectiveCard(c).replaceLose || []) {
+      if ((rule.from || "deckOut") === cause) return { card: c, rule };
+    }
+  }
+  return null;
+}
+
+// ===========================
 // 進化（進化元のゾーンと枚数）
 // 通常の進化はバトルゾーンのクリーチャー1体を進化元にするが、墓地進化 / マナ進化 /
 // 墓地進化GV(3体) / 超無限墓地進化(1体以上) のように、ゾーンと枚数が変わるものがある。
@@ -273,6 +331,17 @@ export function canEvolve(card, ownerState) {
   const spec = evolutionSpec(card);
   if (!spec) return true;
   return evolutionCandidates(card, ownerState).length >= evolutionNeeded(spec);
+}
+
+// 今このカードを進化させるとき、重ねられる進化元の最大枚数。
+// count 指定はちょうどその枚数（足りなければ進化自体できないので0）、min 指定は候補すべて。
+// 「進化元1体につきコスト-1」の軽減を、進化元を選ぶ前に見積もるのに使う。
+export function maxEvolutionBases(card, ownerState) {
+  const spec = evolutionSpec(card);
+  if (!spec) return 0;
+  const n = evolutionCandidates(card, ownerState).length;
+  if (spec.min != null) return n >= spec.min ? n : 0;
+  return n >= spec.count ? spec.count : 0;
 }
 
 // ===========================

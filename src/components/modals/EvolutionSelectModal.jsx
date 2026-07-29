@@ -1,17 +1,19 @@
 import { useState } from "react";
 import { CIV } from "../../constants";
-import { getCardCivs, evolutionLabel, evolutionNeeded } from "../../gameLogic";
+import { getCardCivs, evolutionLabel, evolutionNeeded, getEffectiveCost } from "../../gameLogic";
 import { CardFace } from "../CardFace";
 
 const ZONE_LABEL = { bz:"バトルゾーン", grave:"墓地", mana:"マナゾーン" };
 
-// 進化元の条件を人が読める形に
+// 進化元の条件を人が読める形に。配列は「または」でつなぐ
+const orList = (v, fmt = x => x) => (Array.isArray(v) ? v.map(fmt).join("または") : fmt(v));
+
 function describeFilter(filter) {
   if (!filter) return "クリーチャー";
   const parts = [];
-  if (filter.civ) parts.push(`${CIV[filter.civ]?.label ?? filter.civ}文明`);
-  if (filter.raceContains) parts.push(filter.raceContains);
-  if (filter.nameContains) parts.push(`名前に「${filter.nameContains}」`);
+  if (filter.civ) parts.push(`${orList(filter.civ, x => CIV[x]?.label ?? x)}文明`);
+  if (filter.raceContains) parts.push(orList(filter.raceContains));
+  if (filter.nameContains) parts.push(`名前に「${orList(filter.nameContains)}」`);
   if (filter.maxCost != null) parts.push(`コスト${filter.maxCost}以下`);
   parts.push("クリーチャー");
   return parts.join("の");
@@ -21,13 +23,17 @@ function describeFilter(filter) {
 // EVOLUTION SELECT MODAL
 // 進化元を選ぶ。選んだ順がそのまま重ねる順になる（バトルゾーンに出た後は変更できない）。
 // ===========================
-export function EvolutionSelectModal({ candidates, card, spec, onConfirm, onCancel }) {
+export function EvolutionSelectModal({ candidates, card, spec, ownerState, onConfirm, onCancel }) {
   const [picked, setPicked] = useState([]); // uid[] 選択順
   const civs = getCardCivs(card);
   const c = CIV[civs[0]] || CIV.fire;
   const need = evolutionNeeded(spec);
   const exact = spec?.min == null;                       // count 指定なら「ちょうど need 枚」
   const canConfirm = exact ? picked.length === need : picked.length >= need;
+  // 「進化元1体につきコスト-1」等、重ねる枚数でコストが変わるカードがあるので選択中のコストを出す
+  const costNow = ownerState ? getEffectiveCost(card, ownerState, { evolutionBaseCount: picked.length }) : null;
+  const costVaries = ownerState && getEffectiveCost(card, ownerState, { evolutionBaseCount: 0 })
+                                !== getEffectiveCost(card, ownerState, { evolutionBaseCount: candidates.length });
 
   const toggle = uid => setPicked(p => {
     if (p.includes(uid)) return p.filter(u => u !== uid);       // 解除すると以降の番号は詰まる
@@ -49,6 +55,11 @@ export function EvolutionSelectModal({ candidates, card, spec, onConfirm, onCanc
             {need > 1 && <span style={{ color:"#ffcc66" }}>／選んだ順に下から重なります</span>}
             {spec?.zone === "mana" && <span style={{ color:"#4a8" }}>／タップ済みでも選べます</span>}
           </div>
+          {costVaries && (
+            <div style={{ fontSize:11, color:"#ffcc66", marginTop:4 }}>
+              重ねる枚数でコストが変わります — 現在のコスト <b style={{ fontSize:14 }}>{costNow}</b>
+            </div>
+          )}
         </div>
 
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", overflowY:"auto", alignContent:"flex-start", minHeight:80 }}>

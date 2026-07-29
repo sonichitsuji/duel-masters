@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer"]);
-const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","endOfTurn"]);
+const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
 const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
@@ -35,7 +35,9 @@ const EFFECT_TYPES = new Set([
   // バトルゾーンから
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
-  "graveToBz","graveToHand","shieldToHand","shieldToGrave","breakShield",
+  "graveToBz","graveToHand","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
+  // 山札操作
+  "shuffleDeck",
   // 進化元を動かすコスト / 特殊勝利
   "meteorBurn","winGame",
   // 召喚元ゾーンの拡張
@@ -56,7 +58,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","replaceLose","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -64,10 +66,13 @@ const SUMMON_ZONES = new Set(["grave","mana"]);
 const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
 // 「〜1枚につき」の数え上げ対象ゾーン（countCardsInZone / count ステップ）
 const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
+// costReduce.amountPer 専用。「今回の召喚で重ねる進化元の枚数」を数える
+const AMOUNT_PER_ZONES = new Set([...COUNT_ZONES, "evolutionBase"]);
 const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
 const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
+const LOSE_CAUSES = new Set(["deckOut"]);
 
 const errors = [];
 const warnings = [];
@@ -84,6 +89,7 @@ function checkOne(e, where) {
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
   if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
+  if (e.order && !["shuffle", "choose"].includes(e.order)) errors.push(`${where}: order は "shuffle" か "choose"`);
   if (e.type === "meteorBurn") {
     if (e.to && !METEOR_BURN_TO.has(e.to)) errors.push(`${where}: meteorBurn の to は ${[...METEOR_BURN_TO].join("/")}`);
     if (e.count != null && typeof e.count !== "number") errors.push(`${where}: meteorBurn の count は数値`);
@@ -140,6 +146,10 @@ function checkTrigger(tr, where) {
   if (tr.method && !["summon","put"].includes(tr.method)) errors.push(`${where}(${tr.on}): 未知のmethod "${tr.method}"`);
   if (tr.effect) errors.push(`${where}(${tr.on}): 旧記法 effect（effects へ）`);
   if (tr.oncePerTurn != null && typeof tr.oncePerTurn !== "boolean") errors.push(`${where}(${tr.on}): oncePerTurn は真偽値`);
+  if (tr.lastCard != null) {
+    if (typeof tr.lastCard !== "boolean") errors.push(`${where}(${tr.on}): lastCard は真偽値`);
+    if (tr.on !== "draw") errors.push(`${where}(${tr.on}): lastCard は on:"draw" でのみ使えます`);
+  }
   if (tr.oncePerGame != null && typeof tr.oncePerGame !== "boolean") errors.push(`${where}(${tr.on}): oncePerGame は真偽値`);
   checkCondition(tr.condition, `${where}(${tr.on})`);
   checkEffect(tr, `${where}(${tr.on})`);
@@ -169,6 +179,14 @@ function checkAbilityFields(obj, where) {
   for (const tr of obj.triggers || []) checkTrigger(tr, where);
   if (obj.activated) checkActivated(obj.activated, where);
   if (obj.summonFrom) checkSummonFrom(obj.summonFrom, where);
+  if (obj.replaceLose) {
+    if (!Array.isArray(obj.replaceLose)) errors.push(`${where}.replaceLose: 配列である必要があります`);
+    else obj.replaceLose.forEach((r, i) => {
+      const w = `${where}.replaceLose[${i}]`;
+      if (r.from != null && !LOSE_CAUSES.has(r.from)) errors.push(`${w}: 未知の from "${r.from}"（${[...LOSE_CAUSES].join("/")}）`);
+      if (r.to != null && r.to !== "win") errors.push(`${w}: to は "win" のみ`);
+    });
+  }
   if (obj.powerAttacker != null && typeof obj.powerAttacker !== "number") errors.push(`${where}: powerAttacker は数値`);
   if (obj.poweredBreaker != null && typeof obj.poweredBreaker !== "boolean") errors.push(`${where}: poweredBreaker は真偽値`);
   for (const cp of obj.condPower || []) {
@@ -184,7 +202,7 @@ function checkAbilityFields(obj, where) {
     for (const z of cr.zones || []) if (!COST_REDUCE_ZONES.has(z)) errors.push(`${where}.costReduce: 未知のzone "${z}"`);
     if (cr.amount == null && cr.amountPer == null) errors.push(`${where}.costReduce: amount か amountPer が必要です`);
     if (cr.amount != null && typeof cr.amount !== "number") errors.push(`${where}.costReduce: amount は数値`);
-    if (cr.amountPer && !COUNT_ZONES.has(cr.amountPer.zone)) errors.push(`${where}.costReduce.amountPer: 未知のzone "${cr.amountPer.zone}"`);
+    if (cr.amountPer && !AMOUNT_PER_ZONES.has(cr.amountPer.zone)) errors.push(`${where}.costReduce.amountPer: 未知のzone "${cr.amountPer.zone}"`);
     checkCondition(cr.condition, `${where}.costReduce`);
   }
 }

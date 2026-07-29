@@ -35,6 +35,12 @@
   "templates":[ { "label":"…", "effects":[ … ] } ] }
 ```
 
+> **`autoEffect` と `triggers` の違い**
+> `autoEffect` は**そのカード自身をプレイした時**の効果（`trigger` は `play` / `cast` の2つだけ）。
+> `triggers` は**汎用のイベント誘発**で、`on` で契機を選び `target` で誰のイベントかを指定します（§7）。
+> クリーチャーの「出た時」は `autoEffect{trigger:"play"}` でも
+> `triggers:[{on:"creaturePutBz"}]` でも書けます。**どちらも、効果でバトルゾーンに出された場合にも誘発します。**
+
 ### 共通パラメータ（effects の各要素）
 | パラメータ | 説明 |
 |---|---|
@@ -43,13 +49,54 @@
 | `target` | **`"self"` / `"opponent"` / `"both"`**（どちらも） |
 | `amount` | 数値、**または変数名の文字列**（例 `"count"`）。選択枚数の上限にもなる |
 | `filter` | 対象条件（下記） |
-| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `revealed` `lastMoved`） |
+| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `revealed` `lastMoved` `under` `stack`） |
 | `all` | 条件一致すべてに適用（選択不要） |
 | `ifPrevious` | **「そうしたら」「そうした場合」**。直前のステップを実際に行わなかった場合、このステップ以降を実行しない → **§3.5** |
 
-**filter**: `civ` `civNot` `raceContains` `nameContains` `keyword` `type`(`creature`/`nonCreature`/`spell`/`tamaseed`…)
+> `under` = **このクリーチャーの下にあるカード**（メテオバーン用）、
+> `stack` = **このクリーチャーに含まれるカード**（自身＋下に敷かれたカード）。
+> どちらも「いまバトルゾーンにいる能力の持ち主」を見るので、離れていれば空になります。
+
+**filter**: `side`(ツインパクトの面) `civ` `civNot` `raceContains` `nameContains` `keyword`
+`type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
 `element`(クリーチャー/タマシード) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `notNameSelf`
 ※ `maxCost` 等にも**変数名の文字列**を書けます。
+
+**「〜または〜」は配列で書きます**（`civ` `civNot` `raceContains` `nameContains` `keyword` `type` が対応）。
+
+```jsonc
+{ "civ": ["water", "darkness"] }                  // 水または闇
+{ "raceContains": ["ドラゴン", "コマンド"] }        // ドラゴンまたはコマンド
+{ "type": ["spell", "tamaseed"] }                 // 呪文またはタマシード
+{ "keyword": ["blocker", "slayer"] }              // ブロッカーまたはスレイヤーを持つ
+{ "civNot": ["light", "fire"] }                   // 光でも火でもない
+{ "civ": ["water", "darkness"], "maxCost": 5 }    // 「水または闇」かつ「コスト5以下」
+```
+
+**同じキーの中は OR、違うキーどうしは AND** です。多色カードは持っている文明のどれかが
+一致すれば `civ` に該当します（例: 水/火の多色は `{"civ":["water","darkness"]}` に該当）。
+
+### ツインパクトの面（`side`）
+
+ツインパクトは**クリーチャーであり呪文でもある**ので、`type:"creature"` にも `type:"spell"` にも
+一致します（`type:"twinpact"` にも一致）。
+
+```jsonc
+{ "type": "creature" }   // 「墓地からクリーチャーを手札に戻す」→ ツインパクトも対象（クリーチャー面）
+{ "type": "spell" }      // 「墓地から呪文を唱える」→ ツインパクトも対象（呪文面）
+```
+
+ただし**プレイ中はどちらの面かが確定する**ので、そのカードには `side`（`"creature"` / `"spell"`）が
+付き、`type` もその面で判定されます。「この**クリーチャーの召喚**コストを〜」のように
+面を区別したい時は `filter.side` を使います。
+
+```jsonc
+// このクリーチャーの召喚コストを軽減（呪文面を唱える時には効かない）
+"costReduce": { "amountPer": {…}, "filter": { "self": true, "side": "creature" },
+                "zones": ["hand"], "min": 1 }
+```
+
+シビルカウントや `element` の数え上げにもツインパクトのクリーチャー面が含まれます。
 
 ---
 
@@ -122,6 +169,7 @@
 - `reveal {amount}` — 山札の上を公開（以降 `revealed*` の対象になる）
 - `search {destination,amount,takeAll,filter}` — 山札から探す。`destination`: `hand`/`deckTop`/`bz`/`mana`（実行後シャッフル）
 - `topToGrave {amount}` / `topToMana {amount,tapped}` / `topToShield {amount}` — 山札の上を各ゾーンへ
+- `shuffleDeck {target}` — 山札をシャッフルする（`target` で自分/相手/おたがい）
 
 **公開カードの行き先**
 - `revealedToHand` / `revealedToBz` / `revealedToMana` / `revealedToGrave` / `revealedToDeckTop` / `revealedToDeckBottom`
@@ -136,7 +184,7 @@
 **マナから**：`manaToBz {filter}` / `manaToHand {amount}`
 
 **バトルゾーンから**
-- `destroy {target,filter,amount,all}` — 破壊
+- `destroy {target,filter,amount,all,self}` — 破壊。**`self:true` で「このクリーチャーを破壊する」**（選択不要・自分を対象）
 - `bzToHand` / `bzToMana` / `bzToShield`（`target,filter,amount,all`）
 - `tap` / `untap` / `tapToggle`（`target,zone,filter,all,noUntapNextTurn`）
 - `untapAllMana` — 自分のマナを全アンタップ
@@ -155,6 +203,18 @@
 - `graveToBz {filter,owner,self,tempKeywords,destroyAtEndOfTurn,summoningSickness}` — 墓地から出す
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
 - `graveToHand {target,filter,amount}` — 墓地から手札に戻す
+- `graveToDeckBottom {target,filter,amount,all,order}` — 墓地から山札の下へ
+  - `order: "shuffle"`（既定）… シャッフルしてから置く。`all:true` か `amount` 省略で墓地すべてが対象
+  - `order: "choose"` … **好きな順序で**置く。選んだ順に上から積まれ、全部選ぶまで確定できない
+    （`amount` を書けばその枚数だけ選ぶ）
+  ```jsonc
+  // 自分の墓地をシャッフルして山札の下に置く
+  { "type": "graveToDeckBottom", "all": true }
+  // 自分の墓地のカードを好きな順序で山札の下に置く
+  { "type": "graveToDeckBottom", "order": "choose" }
+  // 自分の墓地から2枚選び、好きな順序で山札の下に置く
+  { "type": "graveToDeckBottom", "amount": 2, "order": "choose" }
+  ```
 - `shieldToHand {target}` / `shieldToGrave {target}` / `breakShield {target}`
 
 **進化元を動かすコスト**
@@ -169,6 +229,14 @@
 
 **遅延**
 - `scheduleReviveSubjectEndOfTurn` — 「そのクリーチャー」をターン終了時に墓地から出す
+
+### 効果でバトルゾーンに出したクリーチャーの召喚酔い
+
+`handToBz` / `manaToBz` / `graveToBz` / `revealedToBz` / `search{destination:"bz"}` で出したクリーチャーは、
+**既定で召喚酔いします**（そのターンは攻撃できない）。DMの通常ルールどおりです。
+
+「出したターンから攻撃できる」と書かれたカードだけ **`"summoningSickness": false`** を付けてください。
+スピードアタッカー持ちは攻撃可否の判定側で除外されるので、この指定は不要です。
 
 ---
 
@@ -204,10 +272,11 @@
 | `leave` | カードが離れた時 |
 | `destroyed` | 破壊された時 |
 | `battleDestroy` | バトルで破壊された時 |
-| `draw` | カードを引いた時 |
+| `draw` | カードを引いた時。`"lastCard": true` で「**それが最後の1枚だったら**」（引いた結果、山札が0枚になった時）に限定できる |
 | `discard` | 手札を捨てた時 |
 | `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時 |
-| `endOfTurn` | 各ターンの終わり |
+| `startOfTurn` | ターンのはじめ（アンタップ後・ドロー前）。`target` で**誰のターンか**を指定（`self`=自分のターン(既定) / `opponent`=相手のターン / `both`=各ターン） |
+| `endOfTurn` | ターンの終わり。`target` で**誰のターンか**を指定（`self`=自分のターン(既定) / `opponent`=相手のターン / `both`=各ターン） |
 
 ### `target`（誰のイベントに反応するか）
 | 値 | 意味 |
@@ -218,7 +287,12 @@
 | `both` | どちらでも |
 
 **既定値**：カード自身のイベント（`creaturePutBz` `leave` `destroyed` `battleDestroy` `attack`）は **`this`**、
-プレイヤーのイベント（`castSpell` `draw` `discard` `shieldAdded` `shieldLeave` `endOfTurn`）は **`self`**。
+プレイヤーのイベント（`castSpell` `draw` `discard` `shieldAdded` `shieldLeave` `startOfTurn` `endOfTurn`）は **`self`**。
+`startOfTurn` / `endOfTurn` の `self` は「**自分のターンの**はじめ／終わりに」。
+「各ターンの〜」は `"target":"both"` を明示します。
+
+> `startOfTurn` はターン交代時に発火するため、**ゲーム最初のターン（先攻1ターン目）では発火しません**
+> （そのタイミングではまだバトルゾーンにカードがないので実害はありません）。
 
 ```jsonc
 {"on":"leave"}                      // このクリーチャーが離れた時
@@ -237,6 +311,7 @@
 | `hyperOnly` | ハイパーモード時のみ発火 |
 | `oncePerTurn` | 「各ターンに一度」。実際に解決した時だけ消費（辞退しても消費しない） |
 | `oncePerGame` | 「ゲーム中に一度」（終極宣言など） |
+| `lastCard` | `on:"draw"` 専用。引いた結果、山札が0枚になった時だけ誘発 |
 | `condition` | `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"shieldAddedThisTurn"}` |
 
 ```jsonc
@@ -428,12 +503,37 @@
   メテオバーンはコストなので、後続に `ifPrevious`(§3.5) を書かなくても常にこうなります。
   革命チェンジ等でそのクリーチャーが居なくなっていれば**不発**です。
 
+## 7.10. 敗北の置換（`replaceLose`）
+
+「〜でゲームに負ける時、かわりに勝つ」を表現します。能力フィールドなので `ssx` にも書けます。
+有効なゾーンは**バトルゾーン＋表向きのシールド**です。
+
+```jsonc
+"replaceLose": [
+  { "from": "deckOut", "to": "win",
+    "label": "自分の山札の最後の1枚を引いたことによってゲームに負ける時、かわりに勝つ" }
+]
+```
+
+| フィールド | 説明 |
+|---|---|
+| `from` | 置換する敗北の原因。現状 `"deckOut"`（ライブラリアウト＝山札が0枚になった）のみ |
+| `to` | `"win"`（EXWIN として勝利） |
+
+置換効果なので、**必ず「例外処理で中止（通常どおり敗北）」を選べるモーダル**が出ます。
+勝利画面は **EXTRA WIN!** 表示になります。
+
+> **ライブラリアウト（LO）は「山札が0枚になった瞬間」に成立します**（引こうとした時ではありません）。
+> ドローに限らず、山札が減るあらゆる操作（`topToGrave` / `topToMana` / `search` など）の直後に判定されます。
+> 状態起因処理なので、同時に誘発した能力より**先に**解決されます。
+
 ---
 
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
 - `summonFrom`: 墓地・マナからの召喚許可 → **§7.7**
+- `replaceLose`: `[{from,to,label}]` — 敗北の置換 → **§7.10**
 - `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `notSelf,raceContains,multiColor,nameContains,elementOnly`）
 - `grantPowerBoost` / `grantPowerBoostGrave` / `selfPowerBoostGrave` / `condPower:[{condition,amount}]`
 - `powerAttacker`: `N` — パワーアタッカー+N（**攻撃中のみ**パワー+N）
@@ -448,6 +548,7 @@
     `type`(`creature`/`nonCreature`/`element`/`spell`…)、
     **`self:true`** =「このクリーチャーの召喚コストを〜」（軽減元自身にだけ効く）
   - `amountPer`: `{zone,filter}` — 「〜1枚につき1少なくする」の可変軽減（`amount` の代わりに書く）
+    - `zone` には通常のゾーンのほか **`"evolutionBase"`**（**今回の召喚で実際に重ねる進化元の枚数**）を指定できる
   - `min`: 下限コスト。複数の軽減は重ねがけされる
   ```jsonc
   // バトルゾーンにいる間、自分のドラゴンのコストを2軽減（最低1）
@@ -457,7 +558,13 @@
   // このクリーチャー自身の召喚コストを、自分の墓地のクリーチャー1体につき1軽減
   "costReduce": { "amountPer":{"zone":"grave","filter":{"creatureOnly":true}},
                   "filter":{"self":true}, "zones":["hand"], "min":1 }
+  // このクリーチャー自身の召喚コストを、進化元クリーチャー1体につき1軽減（超無限進化など）
+  "costReduce": { "amountPer":{"zone":"evolutionBase"},
+                  "filter":{"self":true}, "zones":["hand"], "min":1 }
   ```
+  > `zone:"evolutionBase"` は**進化元を選んだ後**でないと確定しません。UI は
+  > 「PLAYできるか」の判定を**重ねられる最大枚数**（＝最も軽くなるケース）で行い、
+  > 進化元選択モーダルに現在のコストを表示し、マナ支払い画面で実際の枚数のコストに確定します。
   > **`min` の読み方**: カードに「コストは**0以下**にはならない」とあれば **0にならない** ので `min:1`、
   > 「**1以下**にならない」なら `min:2` です。実際の下限はさらに文明数で抑えられます
   > （2色カードは最低2）。
@@ -467,6 +574,9 @@
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
 - `zRush` `cantAttackPlayer` `faceUpLeaveTo:"grave"` `reactivePassive` `endOfTurnEffect` `staticDeny:{type:"cantPutCreature"}`
 - `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,autoEffect}`
+  - **呪文面が `sTrigger` を持つ場合**、シールドをブレイクされた時にその呪文面が唱えられます
+    （カード表示の ST バッジにも出ます）。クリーチャー面の能力は `triggers` 側に書きます。
+  - プレイ中は `side`（`"creature"`/`"spell"`）で面を区別できます → **§2 の filter**
 
 ---
 
