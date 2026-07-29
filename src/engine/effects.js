@@ -25,17 +25,24 @@ export function resolveAmount(ctx, val, fallback = 1) {
 // 例: "civ": ["water", "darkness"] = 水または闇
 const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
 
-// type の判定。"creature" は進化クリーチャーも含み、"nonEvoCreature" は含まない
+// type の判定。"creature" は進化クリーチャーも含み、"nonEvoCreature" は含まない。
+// ツインパクトをプレイ中の card には side("creature"/"spell") が付くので、その面で判定する。
+function isCreatureSide(card) {
+  return card.side ? card.side === "creature" : (card.type === "creature" || card.type === "evo_creature");
+}
 function matchesType(card, t) {
-  if (t === "creature") return card.type === "creature" || card.type === "evo_creature";
-  if (t === "nonCreature") return !(card.type === "creature" || card.type === "evo_creature");
-  if (t === "nonEvoCreature") return card.type === "creature";
+  if (t === "creature") return isCreatureSide(card);
+  if (t === "nonCreature") return !isCreatureSide(card);
+  if (t === "nonEvoCreature") return card.side ? card.side === "creature" : card.type === "creature";
+  if (t === "spell") return card.side ? card.side === "spell" : card.type === "spell";
   return card.type === t;
 }
 
 export function matchFilter(card, filter, ctx) {
   if (!filter) return true;
   const f = filter;
+  // side: ツインパクトのどちらの面としてプレイしているか（"creature" / "spell"）
+  if (f.side && card.side !== f.side) return false;
   const civs = getCardCivs(card);
   if (f.civ && !anyOf(f.civ, x => civs.includes(x))) return false;
   if (f.civNot && anyOf(f.civNot, x => civs.includes(x))) return false;

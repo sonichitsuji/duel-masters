@@ -101,16 +101,24 @@ export function collectCostReduceSources(source) {
 // civ / raceContains / nameContains / keyword / type は配列で書くと「いずれか」(OR) になる
 const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
 
+// ツインパクトをプレイする時、その card には side("creature"/"spell") が付く。
+// 「このクリーチャーの召喚コスト」のように面を区別したい判定はこれを見る。
+function isCreatureSide(card) {
+  return card.side ? card.side === "creature" : (card.type === "creature" || card.type === "evo_creature");
+}
 function matchesType(card, t) {
-  if (t === "creature") return card.type === "creature" || card.type === "evo_creature";
-  if (t === "nonCreature") return !(card.type === "creature" || card.type === "evo_creature");
-  if (t === "nonEvoCreature") return card.type === "creature";
+  if (t === "creature") return isCreatureSide(card);
+  if (t === "nonCreature") return !isCreatureSide(card);
+  if (t === "nonEvoCreature") return card.side ? card.side === "creature" : card.type === "creature";
   if (t === "element") return isElement(card);
+  if (t === "spell") return card.side ? card.side === "spell" : card.type === "spell";
   return card.type === t;
 }
 
 export function matchCardFilter(card, filter) {
   if (!filter) return true;
+  // side: ツインパクトのどちらの面としてプレイしているか（"creature" / "spell"）
+  if (filter.side && card.side !== filter.side) return false;
   if (filter.raceContains && !anyOf(filter.raceContains, x => !!card.race?.includes(x))) return false;
   if (filter.nameContains && !anyOf(filter.nameContains, x => !!card.name?.includes(x))) return false;
   if (filter.civ && !anyOf(filter.civ, x => getCardCivs(card).includes(x))) return false;

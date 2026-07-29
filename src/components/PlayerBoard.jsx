@@ -36,7 +36,9 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const civCheck=selectedCard?(()=>{
     const o=costOptsFor(selectedCard);
     return selectedCard.type==="twinpact"
-      ?(canPayCost(state.mana,selectedCard,state,o).ok||canPayCost(state.mana,{...selectedCard,...selectedCard.spellSide},state,o).ok?{ok:true}:canPayCost(state.mana,selectedCard,state,o))
+      ?(canPayCost(state.mana,{ ...selectedCard, side: "creature" },state,o).ok
+        ||canPayCost(state.mana,{ ...selectedCard, ...selectedCard.spellSide, side: "spell" },state,o).ok
+          ?{ok:true}:canPayCost(state.mana,{ ...selectedCard, side: "creature" },state,o))
       :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state,o).ok)
         ?{ok:true}
         :canPayCost(state.mana,selectedCard,state,o);
@@ -179,8 +181,8 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       {twinPactModal&&(
         <TwinPactChoiceModal
           card={twinPactModal.card}
-          onSelectCreature={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card,twinpactSide:"creature"});}}
-          onSelectSpell={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card:{...card,...card.spellSide,uid:card.uid,grantKeywords:card.grantKeywords},twinpactSide:"spell"});}}
+          onSelectCreature={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card:{ ...card, side: "creature" },twinpactSide:"creature"});}}
+          onSelectSpell={()=>{const{handIdx,card}=twinPactModal;setTwinPactModal(null);setManaPayModal({handIdx,card:{ ...card, ...card.spellSide, uid: card.uid, grantKeywords: card.grantKeywords, side: "spell" },twinpactSide:"spell"});}}
           onCancel={()=>setTwinPactModal(null)}
         />
       )}

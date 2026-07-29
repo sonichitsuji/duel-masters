@@ -3099,7 +3099,8 @@
         }
       },
       "filter": {
-        "self": true
+        "self": true,
+        "side": "creature"
       },
       "zones": [
         "hand"

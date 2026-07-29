@@ -57,7 +57,7 @@
 > `stack` = **このクリーチャーに含まれるカード**（自身＋下に敷かれたカード）。
 > どちらも「いまバトルゾーンにいる能力の持ち主」を見るので、離れていれば空になります。
 
-**filter**: `civ` `civNot` `raceContains` `nameContains` `keyword`
+**filter**: `side`(ツインパクトの面) `civ` `civNot` `raceContains` `nameContains` `keyword`
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
 `element`(クリーチャー/タマシード) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `notNameSelf`
 ※ `maxCost` 等にも**変数名の文字列**を書けます。
@@ -75,6 +75,21 @@
 
 **同じキーの中は OR、違うキーどうしは AND** です。多色カードは持っている文明のどれかが
 一致すれば `civ` に該当します（例: 水/火の多色は `{"civ":["water","darkness"]}` に該当）。
+
+### ツインパクトの面（`side`）
+
+ツインパクトを**プレイする時**、そのカードには `side`（`"creature"` / `"spell"`）が付きます。
+「この**クリーチャーの召喚**コストを〜」のように面を区別したい時に使います。
+
+```jsonc
+// このクリーチャーの召喚コストを軽減（呪文面には効かない）
+"costReduce": { "amountPer": {…}, "filter": { "self": true, "side": "creature" },
+                "zones": ["hand"], "min": 1 }
+```
+
+`type` も面を見て判定します（クリーチャー面は `type:"creature"`、呪文面は `type:"spell"` に一致）。
+**プレイしていない**ツインパクト（手札・墓地にあるだけ）は `side` を持たないので、
+`type:"twinpact"` に一致し `side` フィルタには掛かりません。
 
 ---
 
@@ -554,6 +569,7 @@
 - `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,autoEffect}`
   - **呪文面が `sTrigger` を持つ場合**、シールドをブレイクされた時にその呪文面が唱えられます
     （カード表示の ST バッジにも出ます）。クリーチャー面の能力は `triggers` 側に書きます。
+  - プレイ中は `side`（`"creature"`/`"spell"`）で面を区別できます → **§2 の filter**
 
 ---
 
