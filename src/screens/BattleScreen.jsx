@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, sTriggerSide } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, sTriggerSide, isCreatureSide } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -223,7 +223,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
               srcCard: { ...e.card, srcCardUid: e.card.uid }, sourceName: e.card.name,
             }), 0);
           }
-          if (e.card.type === "creature" || e.card.type === "evo_creature") {
+          if (isCreatureSide(e.card)) {
             setTimeout(() => fireTriggerRef.current("creaturePutBz", { sourcePid: e.ownerPid, subjectCard: e.card, method: e.method }), 0);
           }
         });
@@ -455,14 +455,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }else if(!isSpell){
       // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
       // #3 常在型: 相手の「クリーチャーを出せない」常在型を解決に先んじて適用（枠組み・現状該当カード無し）
-      const isCre=card.type==="creature"||card.type==="evo_creature";
+      const isCre=isCreatureSide(card);
       if(isCre&&(checkStaticDeny(stateRef.current,active,"cantPutCreature",fromZone)
               ||checkStaticDeny(stateRef.current,active,"cantPutCreatureFromNonHand",fromZone))){
         addLog(`${active}: 相手の常在型能力によりクリーチャーを出せない`);setMessage("相手の常在型能力でクリーチャーを出せません");return true;
       }
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
       const isEvo=card.type==="evo_creature";
-      const isCreature=card.type==="creature"||card.type==="evo_creature";
+      // クリーチャー側でプレイされたツインパクトもクリーチャーとして扱う（召喚酔い・出た時の誘発）
+      const isCreature=isCreatureSide(card);
       // 進化元は「バトルゾーンに出た」ことにならないので、battle を経由せず evolutionBase へ直接積む。
       // 選択順がそのまま重ねる順。進化元のゾーンは bz / grave / mana のいずれか。
       let evoBase=undefined;
@@ -555,7 +556,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // ブロッカー：防御側に未タップのブロッカーがいれば、ブロック選択モーダルを表示
     const blockers=otherState.battle.filter(c=>
       !c.tapped &&
-      (c.type==="creature"||c.type==="evo_creature") &&
+      isCreatureSide(c) &&
       (hasKeyword(c,"blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
     );
     if(blockers.length>0){
