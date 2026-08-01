@@ -27,7 +27,7 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
     return true;
   });
   return(
-    <div style={{className:"fullscreen-panel",background:"#050510",zIndex:600,display:"flex",flexDirection:"column"}}>
+    <div className="fullscreen-panel" style={{background:"#050510",zIndex:600,display:"flex",flexDirection:"column"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}`}</style>
       {/* Header */}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520)",borderBottom:"1px solid #2a1a4a",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>

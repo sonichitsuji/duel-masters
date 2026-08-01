@@ -17,7 +17,7 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onClose }) 
   const summonable = entries.filter(e => e.perm);
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"linear-gradient(160deg,#0b0b1a,#08080f)", border:`2px solid ${meta.color}`, borderRadius:14, padding:20, maxWidth:640, width:"100%", boxShadow:`0 0 30px ${meta.color}55`, maxHeight:"88vh", display:"flex", flexDirection:"column", gap:10 }}>
+      <div style={{ background:"linear-gradient(160deg,#0b0b1a,#08080f)", border:`2px solid ${meta.color}`, borderRadius:14, padding:20, maxWidth:640, width:"100%", boxShadow:`0 0 30px ${meta.color}55`, maxHeight:"calc(88vh / var(--ui-scale))", display:"flex", flexDirection:"column", gap:10 }}>
         <div>
           <div style={{ fontFamily:"'Cinzel',serif", color:meta.color, fontSize:14, fontWeight:900, letterSpacing:1 }}>{meta.label} ({entries.length})</div>
           {summonable.length > 0 && (

@@ -96,7 +96,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"#020208",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{minHeight:"calc(100vh / var(--ui-scale))",background:"#020208",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel+Decorative:wght@700;900&family=Rajdhani:wght@500;600;700&display=swap');
         *{box-sizing:border-box;}

@@ -23,11 +23,11 @@ export function CardManager({cardDb,setCardDb,onClose}){
   };
 
   return(
-    <div style={{className:"fullscreen-panel",background:"#050510",zIndex:600,display:"flex",flexDirection:"column"}}>
+    <div className="fullscreen-panel" style={{background:"#050510",zIndex:600,display:"flex",flexDirection:"column"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}`}</style>
       {editing&&<CardEditor card={editing==="new"?null:editing} onSave={handleSave} onCancel={()=>setEditing(null)}/>}
       {confirmDelete&&(
-        <div style={{className:"fullscreen-panel",background:"rgba(0,0,0,0.88)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+        <div className="fullscreen-panel" style={{background:"rgba(0,0,0,0.88)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:"#0a0a18",border:"1px solid #f8444455",borderRadius:12,padding:20,maxWidth:320,width:"100%"}}>
             <div style={{color:"#f84",fontWeight:700,fontSize:14,marginBottom:8}}>🗑 削除確認</div>
             <div style={{color:"#aaa",fontSize:12,marginBottom:16}}>「{confirmDelete.name}」を削除しますか？</div>
