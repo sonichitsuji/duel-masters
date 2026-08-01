@@ -3,16 +3,24 @@ import { getCardCivs } from "../../gameLogic";
 
 // 同時に誘発した複数の能力の解決順をプレイヤーに選ばせるモーダル。
 // リゾルバが「ターンプレイヤー優先」で抽出した群（entries）を一覧表示し、1つ選ぶ。
-function summarize(entry){
+// 解決前に「何が起きるのか」を確認できるよう、能力の中身を行単位で書き出す。
+// 現行の記法は effects 配列。steps は旧記法、type 直書きは単発効果。
+function stepLine(st){
+  if(!st) return null;
+  const label=st.label||EFFECT_TYPE_LABELS[st.type]||st.type;
+  // label が既に「〜てもよい」で終わっているなら重ねて付けない
+  return st.optional&&!/てもよい/.test(label||"") ? `${label}（してもよい）` : label;
+}
+function describe(entry){
   const eff=entry.effect||{};
-  if(eff.type==="steps"){
-    const s=(eff.steps||[]).find(x=>x.label);
-    if(s) return s.label;
-    const first=eff.steps?.[0];
-    return first?.type||"効果";
+  if(eff.type==="chooseTimes"){
+    const names=(eff.templates||[]).map(t=>t.label||t.name).filter(Boolean);
+    return [`${eff.count||1}回、次から選んで実行`, ...names.map(n=>`・${n}`)];
   }
-  if(eff.type==="chooseTimes") return `${eff.count}回選んで実行`;
-  return EFFECT_TYPE_LABELS[eff.type]||eff.type||"効果";
+  const list=eff.effects||eff.steps;
+  if(Array.isArray(list)&&list.length) return list.map(stepLine).filter(Boolean);
+  const one=stepLine(eff);
+  return one?[one]:["効果"];
 }
 
 export function TriggerOrderModal({ entries, onChoose, onDecline, onDeclineAll }) {
@@ -27,6 +35,7 @@ export function TriggerOrderModal({ entries, onChoose, onDecline, onDeclineAll }
             const civs=getCardCivs(entry.srcCard||{civ:"fire"});
             const c=CIV[civs[0]]||CIV.fire;
             const isOptional = !!entry.effect?.optional;
+            const lines = describe(entry);
             return (
               <div key={entry.id} style={{ display:"flex", gap:6, alignItems:"stretch" }}>
                 <button onClick={()=>onChoose(entry.id)} style={{ flex:1, textAlign:"left", padding:"10px 12px", borderRadius:8, border:`1px solid ${c.color}88`, background:`${c.color}14`, color:"#fff", cursor:"pointer" }}>
@@ -35,7 +44,14 @@ export function TriggerOrderModal({ entries, onChoose, onDecline, onDeclineAll }
                     <span style={{ fontWeight:700, fontSize:13 }}>{entry.srcCard?.name||entry.sourceName}</span>
                     {entry.onceLabel && <span style={{ fontSize:9, color:"#ffcc66", marginLeft:"auto" }}>{entry.onceLabel}</span>}
                   </div>
-                  <div style={{ fontSize:11, color:"#bbb" }}>{summarize(entry)}</div>
+                  <div style={{ fontSize:11, color:"#bbb", display:"flex", flexDirection:"column", gap:2 }}>
+                    {lines.map((line,i)=>(
+                      <div key={i} style={{ display:"flex", gap:5 }}>
+                        {lines.length>1 && <span style={{ color:c.textColor, flexShrink:0 }}>{i+1}.</span>}
+                        <span>{line}</span>
+                      </div>
+                    ))}
+                  </div>
                 </button>
                 {isOptional && onDecline && (
                   <button onClick={()=>onDecline(entry.id)} title="この能力を発動しない" style={{ padding:"0 10px", borderRadius:8, background:"#1a1a2a", border:"1px solid #666", color:"#ddd", cursor:"pointer", fontSize:11, whiteSpace:"nowrap" }}>

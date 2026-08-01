@@ -300,6 +300,12 @@
 `startOfTurn` / `endOfTurn` の `self` は「**自分のターンの**はじめ／終わりに」。
 「各ターンの〜」は `"target":"both"` を明示します。
 
+**有効なゾーン**：`this` は**そのカード自身に起きたこと**なので、バトルゾーンを離れた後でも誘発します
+（「破壊された時」など）。一方 `self` / `opponent` / `both` は**プレイヤーのイベントを見張る**常在的な能力なので、
+カードが**バトルゾーンか表向きのシールドにある間だけ**有効です。
+そのため、ツインパクトの呪文面を唱えても、そのカード自身のクリーチャー面の
+`{"on":"castSpell","target":"self"}` は誘発しません（唱えたカードは墓地にあるため）。
+
 > `startOfTurn` はターン交代時に発火するため、**ゲーム最初のターン（先攻1ターン目）では発火しません**
 > （そのタイミングではまだバトルゾーンにカードがないので実害はありません）。
 
@@ -583,6 +589,8 @@
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
 - `evolution`: 進化元のゾーンと枚数 → **§7.8**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
+  > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく
+  > 相手の効果の対象に選ばれた時にも**誘発します。ブレイクするのは**選んだ側**のシールドです。
 - `zRush` `cantAttackPlayer` `faceUpLeaveTo:"grave"` `reactivePassive` `endOfTurnEffect` `staticDeny:{type:"cantPutCreature"}`
 - `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,autoEffect}`
   - **呪文面が `sTrigger` を持つ場合**、シールドをブレイクされた時にその呪文面が唱えられます
