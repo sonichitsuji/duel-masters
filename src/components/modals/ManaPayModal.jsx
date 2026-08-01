@@ -42,7 +42,7 @@ export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onC
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:390, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:500, width:"100%", boxShadow:`0 0 30px ${c.glow}55`, maxHeight:"90vh", display:"flex", flexDirection:"column", gap:10 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:500, width:"100%", boxShadow:`0 0 30px ${c.glow}55`, maxHeight:"calc(90vh / var(--ui-scale))", display:"flex", flexDirection:"column", gap:10 }}>
 
         {/* Header */}
         <div>

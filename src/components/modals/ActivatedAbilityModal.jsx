@@ -9,7 +9,7 @@ import { getCardCivs } from "../../gameLogic";
 export function ActivatedAbilityModal({ entries, onUse, onClose }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:410, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:"linear-gradient(160deg,#12081e,#08080f)", border:"2px solid #c9f", borderRadius:14, padding:20, maxWidth:460, width:"100%", boxShadow:"0 0 30px #a0f55", maxHeight:"85vh", display:"flex", flexDirection:"column", gap:10 }}>
+      <div style={{ background:"linear-gradient(160deg,#12081e,#08080f)", border:"2px solid #c9f", borderRadius:14, padding:20, maxWidth:460, width:"100%", boxShadow:"0 0 30px #a0f55", maxHeight:"calc(85vh / var(--ui-scale))", display:"flex", flexDirection:"column", gap:10 }}>
         <div>
           <div style={{ fontFamily:"'Cinzel',serif", color:"#d9b3ff", fontSize:13, fontWeight:900, letterSpacing:2 }}>ACTIVATED ABILITY</div>
           <div style={{ fontSize:11, color:"#aaa", marginTop:4 }}>使う能力を選んでください。</div>

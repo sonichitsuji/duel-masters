@@ -43,7 +43,7 @@ export function EvolutionSelectModal({ candidates, card, spec, ownerState, onCon
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:395, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:520, width:"100%", boxShadow:`0 0 30px ${c.glow}55`, maxHeight:"88vh", display:"flex", flexDirection:"column", gap:8 }}>
+      <div style={{ background:`linear-gradient(160deg,${c.bg},#08080f)`, border:`2px solid ${c.color}`, borderRadius:14, padding:20, maxWidth:520, width:"100%", boxShadow:`0 0 30px ${c.glow}55`, maxHeight:"calc(88vh / var(--ui-scale))", display:"flex", flexDirection:"column", gap:8 }}>
         <div>
           <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900 }}>🔺 {evolutionLabel(spec)}</div>
           <div style={{ fontSize:11, color:"#ccc", marginTop:3 }}>
