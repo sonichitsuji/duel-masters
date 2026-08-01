@@ -49,7 +49,7 @@ JSONのみ返してください。前後の説明は不要です。`}
 
   return(
     <div className="fullscreen-panel" style={{background:"rgba(0,0,0,0.92)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{background:"#0a0a18",border:"1px solid #4af44",borderRadius:14,padding:20,maxWidth:500,width:"100%",maxHeight:"calc(90vh / var(--ui-scale))",overflowY:"auto"}}>
+      <div style={{background:"#0a0a18",border:"1px solid #4af44",borderRadius:14,padding:20,maxWidth:500,width:"100%",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{fontFamily:"'Cinzel',serif",color:"#4af",fontSize:16,fontWeight:700,marginBottom:4,letterSpacing:1}}>デッキシート読み取り</div>
         <div style={{fontSize:11,color:"#555",marginBottom:16}}>公式デッキシートの画像をアップロードしてください</div>
 
