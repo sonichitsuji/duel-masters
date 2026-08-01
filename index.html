@@ -9,6 +9,24 @@
     <link rel="manifest" href="/duel-masters/manifest.json">
     <title>Duel Masters Simulator</title>
     <style>
+      /* PC版UIの拡大。
+         このUIはスマホ向けに px 直書きで組んであるので、個々の値をいじる代わりに
+         広い画面（マウス操作のPC）だけルートの zoom でまとめて拡大する。
+         zoom は文字も余白もカードもまとめて拡大したうえでレイアウトを組み直すので、
+         transform: scale と違って文字がぼやけない。
+         ビューポート単位(vh/vw)だけは zoom で二重に拡大されてしまうため、
+         使う側で --ui-scale で割り戻す。 */
+      :root {
+        --ui-scale: 1;
+      }
+      @media (min-width: 900px) and (pointer: fine) {
+        :root {
+          --ui-scale: 1.5;
+        }
+      }
+      body {
+        zoom: var(--ui-scale);
+      }
       *, *::before, *::after {
         box-sizing: border-box;
       }
@@ -26,21 +44,21 @@
       }
       #root {
         background-color: #020208;
-        min-height: 100vh;
+        min-height: calc(100vh / var(--ui-scale));
         min-height: -webkit-fill-available;
       }
       .fullscreen-panel {
         position: fixed;
         top: 0;
         left: 0;
-        width: 100vw;
-        height: 100vh;
+        width: calc(100vw / var(--ui-scale));
+        height: calc(100vh / var(--ui-scale));
         height: -webkit-fill-available;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
       }
     </style>
-    <script type="module" crossorigin src="/duel-masters/assets/index-C-WVt5qd.js"></script>
+    <script type="module" crossorigin src="/duel-masters/assets/index-C_2tdl3P.js"></script>
     <link rel="stylesheet" crossorigin href="/duel-masters/assets/index-x1XGuNl0.css">
   </head>
   <body>
