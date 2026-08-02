@@ -9,13 +9,14 @@
     <link rel="manifest" href="/duel-masters/manifest.json">
     <title>Duel Masters Simulator</title>
     <style>
-      /* PC版UIの拡大。
-         このUIはスマホ向けに px 直書きで組んであるので、個々の値をいじる代わりに
-         広い画面（マウス操作のPC）だけルートの zoom でまとめて拡大する。
+      /* PC版の対戦画面だけを拡大する。
+         対戦画面はスマホ向けに px 直書きで組んであってPCだと文字もカードも小さいので、
+         個々の値をいじる代わりに .battle-ui へ zoom をかけてまとめて拡大する。
          zoom は文字も余白もカードもまとめて拡大したうえでレイアウトを組み直すので、
          transform: scale と違って文字がぼやけない。
+         タイトル・デッキ編集・カード管理などのメニュー系画面は等倍のまま。
          ビューポート単位(vh/vw)だけは zoom で二重に拡大されてしまうため、
-         使う側で --ui-scale で割り戻す。 */
+         .battle-ui の中では --ui-scale で割り戻す。 */
       :root {
         --ui-scale: 1;
       }
@@ -24,7 +25,7 @@
           --ui-scale: 1.5;
         }
       }
-      body {
+      .battle-ui {
         zoom: var(--ui-scale);
       }
       *, *::before, *::after {
@@ -44,15 +45,15 @@
       }
       #root {
         background-color: #020208;
-        min-height: calc(100vh / var(--ui-scale));
+        min-height: 100vh;
         min-height: -webkit-fill-available;
       }
       .fullscreen-panel {
         position: fixed;
         top: 0;
         left: 0;
-        width: calc(100vw / var(--ui-scale));
-        height: calc(100vh / var(--ui-scale));
+        width: 100vw;
+        height: 100vh;
         height: -webkit-fill-available;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;

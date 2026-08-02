@@ -26,10 +26,30 @@ export const KEYWORD_PATTERNS = ["スピードアタッカー","W・ブレイカ
 // ===========================
 // EFFECT CONFIRM MODAL
 // ===========================
+// label を書いていない効果ステップを日本語で表示するための既定文言。
+// 誘発した能力の中身を解決前に確認するのに使うので、cards.json で使う type は一通り埋めておく。
 export const EFFECT_TYPE_LABELS = {
-  draw:"カードをドロー", handDestroy:"相手の手札を破壊", destroy:"クリーチャーを破壊",
-  sendToMana:"クリーチャーをマナゾーンへ", bounce:"クリーチャーを手札に戻す",
-  manaReturn:"マナゾーンのカードを手札へ", deckSearch:"山札からカードをサーチ",
-  destroyUnder:"パワー以下のクリーチャーを破壊", tapAll:"相手クリーチャーを全タップ",
-  deckToMana:"山札の上をマナゾーンへ", destroyMaxPower:"最大パワーの相手クリーチャーを破壊",
+  // ドロー・手札
+  drawCards:"カードを引く", draw:"カードをドロー", handToGrave:"手札を捨てる",
+  handDestroy:"相手の手札を破壊", handToBz:"手札からバトルゾーンへ出す",
+  // バトルゾーン
+  destroy:"クリーチャーを破壊", destroyUnder:"パワー以下のクリーチャーを破壊",
+  destroyMaxPower:"最大パワーの相手クリーチャーを破壊", battle:"バトルする",
+  bzToHand:"クリーチャーを手札に戻す", bounce:"クリーチャーを手札に戻す",
+  bzToMana:"クリーチャーをマナゾーンへ", sendToMana:"クリーチャーをマナゾーンへ",
+  bzToDeck:"クリーチャーを山札へ", bzToShield:"クリーチャーをシールドへ",
+  tap:"タップする", untap:"アンタップする", tapAll:"相手クリーチャーを全タップ",
+  powerBuff:"パワーを変更する", grant:"能力を与える",
+  // マナ・墓地・山札
+  manaToHand:"マナゾーンのカードを手札へ", manaReturn:"マナゾーンのカードを手札へ",
+  manaToGrave:"マナゾーンのカードを墓地へ", topToMana:"山札の上をマナゾーンへ",
+  deckToMana:"山札の上をマナゾーンへ", topToGrave:"山札の上を墓地へ",
+  graveToBz:"墓地からバトルゾーンへ出す", graveToHand:"墓地から手札へ",
+  graveToDeckBottom:"墓地を山札の下へ", shuffleDeck:"山札をシャッフルする",
+  search:"山札からカードをサーチ", deckSearch:"山札からカードをサーチ",
+  // シールド・その他
+  addShield:"シールドを追加する", shieldToHand:"シールドを手札へ",
+  shieldToGrave:"シールドを墓地へ", breakShield:"シールドをブレイク",
+  meteorBurn:"メテオバーン（下のカードを動かす）", castFromGrave:"墓地から唱える",
+  grantSummonFrom:"召喚できるゾーンを増やす", winGame:"ゲームに勝つ",
 };

@@ -27,9 +27,12 @@ const DEFAULT_TRIGGER_SCOPE = {
 // 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
 // （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
 const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd"]);
+// この誘発が「自分自身に起きた出来事」を見るのか、プレイヤーのイベントを見張るのか
+function triggerScope(tr, event){ return tr.target || DEFAULT_TRIGGER_SCOPE[event] || "self"; }
+
 function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   if(tr.on !== event) return false;
-  const scope = tr.target || DEFAULT_TRIGGER_SCOPE[event] || "self";
+  const scope = triggerScope(tr, event);
   const subj = ev.subjectCard;
   if(scope === "this"){
     if(!subj || !watcherCard || subj.uid !== watcherCard.uid) return false;
@@ -107,6 +110,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const stateRef=useRef({p1,p2});
   stateRef.current={p1,p2};
   const fireTriggerRef=useRef();
+  const onTargetedRef=useRef();
   const enqueueEffectRef=useRef();
   const pendingIdRef=useRef(0);
   const [replacementModal,setReplacementModal]=useState(null);
@@ -175,6 +179,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveSteps(prev => {
       if (!prev) return null;
       const updatedCtx = executeEffect(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
+      // 「相手がこのクリーチャーを選んだ時」：効果の対象に選ばれた場合もここで誘発させる
+      if (selectedUids && selectedUids.length) {
+        setTimeout(() => onTargetedRef.current && onTargetedRef.current(prev.ownerPid, selectedUids), 0);
+      }
       // ステップ内で破壊されたカードの leave/destroyed/battleDestroy を発火（A7）
       if (updatedCtx.destroyedThisStep && updatedCtx.destroyedThisStep.length) {
         const list = updatedCtx.destroyedThisStep;
@@ -286,19 +294,29 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         onceKey, onceLabel: tr.oncePerGame?"ゲーム中に一度":tr.oncePerTurn?"各ターンに一度":null });
     };
     const subj=ev.subjectCard;
-    // 1) 主体カード自身の triggers（target:"this" もここで成立。離脱後でゾーンに無くても発火できる）
+    // 1) 主体カード自身の triggers。ここで扱うのは target:"this"（＝自分自身に起きた出来事）だけ。
+    //    離脱後でゾーンに無くても発火させたいので、ゾーンを見ずに回す。
     //    ただし SUBJECT_MUST_BE_IN_BZ のイベントは、主体がバトルゾーンに残っている時だけ発火する。
+    //    self/opponent/both のような「プレイヤーのイベントを見張る」能力はカードがバトルゾーン等に
+    //    いる間だけ有効なので、ここでは扱わず 2) に任せる。
+    //    （呪文面で唱えたツインパクトが、墓地にありながらクリーチャー面の
+    //      「自分が呪文を唱えた時」を自分で誘発してしまうのを防ぐ）
     const subjInBz=!subj||!ev.sourcePid||(cur[ev.sourcePid]?.battle||[]).some(c=>c.uid===subj.uid);
     if(subj&&ev.sourcePid&&(subjInBz||!SUBJECT_MUST_BE_IN_BZ.has(event))){
-      getCardTriggers(subj).forEach(tr=>{ if(matchTrigger(tr,event,ev.sourcePid,subj,ev)) runOne(subj,ev.sourcePid,tr,subj); });
+      getCardTriggers(subj).forEach(tr=>{
+        if(triggerScope(tr,event)!=="this") return;
+        if(matchTrigger(tr,event,ev.sourcePid,subj,ev)) runOne(subj,ev.sourcePid,tr,subj);
+      });
     }
     // 2) 監視カード（バトルゾーン＋表向きシールド。shieldAdded は墓地の自己蘇生系も対象）
     ["p1","p2"].forEach(watcherPid=>{
       const st=cur[watcherPid];
       const watchers=[...st.battle,...st.shields.filter(s=>s.faceUp),...(event==="shieldAdded"?st.grave:[])];
       watchers.forEach(card=>{
-        if(subj&&card.uid===subj.uid) return; // 1) で処理済み
-        getCardTriggers(card).forEach(tr=>{ if(matchTrigger(tr,event,watcherPid,card,ev)) runOne(card,watcherPid,tr,subj); });
+        getCardTriggers(card).forEach(tr=>{
+          if(subj&&card.uid===subj.uid&&triggerScope(tr,event)==="this") return; // 1) で処理済み
+          if(matchTrigger(tr,event,watcherPid,card,ev)) runOne(card,watcherPid,tr,subj);
+        });
       });
     });
   };
@@ -553,17 +571,50 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const firstThisTurn=!attackedThisTurn;
     if(firstThisTurn) setAttackedThisTurn(true);
     setTimeout(()=>fireTrigger("attack",{sourcePid:active,subjectCard:card,firstThisTurn}),0);
-    // ブロッカー：防御側に未タップのブロッカーがいれば、ブロック選択モーダルを表示
-    const blockers=otherState.battle.filter(c=>
-      !c.tapped &&
-      isCreatureSide(c) &&
-      (hasKeyword(c,"blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
-    );
-    if(blockers.length>0){
-      setBlockerModal({attackerUid:uid,blockerUids:blockers.map(b=>b.uid)});
-      setMessage(`${otherPid.toUpperCase()}: ブロックするか選択`);
-    }
+    // ブロックの確認は攻撃先を決めた後（下の withBlockStep）。宣言時にやると
+    // 革命チェンジで攻撃クリーチャーが入れ替わった場合に確認が飛んでしまい、
+    // ダイレクトアタックもブロックの機会を経ずに通ってしまう。
   };
+  // ブロック・ステップ。攻撃先（クリーチャー／シールド／プレイヤー）を決めた後に必ず通す。
+  // 防御側に未タップのブロッカーがいればモーダルを出し、ブロックしなければ intent をそのまま実行する。
+  const blockersFor=()=>otherState.battle.filter(c=>
+    !c.tapped &&
+    isCreatureSide(c) &&
+    (hasKeyword(c,"blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
+  );
+  const withBlockStep=(attackerUid,intent,proceed)=>{
+    const blockers=blockersFor();
+    if(blockers.length===0){ proceed(); return true; }
+    setBlockerModal({attackerUid,blockerUids:blockers.map(b=>b.uid),intent});
+    setMessage(`${otherPid.toUpperCase()}: ブロックするか選択`);
+    return false;
+  };
+  // ブロックされなかった時に、保留していた攻撃先へ進む
+  const resumeAttack=(intent)=>{
+    if(!intent) { setMessage("攻撃対象を選択"); return; }
+    if(intent.kind==="creature") attackCreatureNow(intent.targetUid);
+    else if(intent.kind==="shield") attackShieldNow();
+    else if(intent.kind==="direct") directAttackNow();
+  };
+  // 「相手がこのクリーチャーを選んだ時」の解決後。攻撃で選ばれたならブロック確認へ進む。
+  // 効果で選ばれた場合は続きが無い（選んだ効果自体は既に解決済み）。
+  const continueAfterHyperTargeted=(m)=>{
+    if(m.kind!=="attack") return;
+    withBlockStep(m.attackerUid,{kind:"creature",targetUid:m.targetUid},()=>attackCreatureNow(m.targetUid));
+  };
+  // 「相手がこのクリーチャーを選んだ時」は攻撃で選ばれた時だけでなく、
+  // 相手の効果の対象に選ばれた時にも誘発する（「…開けるか？」等）。
+  // 効果の選択が確定した時点で、選ばれた相手クリーチャーを見て誘発させる。
+  const fireOnTargetedByEffect=(selectorPid,selectedUids)=>{
+    if(!selectedUids||!selectedUids.length) return;
+    const oppPid=selectorPid==="p1"?"p2":"p1";
+    const opp=stateRef.current[oppPid];
+    const hit=(opp?.battle||[]).find(c=>selectedUids.includes(c.uid)&&c.hyperMode&&c.hyperOnTargeted?.type==="breakAttackerShields");
+    if(!hit) return;
+    setHyperTargetedModal({kind:"effect",targetUid:hit.uid,targetName:hit.name,
+      amount:hit.hyperOnTargeted.amount,breakPid:selectorPid});
+  };
+  onTargetedRef.current=fireOnTargetedByEffect;
   // ===== 中央破壊パイプライン（スレイヤー/エスケープ置換/離脱トリガーを集約）=====
   const fireLeaveTriggers=(card,ownerPid,viaBattle)=>{
     fireTrigger("leave",{sourcePid:ownerPid,subjectCard:card});
@@ -637,17 +688,29 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     const target=otherState.battle.find(c=>c.uid===targetUid);
     if(!attacker||!target)return;
-    // ハイパーモード：相手に選ばれた時、相手シールドをブレイクしてもよい
+    // ハイパーモード：相手に選ばれた時、相手シールドをブレイクしてもよい（ブロックより先）
     if(target.hyperMode&&target.hyperOnTargeted?.type==="breakAttackerShields"){
-      setHyperTargetedModal({targetUid,attackerUid:attacker.uid,amount:target.hyperOnTargeted.amount});
+      setHyperTargetedModal({kind:"attack",targetUid,targetName:target.name,attackerUid:attacker.uid,
+        amount:target.hyperOnTargeted.amount,breakPid:active});
       return;
     }
-    resolveAttackCreature(attacker,target,targetUid);
+    withBlockStep(attacker.uid,{kind:"creature",targetUid},()=>attackCreatureNow(targetUid));
   };
-  const handleAttackShield=shieldIdx=>{
+  const attackCreatureNow=targetUid=>{
+    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
+    const target=otherState.battle.find(c=>c.uid===targetUid);
+    if(!attacker||!target)return;
+    resolveAttackCreature(attacker,target);
+  };
+  const handleAttackShield=()=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
     if(attacker.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません（クリーチャーのみ攻撃可）");return;}
+    withBlockStep(attacker.uid,{kind:"shield"},attackShieldNow);
+  };
+  const attackShieldNow=()=>{
+    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
+    if(!attacker)return;
     const attackerPower=getEffectivePower(attacker,activeState,activeState.battle,{attacking:true});
     const breakCount=getBreakCount(attacker,attackerPower,computeGrantedKeywords(attacker,activeState.battle,activeState));
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:true}:c)}));
@@ -720,6 +783,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const handleDirectAttack=()=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(attacker?.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません");return;}
+    // ダイレクトアタックもブロックできる
+    withBlockStep(attacker?.uid,{kind:"direct"},directAttackNow);
+  };
+  const directAttackNow=()=>{
+    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     addLog(`[DIRECT] ${attacker?.name??""} ダイレクトアタック！${active.toUpperCase()} の勝利！`);
     setAttackingUid(null);
     setWinReason("direct");
@@ -803,7 +871,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
 
   return(
-    <div style={{height:"calc(100vh / var(--ui-scale))",overflow:"hidden",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
+    <div className="battle-ui" style={{height:"calc(100vh / var(--ui-scale))",overflow:"hidden",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}::-webkit-scrollbar{width:4px;background:#111;}::-webkit-scrollbar-thumb{background:#333;border-radius:4px;}`}</style>
       {cutin&&<CutIn cutin={cutin} onDone={()=>setCutin(null)}/>}
       {hyperModeCutIn&&<HyperModeCutIn creature={hyperModeCutIn} onDismiss={()=>setHyperModeCutIn(null)}/>}
@@ -858,27 +926,25 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           addLog(`[BLOCK] ${otherPid.toUpperCase()}: ${blocker.name} でブロック！`);
           resolveAttackCreature(attacker,blocker);
         }}
-        onDecline={()=>{setBlockerModal(null);setMessage("攻撃対象を選択");}}
+        onDecline={()=>{const intent=blockerModal.intent;setBlockerModal(null);resumeAttack(intent);}}
       />}
       {activatedModal&&<ActivatedAbilityModal entries={activatedModal.entries} onUse={handleUseActivated} onClose={()=>setActivatedModal(null)}/>}
-      {hyperTargetedModal&&<HyperTargetedModal modal={hyperTargetedModal} attackerShields={activeState.shields.length} onUse={()=>{
-        const {targetUid,attackerUid,amount}=hyperTargetedModal;
-        const target=otherState.battle.find(c=>c.uid===targetUid);
-        const n=Math.min(amount,activeState.shields.length);
+      {hyperTargetedModal&&<HyperTargetedModal modal={hyperTargetedModal} attackerShields={stateRef.current[hyperTargetedModal.breakPid]?.shields.length??0} onUse={()=>{
+        const m=hyperTargetedModal;
+        const setBreakSt=m.breakPid==="p1"?setP1:setP2;
+        const breakSt=stateRef.current[m.breakPid];
+        const n=Math.min(m.amount,breakSt.shields.length);
         if(n>0){
-          const broken=activeState.shields.slice(0,n);
-          setActiveState(s=>({...s,shields:s.shields.slice(n),hand:[...s.hand,...broken.map(c=>({...c,tapped:false}))]}));
-          addLog(`${target?.name} ハイパーモード: 相手シールドを${n}枚ブレイク`);
+          const broken=breakSt.shields.slice(0,n);
+          setBreakSt(s=>({...s,shields:s.shields.slice(n),hand:[...s.hand,...broken.map(c=>({...c,tapped:false,faceUp:false}))]}));
+          addLog(`${m.targetName} ハイパーモード: ${m.breakPid.toUpperCase()} のシールドを${n}枚ブレイク`);
         }
         setHyperTargetedModal(null);
-        const attacker=activeState.battle.find(c=>c.uid===attackerUid);
-        if(attacker&&target) resolveAttackCreature(attacker,target,targetUid);
+        continueAfterHyperTargeted(m);
       }} onSkip={()=>{
-        const {targetUid,attackerUid}=hyperTargetedModal;
+        const m=hyperTargetedModal;
         setHyperTargetedModal(null);
-        const attacker=activeState.battle.find(c=>c.uid===attackerUid);
-        const target=otherState.battle.find(c=>c.uid===targetUid);
-        if(attacker&&target) resolveAttackCreature(attacker,target,targetUid);
+        continueAfterHyperTargeted(m);
       }}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066",letterSpacing:3}}>DUEL MASTERS</div>
