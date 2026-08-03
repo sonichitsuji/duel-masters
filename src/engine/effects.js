@@ -126,6 +126,7 @@ const SOURCE = {
   tapToggle:      { zone: "bz",       target: "both" },
   graveToBz:      { zone: "grave",    target: "self" },
   graveToHand:    { zone: "grave",    target: "self" },
+  graveToDeck:    { zone: "grave",    target: "self" },
   graveToDeckBottom: { zone: "grave", target: "self" },
   meteorBurn:     { zone: "under",    target: "self" },
   shieldToHand:   { zone: "shield",   target: "self" },
@@ -164,16 +165,22 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   // 「選ぶ」効果かどうか。全体除去やランダムは選ばないので「選ばれない」では防げない
   const selects = !(effect.all || effect.random || effect.takeAll);
   let cards = [];
+  // 「プレイヤー1人の〜から」用に、候補がどちらのプレイヤーのものかを控えておく
+  const owners = {};
   if (zone === "revealed" || zone === "lastMoved") {
     cards = zoneCards(null, zone, c2);
   } else {
-    const states = tgt === "opponent" ? [otherState] : tgt === "both" ? [selfState, otherState] : [selfState];
-    for (const st of states) {
+    const ownerPid = selfState === p1 ? "p1" : "p2";
+    const oppPid = ownerPid === "p1" ? "p2" : "p1";
+    const states = tgt === "opponent" ? [[otherState, oppPid]]
+      : tgt === "both" ? [[selfState, ownerPid], [otherState, oppPid]] : [[selfState, ownerPid]];
+    for (const [st, stPid] of states) {
       let got = zoneCards(st, zone, c2);
       // 相手のバトルゾーンから「選ぶ」時だけ、「相手に選ばれない」カードを候補から外す
       if (selects && st === otherState && (zone === "bz" || zone === "battle")) {
         got = got.filter(c => !isUnselectableByOpponent(c, st));
       }
+      for (const c of got) owners[c.uid] = stPid;
       cards.push(...got);
     }
   }
@@ -196,18 +203,18 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   // 「好きな順序で置く」は選んだ順がそのまま並び順になるので、all 指定でも必ず選択させる
   if (effect.order === "choose") {
     const n = resolveAmount(c2, effect.amount, cards.length) || cards.length;
-    return { candidates: cards, isAuto: cards.length === 0, maxSelect: Math.min(n, cards.length), ordered: true, optional: effect.optional };
+    return { candidates: cards, owners, isAuto: cards.length === 0, maxSelect: Math.min(n, cards.length), ordered: true, optional: effect.optional };
   }
   // 一括処理（選択不要）
-  if (effect.all || effect.random || effect.takeAll) return { candidates: cards, isAuto: true };
+  if (effect.all || effect.random || effect.takeAll) return { candidates: cards, owners, isAuto: true };
   // 「好きな枚数」: 0枚〜候補すべてから好きなだけ選ぶ（0枚も選べるので必ず任意）
   if (effect.any) {
-    return { candidates: cards, isAuto: cards.length === 0, maxSelect: cards.length, optional: true };
+    return { candidates: cards, owners, isAuto: cards.length === 0, maxSelect: cards.length, optional: true };
   }
   // 選択枚数は通常 amount。ただし powerBuff の amount は「パワー増減値」なので count で指定する（既定1体）
   const countSpec = type === "powerBuff" ? (effect.count ?? 1) : (effect.count ?? effect.amount);
   const maxSelect = Math.max(1, resolveAmount(c2, countSpec, 1) || 1);
-  return { candidates: cards, isAuto: cards.length === 0, maxSelect, optional: effect.optional };
+  return { candidates: cards, owners, isAuto: cards.length === 0, maxSelect, optional: effect.optional };
 }
 
 // ===========================
@@ -681,6 +688,26 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     // 墓地から山札の下へ。order:"shuffle"(既定)=シャッフルしてから置く / "choose"=選んだ順に置く
+    // 「（それらを）自身の山札に加えてシャッフルする」。山札の下に置く graveToDeckBottom とは別物で、
+    // 加えたあとその持ち主の山札全体をシャッフルする。
+    case "graveToDeck": {
+      let moved = 0;
+      for (const pidx of pids) {
+        const st = stateOf(pidx);
+        const cards = (effect.all || effect.takeAll)
+          ? st.grave.filter(c => matchFilter(c, effect.filter, ctx))
+          : st.grave.filter(c => selectedUids.includes(c.uid));
+        if (!cards.length) continue;
+        const uids = new Set(cards.map(c => c.uid));
+        setOf(pidx)(s => ({ ...s, grave: s.grave.filter(c => !uids.has(c.uid)),
+          deck: shuffle([...s.deck, ...cards]) }));
+        addLog(`${pidx.toUpperCase()}: 墓地の${cards.length}枚を山札に加えてシャッフル`);
+        ctx.lastMoved = cards;
+        moved += cards.length;
+      }
+      ctx.stepDone = moved > 0;
+      break;
+    }
     case "graveToDeckBottom": {
       for (const pidx of pids) {
         const st = stateOf(pidx);
@@ -688,7 +715,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         if (effect.order === "choose") {
           cards = selectedUids.map(uid => st.grave.find(c => c.uid === uid)).filter(Boolean); // 選んだ順＝上から
         } else {
-          const pool = (effect.all || effect.takeAll || selectedUids.length === 0)
+          const pool = (effect.all || effect.takeAll)
             ? st.grave.filter(c => matchFilter(c, effect.filter, ctx))
             : st.grave.filter(c => selectedUids.includes(c.uid));
           cards = shuffle(pool);

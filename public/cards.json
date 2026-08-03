@@ -3532,5 +3532,63 @@
       }
     },
     "id": 104
+  },
+  {
+    "name": "闘争類拳嘩目 ステゴロ・カイザー",
+    "type": "twinpact",
+    "civ": "nature",
+    "cost": 7,
+    "race": "ジュラシック・コマンド・ドラゴン/ハンター",
+    "power": 9000,
+    "keywords": [
+      "machFighter",
+      "wBreaker"
+    ],
+    "effect": "マッハファイター（このクリーチャーは、出たターンの間、タップまたはアンタップしているクリーチャーを攻撃できる）\nW・ブレイカー（このクリーチャーはシールドを2つブレイクする）\nこのクリーチャーが攻撃する時、自分の山札の上から1枚をマナゾーンに置く。その後、カードを1枚、自分のマナゾーンから手札に戻してもよい。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "attack",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "カードを1枚、自分のマナゾーンから手札に戻してもよい",
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "お清めシャラップ",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から1枚をマナゾーンに置く。\nカードを1枚以上、プレイヤー1人の墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "カードを1枚以上、プレイヤー1人の墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする",
+            "type": "graveToDeck",
+            "target": "both",
+            "onePlayer": true,
+            "any": true
+          }
+        ]
+      }
+    },
+    "id": 105
   }
 ]

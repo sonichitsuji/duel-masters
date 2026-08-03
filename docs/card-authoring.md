@@ -52,6 +52,7 @@
 | `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `hyper` `revealed` `lastMoved` `under` `stack`） |
 | `subject` | **「そのクリーチャー」**。誘発の主体そのものを対象にする（選択させない） |
 | `all` | 条件一致すべてに適用（選択不要） |
+| `onePlayer` | **「プレイヤー1人の〜から」**。`target:"both"` で候補を両者から出しつつ、選べるのは**どちらか一方のプレイヤーのカードだけ**にする |
 | `any` | **「好きな枚数」**。0枚〜候補すべてから好きなだけ選ぶ（0枚も選べるので常に任意） |
 | `as` | 実際に動いた枚数を変数に控える。後続の `amount` から名前で参照できる（「同じ枚数」） |
 | `ifPrevious` | **「そうしたら」「そうした場合」**。直前のステップを実際に行わなかった場合、このステップ以降を実行しない → **§3.5** |
@@ -226,6 +227,8 @@
 - `graveToBz {filter,owner,self,tempKeywords,destroyAtEndOfTurn,summoningSickness}` — 墓地から出す
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
 - `graveToHand {target,filter,amount}` — 墓地から手札に戻す
+- `graveToDeck {target,filter,any,all,onePlayer}` — 墓地のカードを**山札に加えてシャッフル**する
+  （「自身の山札に加えてシャッフルする」。下に置く `graveToDeckBottom` とは別物）
 - `graveToDeckBottom {target,filter,amount,all,order}` — 墓地から山札の下へ
   - `order: "shuffle"`（既定）… シャッフルしてから置く。`all:true` か `amount` 省略で墓地すべてが対象
   - `order: "choose"` … **好きな順序で**置く。選んだ順に上から積まれ、全部選ぶまで確定できない

@@ -35,7 +35,7 @@ const EFFECT_TYPES = new Set([
   // バトルゾーンから
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
-  "graveToBz","graveToHand","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
+  "graveToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
   // 山札操作
   "shuffleDeck",
   // 進化元を動かすコスト / 特殊勝利
