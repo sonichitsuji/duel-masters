@@ -37,6 +37,8 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
         {!ownKw.includes("blocker")&&grantedKeywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>BK</span>}
         {ownKw.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#e066ff",letterSpacing:0}}>SL</span>}
         {!ownKw.includes("slayer")&&grantedKeywords?.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SL</span>}
+        {ownKw.includes("guardman")&&<span style={{fontSize:6,fontWeight:700,color:"#66dd99",letterSpacing:0}}>GM</span>}
+        {!ownKw.includes("guardman")&&grantedKeywords?.includes("guardman")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>GM</span>}
         {!ownKw.includes("escape")&&grantedKeywords?.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>ES</span>}
         {ownKw.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#66ddff",letterSpacing:0}}>ES</span>}
         {!(ownKw.includes("tBreaker")||hyperTBreaker)&&(ownKw.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:7}}>✦✦</span>}

@@ -581,17 +581,22 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const isUnselectableBy=(card,ownerPid,selectorPid)=>
     selectorPid!==ownerPid && isUnselectableByOpponent(card,stateRef.current[ownerPid]);
   // ブロック・ステップ。攻撃先（クリーチャー／シールド／プレイヤー）を決めた後に必ず通す。
-  // 防御側に未タップのブロッカーがいればモーダルを出し、ブロックしなければ intent をそのまま実行する。
-  const blockersFor=()=>otherState.battle.filter(c=>
-    !c.tapped &&
-    isCreatureSide(c) &&
-    (hasKeyword(c,"blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
-  );
+  // 防御側に未タップのブロッカー／ガードマンがいればモーダルを出し、
+  // どちらも使わなければ intent をそのまま実行する。
+  const defenderHas=(c,kw)=>
+    hasKeyword(c,kw)||computeGrantedKeywords(c,otherState.battle,otherState).includes(kw);
+  const readyDefenders=kw=>otherState.battle.filter(c=>!c.tapped&&isCreatureSide(c)&&defenderHas(c,kw));
+  const blockersFor=()=>readyDefenders("blocker");
+  // ガードマン: 攻撃先が「自分の他のクリーチャー」の時だけ、攻撃先を自分に変更できる。
+  // シールド／プレイヤーへの攻撃や、自分自身が攻撃先の場合は使えない。
+  const guardsFor=intent=>intent?.kind!=="creature"?[]
+    :readyDefenders("guardman").filter(c=>c.uid!==intent.targetUid);
   const withBlockStep=(attackerUid,intent,proceed)=>{
     const blockers=blockersFor();
-    if(blockers.length===0){ proceed(); return true; }
-    setBlockerModal({attackerUid,blockerUids:blockers.map(b=>b.uid),intent});
-    setMessage(`${otherPid.toUpperCase()}: ブロックするか選択`);
+    const guards=guardsFor(intent);
+    if(blockers.length===0&&guards.length===0){ proceed(); return true; }
+    setBlockerModal({attackerUid,blockerUids:blockers.map(b=>b.uid),guardUids:guards.map(g=>g.uid),intent});
+    setMessage(`${otherPid.toUpperCase()}: ブロック／ガードマンを選択`);
     return false;
   };
   // ブロックされなかった時に、保留していた攻撃先へ進む
@@ -931,7 +936,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       }} onSkip={()=>setHyperUnlockModal(null)}/>}
       {blockerModal&&<BlockerModal
         blockers={otherState.battle.filter(c=>blockerModal.blockerUids.includes(c.uid)&&!c.tapped)}
+        guards={otherState.battle.filter(c=>(blockerModal.guardUids||[]).includes(c.uid)&&!c.tapped)}
         attackerName={activeState.battle.find(c=>c.uid===blockerModal.attackerUid)?.name||""}
+        targetName={blockerModal.intent?.kind==="creature"
+          ?otherState.battle.find(c=>c.uid===blockerModal.intent.targetUid)?.name
+          :blockerModal.intent?.kind==="shield"?"シールド":"プレイヤー（ダイレクトアタック）"}
         onBlock={blockerUid=>{
           const attacker=activeState.battle.find(c=>c.uid===blockerModal.attackerUid);
           const blocker=otherState.battle.find(c=>c.uid===blockerUid);
@@ -940,6 +949,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           setOtherState(s=>({...s,battle:s.battle.map(c=>c.uid===blockerUid?{...c,tapped:true}:c)}));
           addLog(`[BLOCK] ${otherPid.toUpperCase()}: ${blocker.name} でブロック！`);
           resolveAttackCreature(attacker,blocker);
+        }}
+        onGuard={guardUid=>{
+          // ガードマン: 自分をタップして、攻撃先を自分に変更する（ブロックではないのでバトルになる）
+          const attacker=activeState.battle.find(c=>c.uid===blockerModal.attackerUid);
+          const guard=otherState.battle.find(c=>c.uid===guardUid);
+          setBlockerModal(null);
+          if(!attacker||!guard){setMessage("攻撃対象を選択");return;}
+          setOtherState(s=>({...s,battle:s.battle.map(c=>c.uid===guardUid?{...c,tapped:true}:c)}));
+          addLog(`[GUARD] ${otherPid.toUpperCase()}: ${guard.name} のガードマン！攻撃先を変更`);
+          resolveAttackCreature(attacker,guard);
         }}
         onDecline={()=>{const intent=blockerModal.intent;setBlockerModal(null);resumeAttack(intent);}}
       />}

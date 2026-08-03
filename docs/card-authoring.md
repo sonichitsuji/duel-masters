@@ -250,7 +250,7 @@
 `filter` の `"element": true` や `"type": "element"` で指定できます。
 
 **keywords**: `speedAttacker` `wBreaker` `tBreaker` `blocker` `cantAttack` `sTrigger` `drawOnPlay`
-`revolutionChange` `gStrike` `charger` `zRush` `escape` `slayer` `unselectable`
+`revolutionChange` `gStrike` `charger` `zRush` `escape` `slayer` `guardman` `unselectable`
 
 **文明**: `light` `water` `darkness` `fire` `nature`（表示順もこの順）
 
@@ -580,7 +580,19 @@
   手札のカードを選ぶと **「コスト不要」ボタン**が増え、押すとマナを1枚もタップせずにプレイします
 - ツインパクトは両面で判定し、呪文面だけが条件に合えば呪文として唱えます
 
-## 7.13. 「選ばれない」（`unselectable`）
+## 7.13. ガードマン（`guardman`）
+
+「このクリーチャーをタップして、相手クリーチャーの攻撃先を、自分の**他の**クリーチャーから
+このクリーチャーに変更してもよい」。`"keywords": ["guardman"]` と書くだけで動きます。
+
+- タイミングは**ブロッカーと同じ**（攻撃先が決まった後のブロック・ステップ）。
+  同じモーダルにブロッカーと並んで出ます
+- 使えるのは**攻撃先が自分の他のクリーチャーの時だけ**。シールドやプレイヤーへの攻撃、
+  および自分自身が攻撃先の場合は使えません
+- **タップ済みでは使えません**（自分をタップするのがコスト）
+- ブロックではなく**攻撃先の変更**なので、変更後は攻撃クリーチャーとバトルになります
+
+## 7.14. 「選ばれない」（`unselectable`）
 
 「相手が自分のクリーチャーを選ぶ時、〜は選ばれない」を表します。キーワード `unselectable` で、
 `grantKeywords` から付与するのが基本です。
