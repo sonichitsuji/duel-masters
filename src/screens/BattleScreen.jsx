@@ -506,7 +506,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         else if(spec.zone==="mana")  newMana=newMana.filter(c=>!used.has(c.uid));
         else                         battleWithoutBase=activeState.battle.filter(c=>!used.has(c.uid));
       }
-      const newCreature={...card,tapped:false,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
+      const newCreature={...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle}));
       const fromLabel=fromZone==="grave"?"（墓地から）":fromZone==="mana"?"（マナゾーンから）":"";
@@ -535,11 +535,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     return true;
   };
   const handleRevChangeExec=(handCard,attacker)=>{
-    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,summonedThisTurn:false}:c);
+    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,enteredThisTurn:true,summonedThisTurn:false}:c);
     setActiveState(s=>({
       ...s,
       battle:newBattle,
-      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}),
+      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,enteredThisTurn:false,summonedThisTurn:false}),
     }));
     addLog(`[REV] 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
     maybeFlagCantAttack([handCard.uid],setActiveState,otherState.battle);
@@ -561,7 +561,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const fromHand=activeState.hand.filter(c=>handUids.includes(c.uid));
     const fromMana=activeState.mana.filter(c=>manaUids.includes(c.uid));
     // ファイナル革命で出したクリーチャーも召喚酔いする
-    const newCards=[...fromHand,...fromMana].map(c=>({ ...c, tapped: false, summonedThisTurn: true }));
+    const newCards=[...fromHand,...fromMana].map(c=>({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: true }));
     setActiveState(s=>({...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]}));
     addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
     maybeFlagCantAttack(newCards.map(c=>c.uid),setActiveState,otherState.battle);
@@ -584,12 +584,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // 革命チェンジで攻撃クリーチャーが入れ替わった場合に確認が飛んでしまい、
     // ダイレクトアタックもブロックの機会を経ずに通ってしまう。
   };
-  // マッハファイターで召喚酔いのまま攻撃している間は、クリーチャーしか攻撃できない。
-  // （スピードアタッカーも持つなら普通の攻撃なので制限はかからない）
   const attackerHas=(c,kw)=>
     hasKeyword(c,kw)||computeGrantedKeywords(c,activeState.battle,activeState).includes(kw);
-  const machFighterOnly=card=>!!card?.summonedThisTurn
-    &&!attackerHas(card,"speedAttacker")&&attackerHas(card,"machFighter");
+  // マッハファイター（このクリーチャーは、出たターンの間、タップまたはアンタップしている
+  // クリーチャーを攻撃できる）。「出たターンの間」だけ有効な、クリーチャー限定の攻撃許可。
+  const machFighterActive=card=>!!card?.enteredThisTurn&&attackerHas(card,"machFighter");
+  // マッハファイターだけを頼りに攻撃している間は、クリーチャーしか攻撃できない。
+  // （スピードアタッカーも持つなら普通に攻撃できるので制限はかからない）
+  const machFighterOnly=card=>machFighterActive(card)
+    &&!!card?.summonedThisTurn&&!attackerHas(card,"speedAttacker");
   // 攻撃先に選べるか。「相手が自分のクリーチャーを選ぶ時、選ばれない」は攻撃先の選択にも効く
   const isUnselectableBy=(card,ownerPid,selectorPid)=>
     selectorPid!==ownerPid && isUnselectableByOpponent(card,stateRef.current[ownerPid]);
@@ -766,6 +769,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       addLog(`${target.name} は相手に選ばれない`);
       setMessage("このクリーチャーは相手に選ばれません");return;
     }
+    // DMの基本ルール: 攻撃できるのは「タップされているクリーチャー」だけ。
+    // マッハファイターは出たターンの間、アンタップしているクリーチャーも攻撃できる。
+    if(!target.tapped&&!machFighterActive(attacker)){
+      addLog(`${target.name} はアンタップしているので攻撃できない`);
+      setMessage("アンタップしているクリーチャーは攻撃できません（タップ状態のみ）");return;
+    }
     // ハイパーモード：相手に選ばれた時、相手シールドをブレイクしてもよい（ブロックより先）
     if(target.hyperMode&&target.hyperOnTargeted?.type==="breakAttackerShields"){
       setHyperTargetedModal({kind:"attack",targetUid,targetName:target.name,attackerUid:attacker.uid,
@@ -893,7 +902,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(st.pendingRevive&&st.pendingRevive.length){
         const ids=st.pendingRevive.map(c=>c.uid);
         st.pendingRevive.forEach(c=>addLog(`${c.name} をターン終了時に墓地から出した`));
-        set(s=>{const revive=s.grave.filter(c=>ids.includes(c.uid));return {...s,grave:s.grave.filter(c=>!ids.includes(c.uid)),battle:[...s.battle,...revive.map(c=>({...c,tapped:false,summonedThisTurn:true}))],pendingRevive:[]};});
+        set(s=>{const revive=s.grave.filter(c=>ids.includes(c.uid));return {...s,grave:s.grave.filter(c=>!ids.includes(c.uid)),battle:[...s.battle,...revive.map(c=>({...c,tapped:false,enteredThisTurn:true,summonedThisTurn:true}))],pendingRevive:[]};});
       }
     });
     // endOfTurnEffect処理
@@ -928,6 +937,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       tapped:c.noUntapNextTurn?true:false,
       noUntapNextTurn:false,
       summonedThisTurn:false,
+      enteredThisTurn:false,
       cantAttackThisTurn:false,
       hyperMode:false,
       untapAfterAttack:false,

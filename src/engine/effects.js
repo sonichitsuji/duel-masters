@@ -339,7 +339,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           const rest = s.deck.filter(c => !uids.includes(c.uid));
           const b = { ...s, deck: dest === "deckTop" ? [...take, ...shuffle(rest)] : shuffle(rest) };
           if (dest === "hand") b.hand = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
-          if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))];
+          if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
           if (dest === "mana") b.mana = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           return b;
         });
@@ -363,7 +363,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         setSelf(s => {
           const b = { ...s };
           if (type === "revealedToHand")  b.hand   = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
-          if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))];
+          if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
           if (type === "revealedToMana")  b.mana   = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           if (type === "revealedToGrave") b.grave  = [...s.grave, ...take];
           if (type === "revealedToDeckTop")    b.deck = [...take, ...s.deck];
@@ -386,7 +386,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         const kw = effect.tempKeyword;
         setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect),
+          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
             grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を手札からバトルゾーンへ`);
         ctx.lastMoved = cards;
@@ -446,7 +446,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
             addLog(`${pid}: 城「${card.name}」を表向きシールド化`);
           } else {
-            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: true }] }));
+            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true }] }));
             addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}召喚`);
             ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
           }
@@ -460,7 +460,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       for (const { pidx, cards } of pickSelected("mana")) {
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))] }));
+          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→バトルゾーン`);
         ctx.lastMoved = cards;
         ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
@@ -515,7 +515,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids);
-          return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c => ({ ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false, tempBuff: undefined }))] }; });
+          return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c => ({ ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, enteredThisTurn: false, summonedThisTurn: false, tempBuff: undefined }))] }; });
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} を持ち主の手札へ`);
       }
       break;
@@ -637,7 +637,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       if (!cards.length) break;
       const uids = cards.map(c => c.uid);
       setOf(ownerOfGrave)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)),
-        battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect),
+        battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
           ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);

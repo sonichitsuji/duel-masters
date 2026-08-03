@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { EffectText } from "./EffectText";
@@ -280,7 +280,14 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
         <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"center"}}>
           {(()=>{
             const getGranted=c=>computeGrantedKeywords(c,state.battle,state);
-            return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
+            // 攻撃を受ける側では、いま攻撃先に選べないカードを薄く表示する。
+            // 攻撃できるのはタップされているクリーチャーだけ（マッハファイターは出たターンの間アンタップでも可）
+            const beingAttacked=!!attackingUid&&!isActive;
+            const attacker=beingAttacked?otherState.battle.find(c=>c.uid===attackingUid):null;
+            const machNow=!!attacker?.enteredThisTurn&&
+              (attacker.keywords?.includes("machFighter")||computeGrantedKeywords(attacker,otherState.battle,otherState).includes("machFighter"));
+            const notTargetable=c=>beingAttacked&&(!isCreatureSide(c)||(!c.tapped&&!machNow));
+            return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)||notTargetable(c)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
         </div>
