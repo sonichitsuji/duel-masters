@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../../constants";
-import { getCardCivs, getEffectiveCost } from "../../gameLogic";
+import { getCardCivs, getManaCivs, getEffectiveCost } from "../../gameLogic";
 import { CardFace } from "../CardFace";
 
 // ===========================
@@ -27,7 +27,8 @@ export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onC
       return;
     }
     if (selected.length >= needed) return;
-    const civs = getCardCivs(mc);
+    // ツインパクトはマナゾーンでは両面の文明を持つので、どちらとしても使える
+    const civs = getManaCivs(mc);
     if (civs.length === 1) {
       setSelected(s => [...s, { uid: mc.uid, assignedCiv: civs[0] }]);
     } else {
