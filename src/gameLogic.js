@@ -142,6 +142,8 @@ export function matchCardFilter(card, filter) {
   if (filter.type && !anyOf(filter.type, t => matchesType(card, t))) return false;
   if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
   if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
+  if (filter.maxPower != null && !((card.power || 0) <= filter.maxPower)) return false;
+  if (filter.minPower != null && !((card.power || 0) >= filter.minPower)) return false;
   return true;
 }
 const costReduceMatches = matchCardFilter;

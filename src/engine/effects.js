@@ -63,6 +63,7 @@ export function matchFilter(card, filter, ctx) {
   if (f.maxCost != null && !(card.cost <= resolveAmount(ctx, f.maxCost, f.maxCost))) return false;
   if (f.minCost != null && !(card.cost >= resolveAmount(ctx, f.minCost, f.minCost))) return false;
   if (f.maxPower != null && !((card.power || 0) <= resolveAmount(ctx, f.maxPower, f.maxPower))) return false;
+  if (f.minPower != null && !((card.power || 0) >= resolveAmount(ctx, f.minPower, f.minPower))) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   return true;
 }

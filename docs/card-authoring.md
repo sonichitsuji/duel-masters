@@ -61,8 +61,11 @@
 
 **filter**: `side`(ツインパクトの面) `civ` `civNot` `raceContains` `nameContains` `keyword`
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
-`element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `notNameSelf`
-※ `maxCost` 等にも**変数名の文字列**を書けます。
+`element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `minPower` `notNameSelf`
+※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
+
+> `maxPower` / `minPower` が見るのは**カードに印刷されたパワー**です。
+> `powerBuff` などによる増減は反映されません。
 
 **「〜または〜」は配列で書きます**（`civ` `civNot` `raceContains` `nameContains` `keyword` `type` が対応）。
 
