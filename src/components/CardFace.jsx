@@ -4,7 +4,7 @@ import { getCardCivs, makeCardBg, ssxKeywords } from "../gameLogic";
 // ===========================
 // CARD COMPONENTS
 // ===========================
-export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
+export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inBattle}){
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const w=small?52:74;const h=small?72:106;
@@ -13,8 +13,9 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
     // ツインパクトの呪文面が持つS・トリガーはシールドゾーンで機能するのでバッジに出す
     ...((card.spellSide?.keywords||[]).filter(k=>k==="sTrigger"))];
   const hyper=card.hyperMode;
-  // フィールドはバトルゾーンに「横向きで」置かれる。タップではないので回転だけさせる
-  const sideways=card.type==="field";
+  // フィールドは「バトルゾーンに」横向きで置かれる。タップではないので回転だけさせる。
+  // 手札や一覧では普通の向きで見せたいので、バトルゾーンの描画だけ inBattle を渡す。
+  const sideways=inBattle&&card.type==="field";
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
   const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
