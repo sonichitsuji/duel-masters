@@ -287,7 +287,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
             const machNow=!!attacker?.enteredThisTurn&&
               (attacker.keywords?.includes("machFighter")||computeGrantedKeywords(attacker,otherState.battle,otherState).includes("machFighter"));
             const notTargetable=c=>beingAttacked&&(!isCreatureSide(c)||(!c.tapped&&!machNow));
-            return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)||notTargetable(c)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
+            return state.battle.map(c=><CardFace key={c.uid} card={c} inBattle small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)||notTargetable(c)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
         </div>
