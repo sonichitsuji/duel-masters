@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { EffectText } from "./EffectText";
@@ -24,7 +24,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const [twinPactModal,setTwinPactModal]=useState(null);
   const [evolutionSelectModal,setEvolutionSelectModal]=useState(null);
   const [altCostModal,setAltCostModal]=useState(null);
-  const [zoneModal,setZoneModal]=useState(null); // null | "grave" | "mana"
+  const [zoneModal,setZoneModal]=useState(null); // null | "grave" | "mana" | "hyper"（超次元ゾーンは閲覧のみ）
   const label=pid==="p1"?"P1":"P2";const color=pid==="p1"?"#4af":"#f84";
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
@@ -48,13 +48,26 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     (!selectedCard.gZero.nameContains||c.name?.includes(selectedCard.gZero.nameContains))&&
     (!selectedCard.gZero.raceContains||c.race?.includes(selectedCard.gZero.raceContains))
   );
+  // コストを支払わずにプレイできるか（アカシック3の「呪文をコストを支払わずに唱えてもよい」等）。
+  // ツインパクトは呪文面が対象になることがあるので、両面で判定する。
+  const freeCastPerms=collectFreeCastPermissions(state,isActive);
+  const freeCastPerm=selectedCard?(
+    freeCastPermissionFor(selectedCard.type==="twinpact"?{ ...selectedCard, side:"creature" }:selectedCard,freeCastPerms)
+    ||(selectedCard.type==="twinpact"
+      ?freeCastPermissionFor({ ...selectedCard, ...selectedCard.spellSide, uid:selectedCard.uid, side:"spell" },freeCastPerms)
+      :null)
+  ):null;
+  // 呪文面だけが許可に合致するツインパクトは、呪文として唱える
+  const freeCastSide=selectedCard?.type==="twinpact"&&freeCastPerm
+    ?(freeCastPermissionFor({ ...selectedCard, side:"creature" },freeCastPerms)?"creature":"spell")
+    :null;
   const selBattleCard=selBattle?state.battle.find(c=>c.uid===selBattle):null;
   // 墓地・マナからの召喚許可（summonFrom / turnSummonFrom）
   const summonPerms=collectSummonPermissions(state,isActive);
   const canSummonNow=isActive&&drewThisTurn;
   // ゾーンの中身を「召喚できるか」付きで列挙する
   const zoneEntries=zone=>{
-    const list=zone==="grave"?state.grave:state.mana;
+    const list=zone==="grave"?state.grave:zone==="hyper"?(state.hyper||[]):state.mana;
     return list.map((card,idx)=>{
       const perm=canSummonNow?summonPermissionFor(card,zone,summonPerms,summonUsed||{}):null;
       // マナから召喚する場合、そのカード自身はコスト支払いに使えない
@@ -118,6 +131,18 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       if(!openEvolutionSelect({handIdx:selHand,card,gZero:true}))return;
     }else{
       const ok=onPlayCard(selHand,[],null,null);
+      if(ok!==false)setSelHand(null);
+    }
+  };
+
+  // コストを支払わずにプレイ（マナを1枚もタップしない）
+  const handleFreeCastPlay=()=>{
+    if(!freeCastPerm||selHand===null)return;
+    const card=state.hand[selHand];
+    if(card.type==="evo_creature"){
+      if(!openEvolutionSelect({handIdx:selHand,card,freeCast:true}))return;
+    }else{
+      const ok=onPlayCard(selHand,[],freeCastSide,null);
       if(ok!==false)setSelHand(null);
     }
   };
@@ -237,6 +262,13 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
             <div style={{fontSize:9,color:"#9966bb"}}>墓地{summonableCount("grave")>0&&<span style={{color:"#ffcc66"}}> ▲</span>}</div>
             <div style={{fontSize:16,fontWeight:700,color:"#b8f",lineHeight:1.1}}>{state.grave.length}</div>
           </div>
+          {/* 超次元ゾーンは置かれた時だけ表示する（閲覧のみ・戻ってこない） */}
+          {(state.hyper||[]).length>0&&(
+            <div onClick={()=>setZoneModal("hyper")} style={{background:"#04202a",border:"1px solid #66ddff88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36,cursor:"pointer"}}>
+              <div style={{fontSize:9,color:"#66ddff"}}>超次元</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#9ef",lineHeight:1.1}}>{state.hyper.length}</div>
+            </div>
+          )}
         </div>
         <div style={{border:"1px solid #3498dbaa",background:"rgba(52,152,219,0.10)",borderRadius:7,padding:"3px 6px"}}>
           <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield}/>
@@ -248,7 +280,14 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
         <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"center"}}>
           {(()=>{
             const getGranted=c=>computeGrantedKeywords(c,state.battle,state);
-            return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
+            // 攻撃を受ける側では、いま攻撃先に選べないカードを薄く表示する。
+            // 攻撃できるのはタップされているクリーチャーだけ（マッハファイターは出たターンの間アンタップでも可）
+            const beingAttacked=!!attackingUid&&!isActive;
+            const attacker=beingAttacked?otherState.battle.find(c=>c.uid===attackingUid):null;
+            const machNow=!!attacker?.enteredThisTurn&&
+              (attacker.keywords?.includes("machFighter")||computeGrantedKeywords(attacker,otherState.battle,otherState).includes("machFighter"));
+            const notTargetable=c=>beingAttacked&&(!isCreatureSide(c)||(!c.tapped&&!machNow));
+            return state.battle.map(c=><CardFace key={c.uid} card={c} small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)||notTargetable(c)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}
         </div>
@@ -301,6 +340,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           {drewThisTurn&&!chargedThisTurn&&selHand!==null&&<Btn onClick={handleCharge} col="#8888ff">CHARGE</Btn>}
           {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>PLAY</Btn>}
           {drewThisTurn&&selHand!==null&&gZeroOk&&<Btn onClick={handleGZeroPlay} col="#ff44ff">G-ZERO</Btn>}
+          {drewThisTurn&&selHand!==null&&freeCastPerm&&<Btn onClick={handleFreeCastPlay} col="#66ddff">コスト不要</Btn>}
           {drewThisTurn&&attackingUid&&otherState.shields.length===0&&<Btn onClick={onDirectAttack} col="#ff4444">DIRECT</Btn>}
           {drewThisTurn&&<Btn onClick={onEndTurn} col="#ffaa44">END TURN</Btn>}
         </div>

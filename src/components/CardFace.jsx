@@ -13,11 +13,13 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
     // ツインパクトの呪文面が持つS・トリガーはシールドゾーンで機能するのでバッジに出す
     ...((card.spellSide?.keywords||[]).filter(k=>k==="sTrigger"))];
   const hyper=card.hyperMode;
+  // フィールドはバトルゾーンに「横向きで」置かれる。タップではないので回転だけさせる
+  const sideways=card.type==="field";
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
   const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
   return(
-    <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:card.tapped?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
+    <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:(card.tapped||sideways)?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:1}}>
         <span style={{background:c.color,color:"#fff",fontWeight:700,fontSize:small?8:10,borderRadius:3,padding:"0 3px",lineHeight:"15px"}}>{card.cost}</span>
         <div style={{display:"flex",gap:1}}>{civs.map(cv=>{const cv_=CIV[cv];return cv_?<span key={cv} style={{fontSize:small?6:8,fontWeight:900,color:cv_.textColor,background:`${cv_.color}44`,borderRadius:2,padding:"0 2px",lineHeight:"13px",fontFamily:"'Noto Sans JP',sans-serif"}}>{cv_.label}</span>:null;})}</div>
@@ -26,7 +28,7 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${effPower}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="castle"?"城":"SPELL"}</div>
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${effPower}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="field"?"フィールド":card.type==="castle"?"城":"SPELL"}</div>
       {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {ownKw.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}
@@ -35,6 +37,8 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords}){
         {!ownKw.includes("blocker")&&grantedKeywords?.includes("blocker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>BK</span>}
         {ownKw.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#e066ff",letterSpacing:0}}>SL</span>}
         {!ownKw.includes("slayer")&&grantedKeywords?.includes("slayer")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SL</span>}
+        {ownKw.includes("guardman")&&<span style={{fontSize:6,fontWeight:700,color:"#66dd99",letterSpacing:0}}>GM</span>}
+        {!ownKw.includes("guardman")&&grantedKeywords?.includes("guardman")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>GM</span>}
         {!ownKw.includes("escape")&&grantedKeywords?.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>ES</span>}
         {ownKw.includes("escape")&&<span style={{fontSize:6,fontWeight:700,color:"#66ddff",letterSpacing:0}}>ES</span>}
         {!(ownKw.includes("tBreaker")||hyperTBreaker)&&(ownKw.includes("wBreaker")||hyperWBreaker)&&<span style={{fontSize:7}}>✦✦</span>}

@@ -35,7 +35,7 @@ export function defaultDeckIds(cardDb) {
 
 export function initPlayerState(deckIds, cardDb) {
   const deck=makeDeckFromList(deckIds, cardDb);
-  return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[]};
+  return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[],hyper:[]};
 }
 
 // civs: 単色="fire" or 多色=["fire","nature"]
@@ -142,6 +142,9 @@ export function matchCardFilter(card, filter) {
   if (filter.type && !anyOf(filter.type, t => matchesType(card, t))) return false;
   if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
   if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
+  if (filter.maxPower != null && !((card.power || 0) <= filter.maxPower)) return false;
+  if (filter.minPower != null && !((card.power || 0) >= filter.minPower)) return false;
+  if (filter.hasCip != null && hasPlayTrigger(card) !== !!filter.hasCip) return false;
   return true;
 }
 const costReduceMatches = matchCardFilter;
@@ -208,7 +211,7 @@ export function sTriggerSide(card) {
 }
 
 // 「エレメント」= クリーチャー(進化・ツインパクトのクリーチャー面を含む)またはタマシード
-export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed" || (card.type === "twinpact" && card.side !== "spell"); }
+export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed" || card.type === "field" || (card.type === "twinpact" && card.side !== "spell"); }
 
 // ===========================
 // 超魂X (SSX / Super Soul Cross)
@@ -251,6 +254,16 @@ export function ssxKeywords(card){
 export function getCardTriggers(card){ return effectiveCard(card)?.triggers || []; }
 // カードが持つ起動型能力（通常 + 超魂X）
 export function getCardActivated(card){ return effectiveCard(card)?.activated || []; }
+// 「このクリーチャーが出た時」で始まる能力（cip）を持つか。
+// autoEffect{trigger:"play"} でも triggers:[{on:"creaturePutBz"}] でも書けるので両方見る。
+// ツインパクトはクリーチャー面の能力を見る（呪文面の autoEffect は cip ではない）。
+export function hasPlayTrigger(card){
+  const ec = effectiveCard(card);
+  if (!ec) return false;
+  if (ec.autoEffect?.trigger === "play") return true;
+  return (ec.triggers || []).some(tr =>
+    tr.on === "creaturePutBz" && (!tr.target || tr.target === "this"));
+}
 // カードが持つキーワード判定（通常 + 超魂X + 一時付与）。
 // 他カードからの継続付与は computeGrantedKeywords を併用すること。
 export function hasKeyword(card, kw){
@@ -266,6 +279,8 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
   const kw = [...(ec.keywords || []), ...(card.tempBuff?.keywords || []), ...extraKeywords,
               ...((card.hyperMode && ec.hyperKeywords) || [])];
   let n = 1;
+  // ワールド・ブレイカー: シールドをすべてブレイクする（何枚でも足りるよう Infinity を返す）
+  if (kw.includes("worldBreaker")) return Infinity;
   if (kw.includes("tBreaker")) n = Math.max(n, 3);
   else if (kw.includes("wBreaker")) n = Math.max(n, 2);
   if (ec.poweredBreaker) n = Math.max(n, Math.max(1, Math.floor((effPower || 0) / 6000)));
@@ -279,6 +294,24 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
 // 置換は必ず例外処理で中止できる形で提示すること（BattleScreen の ReplacementModal）。
 // ===========================
 export const LOSE_CAUSES = ["deckOut"];
+
+// 「自分のクリーチャーが離れる時、かわりに〜する」の置換元を探す。
+// 有効なゾーンはバトルゾーン＋表向きシールド（replaceLose と同じ）。
+//   replaceLeave: { to:"mana"|"hand"|"shield"|"deck", filter?, optional? }
+// 置換は §0 のとおり必ず例外処理で中止できる形で提示すること。
+export function findLeaveReplacement(ownerState, card) {
+  if (!ownerState || !card) return null;
+  const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    const rules = effectiveCard(c).replaceLeave;
+    if (!rules) continue;
+    for (const rule of (Array.isArray(rules) ? rules : [rules])) {
+      if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
+      return { card: c, rule };
+    }
+  }
+  return null;
+}
 
 export function findLoseReplacement(ownerState, cause) {
   if (!ownerState) return null;
@@ -458,6 +491,46 @@ export function computeGrantedKeywords(card, battleZone, ownerState) {
     }
   }
   return granted;
+}
+
+// ===========================
+// コストを支払わずにプレイする許可（freeCast）
+// 「自分は呪文をコストを支払わずに唱えてもよい」のような継続能力。
+// バトルゾーン＋表向きシールドのカードから集める（summonFrom と同じ有効範囲）。
+// 「〜してもよい」なので、通常どおりコストを払ってプレイすることも選べる。
+//   freeCast: { filter?: {…}, timing?: "ownTurn"(既定)|"any" }
+// ===========================
+export function collectFreeCastPermissions(ownerState, isOwnTurn) {
+  if (!ownerState) return [];
+  const out = [];
+  const add = (perm, key) => {
+    if ((perm?.timing || "ownTurn") === "ownTurn" && !isOwnTurn) return;
+    out.push({ ...perm, key });
+  };
+  const fromCard = c => {
+    const fc = effectiveCard(c).freeCast;
+    if (!fc) return;
+    (Array.isArray(fc) ? fc : [fc]).forEach((p, i) => add(p, `${c.uid}#fc${i}`));
+  };
+  for (const c of ownerState.battle || []) fromCard(c);
+  for (const c of ownerState.shields || []) if (c.faceUp) fromCard(c);
+  return out;
+}
+
+// card をコストを支払わずにプレイできる許可を1つ返す。無ければ null。
+export function freeCastPermissionFor(card, perms) {
+  if (!card) return null;
+  return (perms || []).find(p => matchCardFilter(card, p.filter)) || null;
+}
+
+// 「相手が自分のクリーチャーを選ぶ時、選ばれない」
+// キーワード "unselectable" で表す（カード自身が持つか、grantKeywords で付与される）。
+// 自分で自分のカードを選ぶのは妨げないので、呼ぶ側で「選ぶのが相手か」を判定すること。
+// また「選ぶ」効果にだけ効く。全体除去のように選ばない効果は防げない。
+export function isUnselectableByOpponent(card, ownerState) {
+  if (!card) return false;
+  if (hasKeyword(card, "unselectable")) return true;
+  return computeGrantedKeywords(card, ownerState?.battle, ownerState).includes("unselectable");
 }
 
 // autoEffect inference from keywords/effect text

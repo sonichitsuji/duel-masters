@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger } from "../gameLogic";
 import { KEYWORD_LABELS } from "../constants";
 
 // ===========================
@@ -63,6 +63,9 @@ export function matchFilter(card, filter, ctx) {
   if (f.maxCost != null && !(card.cost <= resolveAmount(ctx, f.maxCost, f.maxCost))) return false;
   if (f.minCost != null && !(card.cost >= resolveAmount(ctx, f.minCost, f.minCost))) return false;
   if (f.maxPower != null && !((card.power || 0) <= resolveAmount(ctx, f.maxPower, f.maxPower))) return false;
+  if (f.minPower != null && !((card.power || 0) >= resolveAmount(ctx, f.minPower, f.minPower))) return false;
+  // hasCip: 「このクリーチャーが出た時」で始まる能力を持つ
+  if (f.hasCip != null && hasPlayTrigger(card) !== !!f.hasCip) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   return true;
 }
@@ -76,6 +79,7 @@ function zoneCards(state, zone, ctx) {
     case "grave": return state?.grave || [];
     case "shield": return state?.shields || [];
     case "deck": return state?.deck || [];
+    case "hyper": return state?.hyper || [];
     case "revealed": return ctx?.revealed || [];
     case "lastMoved": return ctx?.lastMoved || [];
     // メテオバーン用。スナップショットではなく「今バトルゾーンにいる」カードの下を見る。
@@ -108,8 +112,10 @@ const SOURCE = {
   handToBz:       { zone: "hand",     target: "self" },
   handToShield:   { zone: "hand",     target: "self" },
   handToGrave:    { zone: "hand",     target: "self" },
+  handToHyper:    { zone: "hand",     target: "self" },
   playFromHand:   { zone: "hand",     target: "self" },
   manaToBz:       { zone: "mana",     target: "self" },
+  manaToGrave:    { zone: "mana",     target: "self" },
   manaToHand:     { zone: "mana",     target: "self" },
   bzToMana:       { zone: "bz",       target: "opponent" },
   bzToHand:       { zone: "bz",       target: "opponent" },
@@ -120,6 +126,7 @@ const SOURCE = {
   tapToggle:      { zone: "bz",       target: "both" },
   graveToBz:      { zone: "grave",    target: "self" },
   graveToHand:    { zone: "grave",    target: "self" },
+  graveToDeck:    { zone: "grave",    target: "self" },
   graveToDeckBottom: { zone: "grave", target: "self" },
   meteorBurn:     { zone: "under",    target: "self" },
   shieldToHand:   { zone: "shield",   target: "self" },
@@ -147,7 +154,14 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   const type = effect.type;
   const c2 = { ...ctx, srcName: srcCard?.name };
   if (AUTO_TYPES.has(type)) {
-    if (type === "revealedToDeckBottom") return { candidates: ctx?.revealed || [], isAuto: true };
+    if (type === "revealedToDeckBottom") {
+      const pool = ctx?.revealed || [];
+      // 「残りを好きな順序で山札の下に置く」は、全部選び終えるまで確定できない順序付き選択
+      if (effect.order === "choose" && pool.length > 1) {
+        return { candidates: pool, isAuto: false, maxSelect: pool.length, ordered: true };
+      }
+      return { candidates: pool, isAuto: true };
+    }
     return { candidates: [], isAuto: true };
   }
   const spec = SOURCE[type];
@@ -155,15 +169,35 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   const zone = effect.zone || spec.zone;
   const tgt = effect.target || spec.target;
 
+  // 「選ぶ」効果かどうか。全体除去やランダムは選ばないので「選ばれない」では防げない
+  const selects = !(effect.all || effect.random || effect.takeAll);
   let cards = [];
+  // 「プレイヤー1人の〜から」用に、候補がどちらのプレイヤーのものかを控えておく
+  const owners = {};
   if (zone === "revealed" || zone === "lastMoved") {
     cards = zoneCards(null, zone, c2);
   } else {
-    const states = tgt === "opponent" ? [otherState] : tgt === "both" ? [selfState, otherState] : [selfState];
-    for (const st of states) cards.push(...zoneCards(st, zone, c2));
+    const ownerPid = selfState === p1 ? "p1" : "p2";
+    const oppPid = ownerPid === "p1" ? "p2" : "p1";
+    const states = tgt === "opponent" ? [[otherState, oppPid]]
+      : tgt === "both" ? [[selfState, ownerPid], [otherState, oppPid]] : [[selfState, ownerPid]];
+    for (const [st, stPid] of states) {
+      let got = zoneCards(st, zone, c2);
+      // 相手のバトルゾーンから「選ぶ」時だけ、「相手に選ばれない」カードを候補から外す
+      if (selects && st === otherState && (zone === "bz" || zone === "battle")) {
+        got = got.filter(c => !isUnselectableByOpponent(c, st));
+      }
+      for (const c of got) owners[c.uid] = stPid;
+      cards.push(...got);
+    }
   }
   // 「このクリーチャーを破壊する」は選択不要
   if (type === "destroy" && effect.self) return { candidates: [], isAuto: true };
+  // 「そのクリーチャー」＝誘発の主体。選ばせずに確認だけ出す
+  if (effect.subject) {
+    const subj = ctx?.subjectCard;
+    return { candidates: subj ? [subj] : [], isAuto: true };
+  }
   // 墓地から出す：破壊されたクリーチャーの持ち主 / 自分自身のみ
   if (type === "graveToBz") {
     if (effect.owner === "destroyed") {
@@ -176,14 +210,18 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   // 「好きな順序で置く」は選んだ順がそのまま並び順になるので、all 指定でも必ず選択させる
   if (effect.order === "choose") {
     const n = resolveAmount(c2, effect.amount, cards.length) || cards.length;
-    return { candidates: cards, isAuto: cards.length === 0, maxSelect: Math.min(n, cards.length), ordered: true, optional: effect.optional };
+    return { candidates: cards, owners, isAuto: cards.length === 0, maxSelect: Math.min(n, cards.length), ordered: true, optional: effect.optional };
   }
   // 一括処理（選択不要）
-  if (effect.all || effect.random || effect.takeAll) return { candidates: cards, isAuto: true };
+  if (effect.all || effect.random || effect.takeAll) return { candidates: cards, owners, isAuto: true };
+  // 「好きな枚数」: 0枚〜候補すべてから好きなだけ選ぶ（0枚も選べるので必ず任意）
+  if (effect.any) {
+    return { candidates: cards, owners, isAuto: cards.length === 0, maxSelect: cards.length, optional: true };
+  }
   // 選択枚数は通常 amount。ただし powerBuff の amount は「パワー増減値」なので count で指定する（既定1体）
   const countSpec = type === "powerBuff" ? (effect.count ?? 1) : (effect.count ?? effect.amount);
   const maxSelect = Math.max(1, resolveAmount(c2, countSpec, 1) || 1);
-  return { candidates: cards, isAuto: cards.length === 0, maxSelect, optional: effect.optional };
+  return { candidates: cards, owners, isAuto: cards.length === 0, maxSelect, optional: effect.optional };
 }
 
 // ===========================
@@ -212,6 +250,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name };
   // 「そうしたら」判定用。このステップを実際に行ったか。各 case が明示しなければ末尾で既定値を入れる
   ctx.stepDone = undefined;
+  // subject:true =「そのクリーチャー」。誘発の主体そのものを対象にする（選択させない）
+  if (effect.subject) selectedUids = ctx.subjectCard ? [ctx.subjectCard.uid] : [];
   const type = effect.type;
   const spec = SOURCE[type] || {};
   const tgt = effect.target || spec.target || "self";
@@ -220,10 +260,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const stateOf = pidx => (pidx === "p1" ? p1 : p2);
   const setOf   = pidx => (pidx === "p1" ? setP1 : setP2);
   const pids = targetPids(tgt, ownerPid);
+  // 選ばれたカードを対象プレイヤーごとにまとめる。
+  // all:true なら選択の代わりに filter 一致すべてを対象にする（「すべて〜する」）。
   const pickSelected = (zone) => {
     const out = [];
     for (const pidx of pids) {
-      const cards = zoneCards(stateOf(pidx), zone, ctx).filter(c => selectedUids.includes(c.uid));
+      const pool = zoneCards(stateOf(pidx), zone, ctx);
+      const cards = effect.all ? pool.filter(c => matchFilter(c, effect.filter, ctx))
+                               : pool.filter(c => selectedUids.includes(c.uid));
       if (cards.length) out.push({ pidx, cards });
     }
     return out;
@@ -281,7 +325,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "topToMana": {
       const n = Math.min(amount, selfState.deck.length);
       if (n > 0) {
-        const moved = selfState.deck.slice(0, n).map(c => ({ ...c, tapped: effect.tapped !== false }));
+        const moved = selfState.deck.slice(0, n).map(c => ({ ...c, tapped: !!effect.tapped }));
         setSelf(s => ({ ...s, deck: s.deck.slice(n), mana: [...s.mana, ...moved] }));
         ctx.lastMoved = moved;
         addLog(`${pid}: ${moved.map(c => c.name).join(", ")} → マナ`);
@@ -309,8 +353,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           const rest = s.deck.filter(c => !uids.includes(c.uid));
           const b = { ...s, deck: dest === "deckTop" ? [...take, ...shuffle(rest)] : shuffle(rest) };
           if (dest === "hand") b.hand = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
-          if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))];
-          if (dest === "mana") b.mana = [...s.mana, ...take.map(c => ({ ...c, tapped: true }))];
+          if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
+          if (dest === "mana") b.mana = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           return b;
         });
         const where = dest === "deckTop" ? "山札の上" : dest === "hand" ? "手札" : dest === "bz" ? "バトルゾーン" : "マナ";
@@ -327,14 +371,17 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "revealedToGrave": case "revealedToDeckTop": case "revealedToDeckBottom": {
       const pool = ctx.revealed || [];
       const matched = pool.filter(c => matchFilter(c, effect.filter, ctx));
-      const take = (type === "revealedToDeckBottom") ? pool
+      // revealedToDeckBottom は「残りをすべて」戻すのが既定。
+      // order:"choose"（好きな順序で置く）なら、選んだ順がそのまま並び順になる。
+      const take = (type === "revealedToDeckBottom")
+        ? (effect.order === "choose" ? selectedUids.map(uid => pool.find(c => c.uid === uid)).filter(Boolean) : pool)
         : (effect.takeAll ? matched : matched.filter(c => selectedUids.includes(c.uid)));
       if (take.length > 0) {
         setSelf(s => {
           const b = { ...s };
           if (type === "revealedToHand")  b.hand   = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
-          if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))];
-          if (type === "revealedToMana")  b.mana   = [...s.mana, ...take.map(c => ({ ...c, tapped: true }))];
+          if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
+          if (type === "revealedToMana")  b.mana   = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           if (type === "revealedToGrave") b.grave  = [...s.grave, ...take];
           if (type === "revealedToDeckTop")    b.deck = [...take, ...s.deck];
           if (type === "revealedToDeckBottom") b.deck = [...s.deck, ...take];
@@ -356,7 +403,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         const kw = effect.tempKeyword;
         setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect),
+          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
             grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を手札からバトルゾーンへ`);
         ctx.lastMoved = cards;
@@ -371,6 +418,17 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           shields: [...s.shields, ...cards.map(c => ({ ...c, tapped: false, faceUp: false }))], shieldAddedThisTurn: true }));
         ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} をシールド化`);
+      }
+      break;
+    }
+    // 超次元ゾーンへ。ゲーム外の公開領域なので、置かれたカードは戻ってこない
+    case "handToHyper": {
+      for (const { pidx, cards } of pickSelected("hand")) {
+        const uids = cards.map(c => c.uid);
+        setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)),
+          hyper: [...(s.hyper || []), ...cards.map(c => ({ ...c, tapped: false, faceUp: true }))] }));
+        addLog(`${pidx.toUpperCase()}: 手札${cards.length}枚を超次元ゾーンへ`);
+        ctx.lastMoved = cards;
       }
       break;
     }
@@ -405,7 +463,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
             addLog(`${pid}: 城「${card.name}」を表向きシールド化`);
           } else {
-            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, summonedThisTurn: true }] }));
+            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true }] }));
             addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}召喚`);
             ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
           }
@@ -419,7 +477,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       for (const { pidx, cards } of pickSelected("mana")) {
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))] }));
+          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→バトルゾーン`);
         ctx.lastMoved = cards;
         ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
@@ -432,6 +490,20 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→手札`);
       }
+      break;
+    }
+    case "manaToGrave": {
+      let moved = 0;
+      for (const { pidx, cards } of pickSelected("mana")) {
+        const uids = cards.map(c => c.uid);
+        setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)), grave: [...s.grave, ...cards.map(c => ({ ...c, tapped: false }))] }));
+        addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→墓地`);
+        ctx.lastMoved = cards;
+        moved += cards.length;
+      }
+      // as で枚数を控えておくと、後続ステップの amount から名前で参照できる（「同じ枚数」）
+      if (effect.as) ctx.vars[effect.as] = moved;
+      ctx.stepDone = moved > 0;
       break;
     }
 
@@ -460,7 +532,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids);
-          return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c => ({ ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, summonedThisTurn: false, tempBuff: undefined }))] }; });
+          return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c => ({ ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, enteredThisTurn: false, summonedThisTurn: false, tempBuff: undefined }))] }; });
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} を持ち主の手札へ`);
       }
       break;
@@ -470,7 +542,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const targets = stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
-        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, mana: [...s.mana, ...extracted.map(c => ({ ...c, tapped: true }))] }; });
+        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, mana: [...s.mana, ...extracted.map(c => ({ ...c, tapped: !!effect.tapped }))] }; });
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} をマナゾーンへ`);
       }
       break;
@@ -565,7 +637,12 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const tEff = getEffectivePower(target, otherState, otherState.battle);
       addLog(`[VS] ${self.name}(${sEff}) vs ${target.name}(${tEff})`);
       if (tEff >= sEff) { setSelf(s => { const { newBattle, extracted } = extractFromBattle(s.battle, self.uid); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; }); addLog(`[LOST] ${self.name} 破壊`); markDestroyed(self, ownerPid, true); }
-      if (sEff >= tEff) { setOther(s => { const { newBattle, extracted } = extractFromBattle(s.battle, target.uid); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; }); addLog(`[WIN] ${target.name} 破壊`); markDestroyed(target, oppPid, true); ctx.etbBattleWon = true; }
+      if (sEff >= tEff) {
+        setOther(s => { const { newBattle, extracted } = extractFromBattle(s.battle, target.uid); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
+        addLog(`[WIN] ${target.name} 破壊`); markDestroyed(target, oppPid, true); ctx.etbBattleWon = true;
+        // 「バトルに勝った時」は、相手を破壊して自分は生き残った時だけ（相打ちは勝ちではない）
+        if (sEff > tEff) ctx.battleWonBy = { pid: ownerPid, card: self };
+      }
       break;
     }
 
@@ -577,7 +654,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       if (!cards.length) break;
       const uids = cards.map(c => c.uid);
       setOf(ownerOfGrave)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)),
-        battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect),
+        battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
           ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
@@ -621,6 +698,26 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     // 墓地から山札の下へ。order:"shuffle"(既定)=シャッフルしてから置く / "choose"=選んだ順に置く
+    // 「（それらを）自身の山札に加えてシャッフルする」。山札の下に置く graveToDeckBottom とは別物で、
+    // 加えたあとその持ち主の山札全体をシャッフルする。
+    case "graveToDeck": {
+      let moved = 0;
+      for (const pidx of pids) {
+        const st = stateOf(pidx);
+        const cards = (effect.all || effect.takeAll)
+          ? st.grave.filter(c => matchFilter(c, effect.filter, ctx))
+          : st.grave.filter(c => selectedUids.includes(c.uid));
+        if (!cards.length) continue;
+        const uids = new Set(cards.map(c => c.uid));
+        setOf(pidx)(s => ({ ...s, grave: s.grave.filter(c => !uids.has(c.uid)),
+          deck: shuffle([...s.deck, ...cards]) }));
+        addLog(`${pidx.toUpperCase()}: 墓地の${cards.length}枚を山札に加えてシャッフル`);
+        ctx.lastMoved = cards;
+        moved += cards.length;
+      }
+      ctx.stepDone = moved > 0;
+      break;
+    }
     case "graveToDeckBottom": {
       for (const pidx of pids) {
         const st = stateOf(pidx);
@@ -628,7 +725,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         if (effect.order === "choose") {
           cards = selectedUids.map(uid => st.grave.find(c => c.uid === uid)).filter(Boolean); // 選んだ順＝上から
         } else {
-          const pool = (effect.all || effect.takeAll || selectedUids.length === 0)
+          const pool = (effect.all || effect.takeAll)
             ? st.grave.filter(c => matchFilter(c, effect.filter, ctx))
             : st.grave.filter(c => selectedUids.includes(c.uid));
           cards = shuffle(pool);

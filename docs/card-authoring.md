@@ -49,8 +49,12 @@
 | `target` | **`"self"` / `"opponent"` / `"both"`**（どちらも） |
 | `amount` | 数値、**または変数名の文字列**（例 `"count"`）。選択枚数の上限にもなる |
 | `filter` | 対象条件（下記） |
-| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `revealed` `lastMoved` `under` `stack`） |
+| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `hyper` `revealed` `lastMoved` `under` `stack`） |
+| `subject` | **「そのクリーチャー」**。誘発の主体そのものを対象にする（選択させない） |
 | `all` | 条件一致すべてに適用（選択不要） |
+| `onePlayer` | **「プレイヤー1人の〜から」**。`target:"both"` で候補を両者から出しつつ、選べるのは**どちらか一方のプレイヤーのカードだけ**にする |
+| `any` | **「好きな枚数」**。0枚〜候補すべてから好きなだけ選ぶ（0枚も選べるので常に任意） |
+| `as` | 実際に動いた枚数を変数に控える。後続の `amount` から名前で参照できる（「同じ枚数」） |
 | `ifPrevious` | **「そうしたら」「そうした場合」**。直前のステップを実際に行わなかった場合、このステップ以降を実行しない → **§3.5** |
 
 > `under` = **このクリーチャーの下にあるカード**（メテオバーン用）、
@@ -59,8 +63,16 @@
 
 **filter**: `side`(ツインパクトの面) `civ` `civNot` `raceContains` `nameContains` `keyword`
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
-`element`(クリーチャー/タマシード) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `notNameSelf`
-※ `maxCost` 等にも**変数名の文字列**を書けます。
+`element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `minPower` `notNameSelf`
+`hasCip`(「このクリーチャーが出た時」で始まる能力を持つ)
+※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
+
+> **キー名は `npm run validate-cards` が検査します。** 効果ステップと `filter` に未知のキーがあると
+> エラーになるので、`takeall`（正: `takeAll`）や `civs`（正: `civ`）のような綴り違いは検出されます。
+> 新しいキーを実装したら `scripts/validate-cards.mjs` の `EFFECT_KEYS` / `FILTER_KEYS` にも足してください。
+
+> `maxPower` / `minPower` が見るのは**カードに印刷されたパワー**です。
+> `powerBuff` などによる増減は反映されません。
 
 **「〜または〜」は配列で書きます**（`civ` `civNot` `raceContains` `nameContains` `keyword` `type` が対応）。
 
@@ -177,11 +189,27 @@
 
 **手札から**
 - `handToBz {filter,amount,tempKeyword,summoningSickness}` — 手札から**出す**
+- `handToHyper {target,amount,all,filter}` — **超次元ゾーン**へ置く（ゲーム外の公開領域。戻ってこない）
 - `handToShield {amount}` — シールド化
 - `handToGrave {target,amount,all,random}` — 捨てる（`random`=見ないで選ぶ）
 - `playFromHand {free,filter}` — **実行**（呪文=唱える／クリーチャー=召喚／城=表向きシールド化）
 
-**マナから**：`manaToBz {filter}` / `manaToHand {amount}`
+**マナから**：`manaToBz {filter}` / `manaToHand {amount}` / `manaToGrave {amount|any, as}`
+
+**マナゾーンへ置く時のタップ状態**
+マナゾーンに置かれるカードは、**既定でアンタップ**です。カードのテキストに
+「**タップして**マナゾーンに置く」とある時だけ `"tapped": true` を書きます。
+
+```jsonc
+// 「持ち主のマナゾーンに置く」→ アンタップ（既定なので何も書かない）
+{ "type": "bzToMana", "target": "opponent", "amount": 1 }
+
+// 「タップしてマナゾーンに置く」→ tapped を明記
+{ "type": "topToMana", "amount": 1, "tapped": true }
+```
+
+`tapped` は **`topToMana` / `bzToMana` / `revealedToMana` / `search{destination:"mana"}` /
+`meteorBurn{to:"mana"}`** で共通に使えます。
 
 **バトルゾーンから**
 - `destroy {target,filter,amount,all,self}` — 破壊。**`self:true` で「このクリーチャーを破壊する」**（選択不要・自分を対象）
@@ -203,6 +231,8 @@
 - `graveToBz {filter,owner,self,tempKeywords,destroyAtEndOfTurn,summoningSickness}` — 墓地から出す
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
 - `graveToHand {target,filter,amount}` — 墓地から手札に戻す
+- `graveToDeck {target,filter,any,all,onePlayer}` — 墓地のカードを**山札に加えてシャッフル**する
+  （「自身の山札に加えてシャッフルする」。下に置く `graveToDeckBottom` とは別物）
 - `graveToDeckBottom {target,filter,amount,all,order}` — 墓地から山札の下へ
   - `order: "shuffle"`（既定）… シャッフルしてから置く。`all:true` か `amount` 省略で墓地すべてが対象
   - `order: "choose"` … **好きな順序で**置く。選んだ順に上から積まれ、全部選ぶまで確定できない
@@ -242,10 +272,14 @@
 
 ## 6. type とキーワード
 
-**type**: `creature` / `evo_creature` / `spell` / `twinpact` / `tamaseed` / `castle`(G城・表向きシールド)
+**type**: `creature` / `evo_creature` / `spell` / `twinpact` / `tamaseed` / `castle`(G城・表向きシールド) / `field`(フィールド)
+
+**エレメント**: `creature` `evo_creature` `tamaseed` `field` とツインパクトのクリーチャー面。
+`filter` の `"element": true` や `"type": "element"` で指定できます。
 
 **keywords**: `speedAttacker` `wBreaker` `tBreaker` `blocker` `cantAttack` `sTrigger` `drawOnPlay`
-`revolutionChange` `gStrike` `charger` `zRush` `escape` `slayer`
+`revolutionChange` `gStrike` `charger` `zRush` `escape` `slayer` `guardman` `unselectable`
+`machFighter` `worldBreaker`
 
 **文明**: `light` `water` `darkness` `fire` `nature`（表示順もこの順）
 
@@ -281,6 +315,7 @@
 | `leave` | カードが離れた時 |
 | `destroyed` | 破壊された時 |
 | `battleDestroy` | バトルで破壊された時 |
+| `battleWin` | **バトルに勝った時**（相手を破壊して自分は生き残った時。相打ちは勝ちではない）。攻撃によるバトルと `battle` 効果の両方で誘発 |
 | `draw` | カードを引いた時。`"lastCard": true` で「**それが最後の1枚だったら**」（引いた結果、山札が0枚になった時）に限定できる |
 | `discard` | 手札を捨てた時 |
 | `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時。`shieldLeave` はシールドゾーンの中身を監視して検出するので、**ブレイク・効果・エスケープ・置換など離れ方と行き先を問わず**誘発する（`target` でどちらのシールドかを指定） |
@@ -546,6 +581,108 @@
 
 ---
 
+## 7.11. フィールド（`type:"field"`）
+
+「ヒストリック・フィールド」などの**フィールド**は、バトルゾーンに**横向きで置かれるエレメント**です。
+`type:"field"` と書くだけで次のように扱われます。
+
+- クリーチャーではないので**攻撃できず、攻撃されません**（タマシードと同じ）。パワーは持ちません
+- **エレメント**なので `filter` の `"element": true` や `"type": "element"` に一致します
+- 出た時（`autoEffect{trigger:"play"}`）や継続能力はクリーチャーと同じように書けます。
+  「クリーチャーが出た時」の誘発は**しません**
+- マナや墓地から出す場合は `manaToBz` / `graveToBz` に `"filter": {"type": "field"}` を書きます
+
+## 7.12. コストを支払わずにプレイする（`freeCast`）
+
+「自分は呪文をコストを支払わずに唱えてもよい」のような**継続能力**です。
+有効なゾーンは**バトルゾーン＋表向きのシールド**（`summonFrom` と同じ）。
+
+```jsonc
+"freeCast": [ { "filter": { "type": "spell" } } ]
+```
+
+| キー | 説明 |
+|---|---|
+| `filter` | どのカードが対象か（省略で全部）。§2 の filter 語彙 |
+| `timing` | `"ownTurn"`(既定) / `"any"` |
+
+- 「〜**してもよい**」なので、通常どおりコストを払ってプレイすることも選べます。
+  手札のカードを選ぶと **「コスト不要」ボタン**が増え、押すとマナを1枚もタップせずにプレイします
+- ツインパクトは両面で判定し、呪文面だけが条件に合えば呪文として唱えます
+
+## 7.13. ガードマン（`guardman`）
+
+「このクリーチャーをタップして、相手クリーチャーの攻撃先を、自分の**他の**クリーチャーから
+このクリーチャーに変更してもよい」。`"keywords": ["guardman"]` と書くだけで動きます。
+
+- タイミングは**ブロッカーと同じ**（攻撃先が決まった後のブロック・ステップ）。
+  同じモーダルにブロッカーと並んで出ます
+- 使えるのは**攻撃先が自分の他のクリーチャーの時だけ**。シールドやプレイヤーへの攻撃、
+  および自分自身が攻撃先の場合は使えません
+- **タップ済みでは使えません**（自分をタップするのがコスト）
+- ブロックではなく**攻撃先の変更**なので、変更後は攻撃クリーチャーとバトルになります
+
+## 7.14. 「選ばれない」（`unselectable`）
+
+「相手が自分のクリーチャーを選ぶ時、〜は選ばれない」を表します。キーワード `unselectable` で、
+`grantKeywords` から付与するのが基本です。
+
+```jsonc
+// 相手が自分のクリーチャーを選ぶ時、自分の他のドリームメイトは選ばれない
+"grantKeywords": [
+  { "keyword": "unselectable", "filter": { "raceContains": "ドリームメイト", "notSelf": true } }
+]
+```
+
+- **相手が選ぶ時だけ**効きます。自分で自分のカードを選ぶのは妨げません
+- **攻撃先の選択にも効きます**（攻撃するクリーチャーを選ぶのも「選ぶ」ため）
+- **「選ぶ」効果にだけ効きます。** `all` / `random` のように選ばない効果（全体除去など）は防げません
+
+## 7.15. 攻撃できる対象とマッハファイター／ワールド・ブレイカー
+
+### 攻撃できる対象（基本ルール）
+
+攻撃クリーチャーが攻撃できるのは、**相手プレイヤー**（シールドブレイク／ダイレクトアタック）か、
+**タップされている相手クリーチャー**です。**アンタップしているクリーチャーは攻撃できません。**
+タマシードとフィールドはクリーチャーではないので攻撃されません。
+
+### `machFighter`（マッハファイター）
+
+「このクリーチャーは、**出たターンの間**、**タップまたはアンタップしているクリーチャー**を攻撃できる」。
+
+- 出たターンの間だけ、上の基本ルールを越えて**アンタップしているクリーチャーも攻撃できます**
+- 「クリーチャーを攻撃できる」許可なので、**これだけを頼りに攻撃している間は
+  シールドもプレイヤーも攻撃できません**。スピードアタッカーも持っていれば普通に攻撃できます
+- 有効期間は「バトルゾーンに出たターン」。召喚でも効果で出た場合でも同じです
+
+### `worldBreaker`（ワールド・ブレイカー）
+
+シールドを**すべて**ブレイクします。
+
+## 7.16. 離れる時の置換（`replaceLeave`）
+
+「自分のクリーチャーが離れる時、かわりに〜に置いてもよい」。有効なゾーンは
+**バトルゾーン＋表向きのシールド**です。
+
+```jsonc
+"replaceLeave": [ { "to": "mana", "filter": { "creatureOnly": true } } ]
+```
+
+| キー | 説明 |
+|---|---|
+| `to` | `"mana"`(既定) / `"hand"` / `"shield"` / `"deck"` |
+| `filter` | どのカードに適用するか（省略で全部） |
+
+- §0のとおり**必ず例外処理で中止できる**モーダルで提示します（中止すると通常どおり破壊）
+- 置換されたカードは破壊されていないので `destroyed` は誘発せず、`leave` だけ誘発します
+- **現状、破壊のパイプラインだけに掛かります。** 効果による手札・マナ・シールドへの移動は
+  まだ置換の対象になりません
+
+## 7.17. 超次元ゾーン（`hyper`）
+
+ゲーム外の公開領域です。`handToHyper` で置けます。**置かれたカードは戻す手段がありません。**
+枚数が1枚以上ある時だけ盤面にカウンタが出て、タップすると中身を閲覧できます。
+
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
@@ -588,6 +725,8 @@
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
 - `evolution`: 進化元のゾーンと枚数 → **§7.8**
+- `replaceLeave`: 離れる時の置換 → **§7.16**
+- `freeCast`: コストを支払わずにプレイできる許可 → **§7.12**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
   > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく
   > 相手の効果の対象に選ばれた時にも**誘発します。ブレイクするのは**選んだ側**のシールドです。

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, computeGrantedKeywords, ssxKeywords } from "../gameLogic";
+import { getCardCivs, computeGrantedKeywords, ssxKeywords, isCreatureSide } from "../gameLogic";
 import { EffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -12,11 +12,16 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
-  const isCreature=card.type==="creature"||card.type==="evo_creature";
+  // 攻撃できるのはクリーチャーだけ（ツインパクトのクリーチャー面を含む。タマシード／フィールドは不可）
+  const isCreature=isCreatureSide(card);
   const ownKw=[...(card.keywords||[]), ...ssxKeywords(card)];
-  const effectiveSA=ownKw.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[],ownerState).includes("speedAttacker");
-  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
-  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":(card.summonedThisTurn&&!effectiveSA)?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
+  const granted=computeGrantedKeywords(card,battleZone||[],ownerState);
+  const effectiveSA=ownKw.includes("speedAttacker")||granted.includes("speedAttacker");
+  // マッハファイター: 召喚酔いしていても攻撃できる（ただしその場合クリーチャーしか攻撃できない → §7.15）
+  const effectiveMF=ownKw.includes("machFighter")||granted.includes("machFighter");
+  const sick=card.summonedThisTurn&&!effectiveSA&&!effectiveMF;
+  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!sick&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
+  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":sick?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
   const hyper=card.hyperMode;
   const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);

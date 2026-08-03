@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, sTriggerSide, isCreatureSide } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
+import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
 import { EffectStepModal } from "../components/modals/EffectStepModal";
@@ -21,12 +22,13 @@ import { StepIndicator } from "../components/BoardWidgets";
 // ev: { sourcePid, subjectCard?, method?, firstThisTurn? }
 const DEFAULT_TRIGGER_SCOPE = {
   creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this", attackEnd:"this",
+  battleWin:"this",
   castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self",
   startOfTurn:"self", endOfTurn:"self",
 };
 // 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
 // （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
-const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd"]);
+const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd", "battleWin"]);
 // この誘発が「自分自身に起きた出来事」を見るのか、プレイヤーのイベントを見張るのか
 function triggerScope(tr, event){ return tr.target || DEFAULT_TRIGGER_SCOPE[event] || "self"; }
 
@@ -235,6 +237,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             setTimeout(() => fireTriggerRef.current("creaturePutBz", { sourcePid: e.ownerPid, subjectCard: e.card, method: e.method }), 0);
           }
         });
+      }
+      // 効果によるバトルに勝った時（攻撃によるバトルは resolveAttackCreature から発火）
+      if (updatedCtx.battleWonBy) {
+        const { pid: wpid, card: wcard } = updatedCtx.battleWonBy;
+        delete updatedCtx.battleWonBy;
+        setTimeout(() => fireTriggerRef.current("battleWin", { sourcePid: wpid, subjectCard: wcard }), 0);
       }
       // EXWIN: 能力による特殊勝利
       if (updatedCtx.winGame) {
@@ -498,12 +506,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         else if(spec.zone==="mana")  newMana=newMana.filter(c=>!used.has(c.uid));
         else                         battleWithoutBase=activeState.battle.filter(c=>!used.has(c.uid));
       }
-      const newCreature={...card,tapped:false,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
+      const newCreature={...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle}));
       const fromLabel=fromZone==="grave"?"（墓地から）":fromZone==="mana"?"（マナゾーンから）":"";
-      addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) ${fromLabel}召喚！`:"（タマシード）を出した"}`);
-      showCutIn({title:isCreature?"召喚！":"タマシード！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
+      const typeLabel=CARD_TYPE_LABELS[card.type]||"カード";
+      addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) ${fromLabel}召喚！`:`（${typeLabel}）を出した`}`);
+      showCutIn({title:isCreature?"召喚！":`${typeLabel}！`,cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
       // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）
@@ -526,11 +535,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     return true;
   };
   const handleRevChangeExec=(handCard,attacker)=>{
-    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,summonedThisTurn:false}:c);
+    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:false,enteredThisTurn:true,summonedThisTurn:false}:c);
     setActiveState(s=>({
       ...s,
       battle:newBattle,
-      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,summonedThisTurn:false}),
+      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,enteredThisTurn:false,summonedThisTurn:false}),
     }));
     addLog(`[REV] 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
     maybeFlagCantAttack([handCard.uid],setActiveState,otherState.battle);
@@ -552,7 +561,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const fromHand=activeState.hand.filter(c=>handUids.includes(c.uid));
     const fromMana=activeState.mana.filter(c=>manaUids.includes(c.uid));
     // ファイナル革命で出したクリーチャーも召喚酔いする
-    const newCards=[...fromHand,...fromMana].map(c=>({ ...c, tapped: false, summonedThisTurn: true }));
+    const newCards=[...fromHand,...fromMana].map(c=>({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: true }));
     setActiveState(s=>({...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]}));
     addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
     maybeFlagCantAttack(newCards.map(c=>c.uid),setActiveState,otherState.battle);
@@ -575,18 +584,35 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // 革命チェンジで攻撃クリーチャーが入れ替わった場合に確認が飛んでしまい、
     // ダイレクトアタックもブロックの機会を経ずに通ってしまう。
   };
+  const attackerHas=(c,kw)=>
+    hasKeyword(c,kw)||computeGrantedKeywords(c,activeState.battle,activeState).includes(kw);
+  // マッハファイター（このクリーチャーは、出たターンの間、タップまたはアンタップしている
+  // クリーチャーを攻撃できる）。「出たターンの間」だけ有効な、クリーチャー限定の攻撃許可。
+  const machFighterActive=card=>!!card?.enteredThisTurn&&attackerHas(card,"machFighter");
+  // マッハファイターだけを頼りに攻撃している間は、クリーチャーしか攻撃できない。
+  // （スピードアタッカーも持つなら普通に攻撃できるので制限はかからない）
+  const machFighterOnly=card=>machFighterActive(card)
+    &&!!card?.summonedThisTurn&&!attackerHas(card,"speedAttacker");
+  // 攻撃先に選べるか。「相手が自分のクリーチャーを選ぶ時、選ばれない」は攻撃先の選択にも効く
+  const isUnselectableBy=(card,ownerPid,selectorPid)=>
+    selectorPid!==ownerPid && isUnselectableByOpponent(card,stateRef.current[ownerPid]);
   // ブロック・ステップ。攻撃先（クリーチャー／シールド／プレイヤー）を決めた後に必ず通す。
-  // 防御側に未タップのブロッカーがいればモーダルを出し、ブロックしなければ intent をそのまま実行する。
-  const blockersFor=()=>otherState.battle.filter(c=>
-    !c.tapped &&
-    isCreatureSide(c) &&
-    (hasKeyword(c,"blocker")||computeGrantedKeywords(c,otherState.battle,otherState).includes("blocker"))
-  );
+  // 防御側に未タップのブロッカー／ガードマンがいればモーダルを出し、
+  // どちらも使わなければ intent をそのまま実行する。
+  const defenderHas=(c,kw)=>
+    hasKeyword(c,kw)||computeGrantedKeywords(c,otherState.battle,otherState).includes(kw);
+  const readyDefenders=kw=>otherState.battle.filter(c=>!c.tapped&&isCreatureSide(c)&&defenderHas(c,kw));
+  const blockersFor=()=>readyDefenders("blocker");
+  // ガードマン: 攻撃先が「自分の他のクリーチャー」の時だけ、攻撃先を自分に変更できる。
+  // シールド／プレイヤーへの攻撃や、自分自身が攻撃先の場合は使えない。
+  const guardsFor=intent=>intent?.kind!=="creature"?[]
+    :readyDefenders("guardman").filter(c=>c.uid!==intent.targetUid);
   const withBlockStep=(attackerUid,intent,proceed)=>{
     const blockers=blockersFor();
-    if(blockers.length===0){ proceed(); return true; }
-    setBlockerModal({attackerUid,blockerUids:blockers.map(b=>b.uid),intent});
-    setMessage(`${otherPid.toUpperCase()}: ブロックするか選択`);
+    const guards=guardsFor(intent);
+    if(blockers.length===0&&guards.length===0){ proceed(); return true; }
+    setBlockerModal({attackerUid,blockerUids:blockers.map(b=>b.uid),guardUids:guards.map(g=>g.uid),intent});
+    setMessage(`${otherPid.toUpperCase()}: ブロック／ガードマンを選択`);
     return false;
   };
   // ブロックされなかった時に、保留していた攻撃先へ進む
@@ -658,10 +684,50 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           processVictims(victims,idx+1,onDone);
         },
       });
-    }else{
-      destroyNow(v.card,v.ownerPid,v.viaBattle);
-      processVictims(victims,idx+1,onDone);
+      return;
     }
+    // 「自分のクリーチャーが離れる時、かわりに〜に置いてもよい」（八頭竜 ACE-Yamata 等）
+    const lr=findLeaveReplacement(ownerSt,v.card);
+    if(lr){
+      const zoneLabel=ZONE_LABELS[lr.rule.to==="mana"?"mana":lr.rule.to==="hand"?"hand":lr.rule.to==="shield"?"shield":"deck"]||"マナゾーン";
+      setReplacementModal({
+        title:`${lr.card.name}（置換効果）`,
+        card:v.card,
+        message:`${v.card.name} はバトルゾーンを離れます。\n墓地に置く代わりに、${zoneLabel}に置いてもよい。`,
+        applyLabel:`かわりに${zoneLabel}へ`,
+        cancelLabel:"例外処理で中止（通常どおり破壊）",
+        onApply:()=>{
+          setReplacementModal(null);
+          moveLeavingCard(v.card,v.ownerPid,lr.rule.to||"mana");
+          processVictims(victims,idx+1,onDone);
+        },
+        onCancel:()=>{
+          setReplacementModal(null);
+          destroyNow(v.card,v.ownerPid,v.viaBattle);
+          processVictims(victims,idx+1,onDone);
+        },
+      });
+      return;
+    }
+    destroyNow(v.card,v.ownerPid,v.viaBattle);
+    processVictims(victims,idx+1,onDone);
+  };
+  // 置換で、破壊されるかわりに別ゾーンへ送る。破壊ではないので destroyed は誘発せず、
+  // leave（バトルゾーンを離れた）だけ誘発する。下に敷かれたカードも一緒に離れる。
+  const moveLeavingCard=(card,ownerPid,to)=>{
+    const setSt=ownerPid==="p1"?setP1:setP2;
+    setSt(s=>{
+      const {newBattle,extracted}=extractFromBattle(s.battle,card.uid);
+      if(!extracted.length) return s;
+      const moved=extracted.map(c=>({...c,tapped:false,faceUp:false}));
+      if(to==="hand")   return {...s,battle:newBattle,hand:[...s.hand,...moved]};
+      if(to==="shield") return {...s,battle:newBattle,shields:[...s.shields,...moved],shieldAddedThisTurn:true};
+      if(to==="deck")   return {...s,battle:newBattle,deck:[...s.deck,...moved]};
+      return {...s,battle:newBattle,mana:[...s.mana,...moved]};
+    });
+    addLog(`[置換] ${card.name} は破壊されるかわりに${ZONE_LABELS[to]||"マナゾーン"}へ`);
+    setTimeout(()=>fireTrigger("leave",{sourcePid:ownerPid,subjectCard:card}),0);
+    if(to==="shield") setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:ownerPid}),0);
   };
 
   const resolveAttackCreature=(attacker,target)=>{
@@ -681,13 +747,34 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       addLog(`${attacker.name}: 攻撃後にアンタップ`);
     }
     setAttackingUid(null);
+    // バトルに勝った時（相手を破壊し、自分は生き残った）
+    const wonBattle=aWin&&!attackerDies;
     // 攻撃の終わり（攻撃終了ステップ）は破壊の解決が全部終わってから
-    setTimeout(()=>processVictims(victims,0,()=>fireTrigger("attackEnd",{sourcePid:active,subjectCard:attacker})),0);
+    setTimeout(()=>processVictims(victims,0,()=>{
+      if(wonBattle) fireTrigger("battleWin",{sourcePid:active,subjectCard:attacker});
+      fireTrigger("attackEnd",{sourcePid:active,subjectCard:attacker});
+    }),0);
   };
   const handleAttackCreature=targetUid=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     const target=otherState.battle.find(c=>c.uid===targetUid);
     if(!attacker||!target)return;
+    // 攻撃できるのはクリーチャーだけ。タマシードとフィールドは攻撃されない
+    if(!isCreatureSide(target)){
+      addLog(`${target.name} は ${CARD_TYPE_LABELS[target.type]||"エレメント"} なので攻撃されない`);
+      setMessage("クリーチャー以外は攻撃できません");return;
+    }
+    // 「相手が自分のクリーチャーを選ぶ時、選ばれない」
+    if(isUnselectableBy(target,otherPid,active)){
+      addLog(`${target.name} は相手に選ばれない`);
+      setMessage("このクリーチャーは相手に選ばれません");return;
+    }
+    // DMの基本ルール: 攻撃できるのは「タップされているクリーチャー」だけ。
+    // マッハファイターは出たターンの間、アンタップしているクリーチャーも攻撃できる。
+    if(!target.tapped&&!machFighterActive(attacker)){
+      addLog(`${target.name} はアンタップしているので攻撃できない`);
+      setMessage("アンタップしているクリーチャーは攻撃できません（タップ状態のみ）");return;
+    }
     // ハイパーモード：相手に選ばれた時、相手シールドをブレイクしてもよい（ブロックより先）
     if(target.hyperMode&&target.hyperOnTargeted?.type==="breakAttackerShields"){
       setHyperTargetedModal({kind:"attack",targetUid,targetName:target.name,attackerUid:attacker.uid,
@@ -706,6 +793,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
     if(attacker.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません（クリーチャーのみ攻撃可）");return;}
+    if(machFighterOnly(attacker)){addLog(`${attacker.name} はマッハファイターで攻撃しているのでクリーチャーしか攻撃できない`);setMessage("マッハファイターで攻撃中はクリーチャーのみ攻撃できます");return;}
     withBlockStep(attacker.uid,{kind:"shield"},attackShieldNow);
   };
   const attackShieldNow=()=>{
@@ -783,6 +871,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const handleDirectAttack=()=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(attacker?.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません");return;}
+    if(machFighterOnly(attacker)){addLog(`${attacker.name} はマッハファイターで攻撃しているのでクリーチャーしか攻撃できない`);setMessage("マッハファイターで攻撃中はクリーチャーのみ攻撃できます");return;}
     // ダイレクトアタックもブロックできる
     withBlockStep(attacker?.uid,{kind:"direct"},directAttackNow);
   };
@@ -813,7 +902,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(st.pendingRevive&&st.pendingRevive.length){
         const ids=st.pendingRevive.map(c=>c.uid);
         st.pendingRevive.forEach(c=>addLog(`${c.name} をターン終了時に墓地から出した`));
-        set(s=>{const revive=s.grave.filter(c=>ids.includes(c.uid));return {...s,grave:s.grave.filter(c=>!ids.includes(c.uid)),battle:[...s.battle,...revive.map(c=>({...c,tapped:false,summonedThisTurn:true}))],pendingRevive:[]};});
+        set(s=>{const revive=s.grave.filter(c=>ids.includes(c.uid));return {...s,grave:s.grave.filter(c=>!ids.includes(c.uid)),battle:[...s.battle,...revive.map(c=>({...c,tapped:false,enteredThisTurn:true,summonedThisTurn:true}))],pendingRevive:[]};});
       }
     });
     // endOfTurnEffect処理
@@ -848,6 +937,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       tapped:c.noUntapNextTurn?true:false,
       noUntapNextTurn:false,
       summonedThisTurn:false,
+      enteredThisTurn:false,
       cantAttackThisTurn:false,
       hyperMode:false,
       untapAfterAttack:false,
@@ -916,7 +1006,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       }} onSkip={()=>setHyperUnlockModal(null)}/>}
       {blockerModal&&<BlockerModal
         blockers={otherState.battle.filter(c=>blockerModal.blockerUids.includes(c.uid)&&!c.tapped)}
+        guards={otherState.battle.filter(c=>(blockerModal.guardUids||[]).includes(c.uid)&&!c.tapped)}
         attackerName={activeState.battle.find(c=>c.uid===blockerModal.attackerUid)?.name||""}
+        targetName={blockerModal.intent?.kind==="creature"
+          ?otherState.battle.find(c=>c.uid===blockerModal.intent.targetUid)?.name
+          :blockerModal.intent?.kind==="shield"?"シールド":"プレイヤー（ダイレクトアタック）"}
         onBlock={blockerUid=>{
           const attacker=activeState.battle.find(c=>c.uid===blockerModal.attackerUid);
           const blocker=otherState.battle.find(c=>c.uid===blockerUid);
@@ -925,6 +1019,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           setOtherState(s=>({...s,battle:s.battle.map(c=>c.uid===blockerUid?{...c,tapped:true}:c)}));
           addLog(`[BLOCK] ${otherPid.toUpperCase()}: ${blocker.name} でブロック！`);
           resolveAttackCreature(attacker,blocker);
+        }}
+        onGuard={guardUid=>{
+          // ガードマン: 自分をタップして、攻撃先を自分に変更する（ブロックではないのでバトルになる）
+          const attacker=activeState.battle.find(c=>c.uid===blockerModal.attackerUid);
+          const guard=otherState.battle.find(c=>c.uid===guardUid);
+          setBlockerModal(null);
+          if(!attacker||!guard){setMessage("攻撃対象を選択");return;}
+          setOtherState(s=>({...s,battle:s.battle.map(c=>c.uid===guardUid?{...c,tapped:true}:c)}));
+          addLog(`[GUARD] ${otherPid.toUpperCase()}: ${guard.name} のガードマン！攻撃先を変更`);
+          resolveAttackCreature(attacker,guard);
         }}
         onDecline={()=>{const intent=blockerModal.intent;setBlockerModal(null);resumeAttack(intent);}}
       />}

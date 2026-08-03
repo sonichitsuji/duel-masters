@@ -13,9 +13,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
-const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle"]);
-const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer"]);
-const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
+const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
+const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker"]);
+const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
 const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
@@ -29,13 +29,13 @@ const EFFECT_TYPES = new Set([
   // 公開カードの行き先
   "revealedToHand","revealedToBz","revealedToMana","revealedToGrave","revealedToDeckTop","revealedToDeckBottom",
   // 手札から
-  "handToBz","handToShield","handToGrave","playFromHand",
+  "handToBz","handToShield","handToGrave","handToHyper","playFromHand",
   // マナから
-  "manaToBz","manaToHand",
+  "manaToBz","manaToHand","manaToGrave",
   // バトルゾーンから
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
-  "graveToBz","graveToHand","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
+  "graveToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
   // 山札操作
   "shuffleDeck",
   // 進化元を動かすコスト / 特殊勝利
@@ -58,7 +58,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","replaceLose","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -73,6 +73,29 @@ const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
+const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
+
+// 効果ステップに書けるキー。綴り違い（takeall / oneplayer など）を弾くために使う。
+// 出典: src/engine/effects.js の effect.X 参照。新しいキーを実装したらここにも足すこと。
+const EFFECT_KEYS = new Set([
+  "type","label","target","zone","filter","amount","count","maxSelect",
+  "all","any","takeAll","random","order","as","optional","ifPrevious","subject","onePlayer",
+  "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
+  "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
+  "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
+]);
+// filter に書けるキー（engine/effects.js の matchFilter ＋ gameLogic.js の matchCardFilter）
+const FILTER_KEYS = new Set([
+  "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
+  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self",
+  "maxCost","minCost","maxPower","minPower",
+]);
+function checkFilterKeys(filter, where) {
+  if (!filter || typeof filter !== "object") return;
+  for (const k of Object.keys(filter)) {
+    if (!FILTER_KEYS.has(k)) errors.push(`${where}.filter: 未知のキー "${k}"（綴り違い？）`);
+  }
+}
 
 const errors = [];
 const warnings = [];
@@ -85,6 +108,10 @@ catch (e) { console.error("❌ cards.json のJSONが不正:", e.message); proces
 // steps/effect の再帰検証
 function checkOne(e, where) {
   if (!e || !e.type) { errors.push(`${where}: type の無い効果要素`); return; }
+  for (const k of Object.keys(e)) {
+    if (!EFFECT_KEYS.has(k)) errors.push(`${where}: 効果ステップの未知のキー "${k}"（綴り違い？）`);
+  }
+  checkFilterKeys(e.filter, where);
   if (LEGACY_TYPES.has(e.type)) errors.push(`${where}: 旧記法の効果 "${e.type}"（新語彙へ移行してください）`);
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
@@ -197,6 +224,20 @@ function checkAbilityFields(obj, where) {
     if (!KEYWORDS.has(rule.keyword)) errors.push(`${where}.grantKeywords: 未知のkeyword "${rule.keyword}"`);
     checkCondition(rule.condition, `${where}.grantKeywords`);
   }
+  // replaceLeave: 「離れる時、かわりに〜へ置く」
+  const rls = obj.replaceLeave == null ? [] : (Array.isArray(obj.replaceLeave) ? obj.replaceLeave : [obj.replaceLeave]);
+  for (const rl of rls) {
+    if (typeof rl !== "object" || rl == null) { errors.push(`${where}.replaceLeave: オブジェクトで書いてください`); continue; }
+    if (!LEAVE_TO.has(rl.to || "mana")) errors.push(`${where}.replaceLeave: to は ${[...LEAVE_TO].join("/")}`);
+    if (rl.filter != null && typeof rl.filter !== "object") errors.push(`${where}.replaceLeave: filter はオブジェクト`);
+  }
+  // freeCast: コストを支払わずにプレイできる許可（バトルゾーン／表向きシールドで有効）
+  const fcs = obj.freeCast == null ? [] : (Array.isArray(obj.freeCast) ? obj.freeCast : [obj.freeCast]);
+  for (const fc of fcs) {
+    if (typeof fc !== "object" || fc == null) { errors.push(`${where}.freeCast: オブジェクトで書いてください`); continue; }
+    if (fc.timing != null && !["ownTurn", "any"].includes(fc.timing)) errors.push(`${where}.freeCast: 未知のtiming "${fc.timing}"`);
+    if (fc.filter != null && typeof fc.filter !== "object") errors.push(`${where}.freeCast: filter はオブジェクト`);
+  }
   const cr = obj.costReduce;
   if (cr) {
     for (const z of cr.zones || []) if (!COST_REDUCE_ZONES.has(z)) errors.push(`${where}.costReduce: 未知のzone "${z}"`);
@@ -216,8 +257,13 @@ for (const c of cards) {
   if (seenNames.has(c.name)) warnings.push(`name重複: "${c.name}"（id ${seenNames.get(c.name)} と ${c.id}）`);
   seenNames.set(c.name, c.id);
 
-  for (const k of ["id","name","type","civ","cost","power","keywords","effect"]) if (!(k in c)) errors.push(`${tag}: 必須フィールド欠落 "${k}"`);
+  // power を持たない種別（呪文・タマシード・城・フィールド）は power 必須から外す
+  const NO_POWER = new Set(["spell", "tamaseed", "castle", "field"]);
+  const required = ["id","name","type","civ","cost","keywords","effect"];
+  if (!NO_POWER.has(c.type)) required.push("power");
+  for (const k of required) if (!(k in c)) errors.push(`${tag}: 必須フィールド欠落 "${k}"`);
   if (c.type && !TYPES.has(c.type)) errors.push(`${tag}: 未知のtype "${c.type}"`);
+  if (c.type === "field" && c.power != null) warnings.push(`${tag}: フィールドにパワーはありません`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
   for (const cv of civs) if (!["light","water","darkness","fire","nature"].includes(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
 

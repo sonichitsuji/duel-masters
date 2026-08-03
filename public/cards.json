@@ -1181,7 +1181,8 @@
         {
           "label": "山札の上から1枚をタップしてマナゾーンに置く",
           "type": "topToMana",
-          "amount": 1
+          "amount": 1,
+          "tapped": true
         },
         {
           "type": "count",
@@ -1194,7 +1195,8 @@
         {
           "type": "topToMana",
           "amount": "count",
-          "label": "ドラゴンならもう1枚マナへ"
+          "label": "ドラゴンならもう1枚マナへ",
+          "tapped": true
         }
       ]
     }
@@ -1595,12 +1597,12 @@
           "type": "playFromHand",
           "free": true,
           "filter": {
-            "civs": [
+            "maxCost": 3,
+            "type": "spell",
+            "civ": [
               "light",
               "water"
-            ],
-            "maxCost": 3,
-            "type": "spell"
+            ]
           }
         }
       ]
@@ -1715,12 +1717,12 @@
           "type": "playFromHand",
           "free": true,
           "filter": {
-            "civs": [
+            "maxCost": 6,
+            "type": "spell",
+            "civ": [
               "light",
               "water"
-            ],
-            "maxCost": 6,
-            "type": "spell"
+            ]
           }
         }
       ]
@@ -3231,5 +3233,549 @@
       }
     },
     "id": 97
+  },
+  {
+    "name": "シェル・アルカザール",
+    "type": "creature",
+    "civ": "nature",
+    "race": "コロニー・ビートル",
+    "cost": 2,
+    "power": 1000,
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー（このクリーチャーをシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい）\nこのクリーチャーが出た時、コスト3以下のエレメントを1つ選び、持ち主のマナゾーンにタップして置いてもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "コスト3以下のエレメントを1つ選び、持ち主のマナゾーンにタップして置いてもよい",
+          "type": "bzToMana",
+          "target": "both",
+          "amount": 1,
+          "optional": true,
+          "filter": {
+            "element": true,
+            "maxCost": 3
+          },
+          "tapped": true
+        }
+      ]
+    },
+    "id": 98
+  },
+  {
+    "name": "完全水中要塞 アカシック3",
+    "type": "field",
+    "civ": "water",
+    "race": "ヒストリック・フィールド",
+    "cost": 10,
+    "effect": "ヒストリック・フィールド\n自分は呪文をコストを支払わずに唱えてもよい。",
+    "autoEffect": null,
+    "freeCast": [
+      {
+        "filter": {
+          "type": "spell"
+        }
+      }
+    ],
+    "id": 99,
+    "keywords": []
+  },
+  {
+    "name": "悪魔の契約",
+    "type": "spell",
+    "civ": "darkness",
+    "cost": 2,
+    "effect": "好きな枚数のカードを、自分のマナゾーンから墓地に置く。その後、同じ枚数のカードを引く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "好きな枚数のカードを、自分のマナゾーンから墓地に置く",
+          "type": "manaToGrave",
+          "target": "self",
+          "any": true,
+          "as": "捨てた枚数"
+        },
+        {
+          "label": "その後、同じ枚数のカードを引く",
+          "type": "drawCards",
+          "amount": "捨てた枚数"
+        }
+      ]
+    },
+    "id": 100,
+    "keywords": []
+  },
+  {
+    "name": "森夢龍 フィオナ・フォレスト",
+    "type": "creature",
+    "civ": "nature",
+    "race": "ドリームメイト/ドラゴン",
+    "cost": 7,
+    "power": 7000,
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "W・ブレイカー\nこのクリーチャーが出た時、フィールドを1枚、自分のマナゾーンから出してもよい。\n相手が自分のクリーチャーを選ぶ時、自分の他のドリームメイトは選ばれない。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "フィールドを1枚、自分のマナゾーンから出してもよい",
+          "type": "manaToBz",
+          "target": "self",
+          "amount": 1,
+          "optional": true,
+          "filter": {
+            "type": "field"
+          }
+        }
+      ]
+    },
+    "grantKeywords": [
+      {
+        "keyword": "unselectable",
+        "filter": {
+          "raceContains": "ドリームメイト",
+          "notSelf": true
+        }
+      }
+    ],
+    "id": 101
+  },
+  {
+    "name": "黒豆だんしゃく",
+    "type": "twinpact",
+    "civ": "nature",
+    "race": "グランセクト/スペシャルズ",
+    "cost": 8,
+    "power": 12000,
+    "keywords": [
+      "tBreaker"
+    ],
+    "effect": "T・ブレイカー\n相手の、「このクリーチャーが出た時」で始まる能力を持つクリーチャーがバトルゾーンに出た時、そのクリーチャーを持ち主のマナゾーンに置く。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "target": "opponent",
+        "filter": {
+          "hasCip": true
+        },
+        "effects": [
+          {
+            "label": "そのクリーチャーを持ち主のマナゾーンに置く",
+            "type": "bzToMana",
+            "target": "opponent",
+            "subject": true
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "白米男しゃく",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から1枚目をマナゾーンに置く。その後、カードを1枚、自分のマナゾーンから手札に戻してもよい。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚目をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "その後、カードを1枚、自分のマナゾーンから手札に戻してもよい",
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    },
+    "id": 102
+  },
+  {
+    "name": "八頭竜 ACE-Yamata",
+    "type": "twinpact",
+    "civ": "nature",
+    "race": "アース・ドラゴン/オリジン",
+    "cost": 10,
+    "power": 16000,
+    "keywords": [
+      "machFighter",
+      "tBreaker"
+    ],
+    "effect": "マッハファイター（このクリーチャーは、出たターンの間、タップまたはアンタップしているクリーチャーを攻撃できる）\nT・ブレイカー\n自分のクリーチャーが離れる時、かわりにマナゾーンに置いてもよい。\nこのクリーチャーがバトルに勝った時、自分のマナゾーンにあるカードの枚数以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい。",
+    "autoEffect": null,
+    "replaceLeave": [
+      {
+        "to": "mana",
+        "filter": {
+          "creatureOnly": true
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "on": "battleWin",
+        "optional": true,
+        "effects": [
+          {
+            "type": "count",
+            "zone": "mana",
+            "target": "self",
+            "as": "マナの枚数",
+            "label": "自分のマナゾーンにあるカードの枚数を数える"
+          },
+          {
+            "label": "その枚数以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい",
+            "type": "manaToBz",
+            "target": "self",
+            "amount": 1,
+            "optional": true,
+            "filter": {
+              "creatureOnly": true,
+              "maxCost": "マナの枚数"
+            }
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "神秘の宝剣",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札を見る。その中から自然ではないカードを1枚、タップしてマナゾーンに置いてもよい。その後、山札をシャッフルする。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "山札から自然ではないカードを1枚、タップしてマナゾーンに置いてもよい（その後シャッフル）",
+            "type": "search",
+            "destination": "mana",
+            "amount": 1,
+            "tapped": true,
+            "optional": true,
+            "filter": {
+              "civNot": "nature"
+            }
+          }
+        ]
+      }
+    },
+    "id": 103
+  },
+  {
+    "name": "呪烏竜 ACE-Curase",
+    "type": "twinpact",
+    "civ": [
+      "water",
+      "darkness"
+    ],
+    "race": "キング・コマンド・ドラゴン/オリジン",
+    "cost": 15,
+    "power": 30000,
+    "keywords": [
+      "worldBreaker"
+    ],
+    "effect": "ワールド・ブレイカー\nこのクリーチャーが出た時、各プレイヤーは自身の手札をすべて、超次元ゾーンに置く。その後、各プレイヤーは自身のマナゾーンにあるクリーチャーをすべて、手札に戻す。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "各プレイヤーは自身の手札をすべて、超次元ゾーンに置く",
+          "type": "handToHyper",
+          "target": "both",
+          "all": true
+        },
+        {
+          "label": "その後、各プレイヤーは自身のマナゾーンにあるクリーチャーをすべて、手札に戻す",
+          "type": "manaToHand",
+          "target": "both",
+          "all": true,
+          "filter": {
+            "creatureOnly": true
+          }
+        }
+      ]
+    },
+    "spellSide": {
+      "name": "繁栄の鏡",
+      "cost": 4,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から2枚をタップしてマナゾーンに置く。その後、カードを2枚まで、自分のマナゾーンから手札に戻す。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から2枚をタップしてマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 2,
+            "tapped": true
+          },
+          {
+            "label": "その後、カードを2枚まで、自分のマナゾーンから手札に戻す",
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 2,
+            "optional": true
+          }
+        ]
+      }
+    },
+    "id": 104
+  },
+  {
+    "name": "闘争類拳嘩目 ステゴロ・カイザー",
+    "type": "twinpact",
+    "civ": "nature",
+    "cost": 7,
+    "race": "ジュラシック・コマンド・ドラゴン/ハンター",
+    "power": 9000,
+    "keywords": [
+      "machFighter",
+      "wBreaker"
+    ],
+    "effect": "マッハファイター（このクリーチャーは、出たターンの間、タップまたはアンタップしているクリーチャーを攻撃できる）\nW・ブレイカー（このクリーチャーはシールドを2つブレイクする）\nこのクリーチャーが攻撃する時、自分の山札の上から1枚をマナゾーンに置く。その後、カードを1枚、自分のマナゾーンから手札に戻してもよい。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "attack",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "カードを1枚、自分のマナゾーンから手札に戻してもよい",
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "お清めシャラップ",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から1枚をマナゾーンに置く。\nカードを1枚以上、プレイヤー1人の墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "カードを1枚以上、プレイヤー1人の墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする",
+            "type": "graveToDeck",
+            "target": "both",
+            "onePlayer": true,
+            "any": true
+          }
+        ]
+      }
+    },
+    "id": 105
+  },
+  {
+    "name": "天災 デドダム",
+    "type": "creature",
+    "civ": [
+      "water",
+      "darkness",
+      "nature"
+    ],
+    "cost": 3,
+    "race": "トリニティ・コマンド/侵略者",
+    "power": 3000,
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、自分の山札の上から3枚を見る。そのうちの1枚を手札に加え、1枚をマナゾーンに置き、残りの1枚を墓地に置く。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の山札の上から3枚を見る",
+          "type": "reveal",
+          "amount": 3
+        },
+        {
+          "label": "そのうちの1枚を手札に加える",
+          "type": "revealedToHand",
+          "amount": 1
+        },
+        {
+          "label": "1枚をマナゾーンに置く",
+          "type": "revealedToMana",
+          "amount": 1
+        },
+        {
+          "label": "残りの1枚を墓地に置く",
+          "type": "revealedToGrave",
+          "takeAll": true
+        }
+      ]
+    },
+    "id": 106
+  },
+  {
+    "name": "ディザスター・チューン",
+    "type": "spell",
+    "civ": [
+      "water",
+      "darkness",
+      "nature"
+    ],
+    "cost": 3,
+    "keywords": [],
+    "effect": "自分の山札の上から4枚を見る。それらを1枚ずつ、手札、マナゾーン、墓地、山札の下に置く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から4枚を見る",
+          "type": "reveal",
+          "amount": 4
+        },
+        {
+          "label": "そのうちの1枚を手札に加える",
+          "type": "revealedToHand",
+          "amount": 1
+        },
+        {
+          "label": "1枚をマナゾーンに置く",
+          "type": "revealedToMana",
+          "amount": 1
+        },
+        {
+          "label": "1枚を墓地に置く",
+          "type": "revealedToGrave",
+          "amount": 1
+        },
+        {
+          "label": "残りの1枚を山札の下に置く",
+          "type": "revealedToDeckBottom"
+        }
+      ]
+    },
+    "id": 107
+  },
+  {
+    "name": "巨大設計図",
+    "type": "spell",
+    "civ": [
+      "nature"
+    ],
+    "cost": 2,
+    "keywords": [],
+    "effect": "自分の山札の上から4枚を表向きにする。その中からコスト7以上のクリーチャーをすべて手札に加え、残りを好きな順序で山札の下に置く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から4枚を表向きにする",
+          "type": "reveal",
+          "amount": 4
+        },
+        {
+          "label": "コスト7以上のクリーチャーをすべて手札に加える",
+          "type": "revealedToHand",
+          "takeAll": true,
+          "filter": {
+            "type": "creature",
+            "minCost": 7
+          }
+        },
+        {
+          "label": "残りを好きな順序で山札の下に置く",
+          "type": "revealedToDeckBottom",
+          "order": "choose"
+        }
+      ]
+    },
+    "id": 108
+  },
+  {
+    "name": "コレンココ・タンク",
+    "type": "twinpact",
+    "civ": "nature",
+    "cost": 6,
+    "race": "グランセクト",
+    "power": 12000,
+    "keywords": [
+      "guardman"
+    ],
+    "cantAttackPlayer": true,
+    "effect": "ガードマン（このクリーチャーをタップして、相手クリーチャーの攻撃先を、自分の他のクリーチャーからこのクリーチャーに変更してもよい）\nこのクリーチャーは、相手プレイヤーを攻撃できない。\nこのクリーチャーが出た時、自分の山札の上から3枚を表向きにする。その中から、パワー12000以上のクリーチャーを好きな数手札に加え、残りをタップしてマナゾーンに置く。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の山札の上から3枚を表向きにする",
+          "type": "reveal",
+          "amount": 3
+        },
+        {
+          "label": "パワー12000以上のクリーチャーを好きな数手札に加える",
+          "type": "revealedToHand",
+          "any": true,
+          "filter": {
+            "type": "creature",
+            "minPower": 12000
+          }
+        },
+        {
+          "label": "残りをタップしてマナゾーンに置く",
+          "type": "revealedToMana",
+          "takeAll": true,
+          "tapped": true
+        }
+      ]
+    },
+    "spellSide": {
+      "name": "ボント・プラントボ",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から1枚をマナゾーンに置く。それがパワー12000以上のクリーチャーなら、自分の山札の上からもう1枚、マナゾーンに置く。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "置いたカードがパワー12000以上のクリーチャーか数える",
+            "type": "count",
+            "zone": "lastMoved",
+            "filter": {
+              "type": "creature",
+              "minPower": 12000
+            }
+          },
+          {
+            "label": "それがパワー12000以上のクリーチャーなら、自分の山札の上からもう1枚、マナゾーンに置く",
+            "type": "topToMana",
+            "amount": "count"
+          }
+        ]
+      }
+    },
+    "id": 109
   }
 ]
