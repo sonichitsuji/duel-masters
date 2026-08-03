@@ -1181,7 +1181,8 @@
         {
           "label": "山札の上から1枚をタップしてマナゾーンに置く",
           "type": "topToMana",
-          "amount": 1
+          "amount": 1,
+          "tapped": true
         },
         {
           "type": "count",
@@ -1194,7 +1195,8 @@
         {
           "type": "topToMana",
           "amount": "count",
-          "label": "ドラゴンならもう1枚マナへ"
+          "label": "ドラゴンならもう1枚マナへ",
+          "tapped": true
         }
       ]
     }
@@ -3255,7 +3257,8 @@
           "filter": {
             "element": true,
             "maxCost": 3
-          }
+          },
+          "tapped": true
         }
       ]
     },

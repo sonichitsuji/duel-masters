@@ -185,6 +185,21 @@
 
 **マナから**：`manaToBz {filter}` / `manaToHand {amount}` / `manaToGrave {amount|any, as}`
 
+**マナゾーンへ置く時のタップ状態**
+マナゾーンに置かれるカードは、**既定でアンタップ**です。カードのテキストに
+「**タップして**マナゾーンに置く」とある時だけ `"tapped": true` を書きます。
+
+```jsonc
+// 「持ち主のマナゾーンに置く」→ アンタップ（既定なので何も書かない）
+{ "type": "bzToMana", "target": "opponent", "amount": 1 }
+
+// 「タップしてマナゾーンに置く」→ tapped を明記
+{ "type": "topToMana", "amount": 1, "tapped": true }
+```
+
+`tapped` は **`topToMana` / `bzToMana` / `revealedToMana` / `search{destination:"mana"}` /
+`meteorBurn{to:"mana"}`** で共通に使えます。
+
 **バトルゾーンから**
 - `destroy {target,filter,amount,all,self}` — 破壊。**`self:true` で「このクリーチャーを破壊する」**（選択不要・自分を対象）
 - `bzToHand` / `bzToMana` / `bzToShield`（`target,filter,amount,all`）

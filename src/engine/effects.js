@@ -295,7 +295,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "topToMana": {
       const n = Math.min(amount, selfState.deck.length);
       if (n > 0) {
-        const moved = selfState.deck.slice(0, n).map(c => ({ ...c, tapped: effect.tapped !== false }));
+        const moved = selfState.deck.slice(0, n).map(c => ({ ...c, tapped: !!effect.tapped }));
         setSelf(s => ({ ...s, deck: s.deck.slice(n), mana: [...s.mana, ...moved] }));
         ctx.lastMoved = moved;
         addLog(`${pid}: ${moved.map(c => c.name).join(", ")} → マナ`);
@@ -324,7 +324,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           const b = { ...s, deck: dest === "deckTop" ? [...take, ...shuffle(rest)] : shuffle(rest) };
           if (dest === "hand") b.hand = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
           if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))];
-          if (dest === "mana") b.mana = [...s.mana, ...take.map(c => ({ ...c, tapped: true }))];
+          if (dest === "mana") b.mana = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           return b;
         });
         const where = dest === "deckTop" ? "山札の上" : dest === "hand" ? "手札" : dest === "bz" ? "バトルゾーン" : "マナ";
@@ -348,7 +348,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           const b = { ...s };
           if (type === "revealedToHand")  b.hand   = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
           if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, summonedThisTurn: entersSick(effect) }))];
-          if (type === "revealedToMana")  b.mana   = [...s.mana, ...take.map(c => ({ ...c, tapped: true }))];
+          if (type === "revealedToMana")  b.mana   = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           if (type === "revealedToGrave") b.grave  = [...s.grave, ...take];
           if (type === "revealedToDeckTop")    b.deck = [...take, ...s.deck];
           if (type === "revealedToDeckBottom") b.deck = [...s.deck, ...take];
@@ -498,7 +498,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const targets = stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
-        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, mana: [...s.mana, ...extracted.map(c => ({ ...c, tapped: true }))] }; });
+        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, mana: [...s.mana, ...extracted.map(c => ({ ...c, tapped: !!effect.tapped }))] }; });
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} をマナゾーンへ`);
       }
       break;
