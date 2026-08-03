@@ -154,7 +154,14 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   const type = effect.type;
   const c2 = { ...ctx, srcName: srcCard?.name };
   if (AUTO_TYPES.has(type)) {
-    if (type === "revealedToDeckBottom") return { candidates: ctx?.revealed || [], isAuto: true };
+    if (type === "revealedToDeckBottom") {
+      const pool = ctx?.revealed || [];
+      // 「残りを好きな順序で山札の下に置く」は、全部選び終えるまで確定できない順序付き選択
+      if (effect.order === "choose" && pool.length > 1) {
+        return { candidates: pool, isAuto: false, maxSelect: pool.length, ordered: true };
+      }
+      return { candidates: pool, isAuto: true };
+    }
     return { candidates: [], isAuto: true };
   }
   const spec = SOURCE[type];
@@ -364,7 +371,10 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "revealedToGrave": case "revealedToDeckTop": case "revealedToDeckBottom": {
       const pool = ctx.revealed || [];
       const matched = pool.filter(c => matchFilter(c, effect.filter, ctx));
-      const take = (type === "revealedToDeckBottom") ? pool
+      // revealedToDeckBottom は「残りをすべて」戻すのが既定。
+      // order:"choose"（好きな順序で置く）なら、選んだ順がそのまま並び順になる。
+      const take = (type === "revealedToDeckBottom")
+        ? (effect.order === "choose" ? selectedUids.map(uid => pool.find(c => c.uid === uid)).filter(Boolean) : pool)
         : (effect.takeAll ? matched : matched.filter(c => selectedUids.includes(c.uid)));
       if (take.length > 0) {
         setSelf(s => {

@@ -67,6 +67,10 @@
 `hasCip`(「このクリーチャーが出た時」で始まる能力を持つ)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
 
+> **キー名は `npm run validate-cards` が検査します。** 効果ステップと `filter` に未知のキーがあると
+> エラーになるので、`takeall`（正: `takeAll`）や `civs`（正: `civ`）のような綴り違いは検出されます。
+> 新しいキーを実装したら `scripts/validate-cards.mjs` の `EFFECT_KEYS` / `FILTER_KEYS` にも足してください。
+
 > `maxPower` / `minPower` が見るのは**カードに印刷されたパワー**です。
 > `powerBuff` などによる増減は反映されません。
 

@@ -75,6 +75,28 @@ const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
 const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
 
+// 効果ステップに書けるキー。綴り違い（takeall / oneplayer など）を弾くために使う。
+// 出典: src/engine/effects.js の effect.X 参照。新しいキーを実装したらここにも足すこと。
+const EFFECT_KEYS = new Set([
+  "type","label","target","zone","filter","amount","count","maxSelect",
+  "all","any","takeAll","random","order","as","optional","ifPrevious","subject","onePlayer",
+  "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
+  "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
+  "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
+]);
+// filter に書けるキー（engine/effects.js の matchFilter ＋ gameLogic.js の matchCardFilter）
+const FILTER_KEYS = new Set([
+  "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
+  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self",
+  "maxCost","minCost","maxPower","minPower",
+]);
+function checkFilterKeys(filter, where) {
+  if (!filter || typeof filter !== "object") return;
+  for (const k of Object.keys(filter)) {
+    if (!FILTER_KEYS.has(k)) errors.push(`${where}.filter: 未知のキー "${k}"（綴り違い？）`);
+  }
+}
+
 const errors = [];
 const warnings = [];
 
@@ -86,6 +108,10 @@ catch (e) { console.error("❌ cards.json のJSONが不正:", e.message); proces
 // steps/effect の再帰検証
 function checkOne(e, where) {
   if (!e || !e.type) { errors.push(`${where}: type の無い効果要素`); return; }
+  for (const k of Object.keys(e)) {
+    if (!EFFECT_KEYS.has(k)) errors.push(`${where}: 効果ステップの未知のキー "${k}"（綴り違い？）`);
+  }
+  checkFilterKeys(e.filter, where);
   if (LEGACY_TYPES.has(e.type)) errors.push(`${where}: 旧記法の効果 "${e.type}"（新語彙へ移行してください）`);
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);

@@ -1597,12 +1597,12 @@
           "type": "playFromHand",
           "free": true,
           "filter": {
-            "civs": [
+            "maxCost": 3,
+            "type": "spell",
+            "civ": [
               "light",
               "water"
-            ],
-            "maxCost": 3,
-            "type": "spell"
+            ]
           }
         }
       ]
@@ -1717,12 +1717,12 @@
           "type": "playFromHand",
           "free": true,
           "filter": {
-            "civs": [
+            "maxCost": 6,
+            "type": "spell",
+            "civ": [
               "light",
               "water"
-            ],
-            "maxCost": 6,
-            "type": "spell"
+            ]
           }
         }
       ]
@@ -3590,5 +3590,192 @@
       }
     },
     "id": 105
+  },
+  {
+    "name": "天災 デドダム",
+    "type": "creature",
+    "civ": [
+      "water",
+      "darkness",
+      "nature"
+    ],
+    "cost": 3,
+    "race": "トリニティ・コマンド/侵略者",
+    "power": 3000,
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、自分の山札の上から3枚を見る。そのうちの1枚を手札に加え、1枚をマナゾーンに置き、残りの1枚を墓地に置く。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の山札の上から3枚を見る",
+          "type": "reveal",
+          "amount": 3
+        },
+        {
+          "label": "そのうちの1枚を手札に加える",
+          "type": "revealedToHand",
+          "amount": 1
+        },
+        {
+          "label": "1枚をマナゾーンに置く",
+          "type": "revealedToMana",
+          "amount": 1
+        },
+        {
+          "label": "残りの1枚を墓地に置く",
+          "type": "revealedToGrave",
+          "takeAll": true
+        }
+      ]
+    },
+    "id": 106
+  },
+  {
+    "name": "ディザスター・チューン",
+    "type": "spell",
+    "civ": [
+      "water",
+      "darkness",
+      "nature"
+    ],
+    "cost": 3,
+    "keywords": [],
+    "effect": "自分の山札の上から4枚を見る。それらを1枚ずつ、手札、マナゾーン、墓地、山札の下に置く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から4枚を見る",
+          "type": "reveal",
+          "amount": 4
+        },
+        {
+          "label": "そのうちの1枚を手札に加える",
+          "type": "revealedToHand",
+          "amount": 1
+        },
+        {
+          "label": "1枚をマナゾーンに置く",
+          "type": "revealedToMana",
+          "amount": 1
+        },
+        {
+          "label": "1枚を墓地に置く",
+          "type": "revealedToGrave",
+          "amount": 1
+        },
+        {
+          "label": "残りの1枚を山札の下に置く",
+          "type": "revealedToDeckBottom"
+        }
+      ]
+    },
+    "id": 107
+  },
+  {
+    "name": "巨大設計図",
+    "type": "spell",
+    "civ": [
+      "nature"
+    ],
+    "cost": 2,
+    "keywords": [],
+    "effect": "自分の山札の上から4枚を表向きにする。その中からコスト7以上のクリーチャーをすべて手札に加え、残りを好きな順序で山札の下に置く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から4枚を表向きにする",
+          "type": "reveal",
+          "amount": 4
+        },
+        {
+          "label": "コスト7以上のクリーチャーをすべて手札に加える",
+          "type": "revealedToHand",
+          "takeAll": true,
+          "filter": {
+            "type": "creature",
+            "minCost": 7
+          }
+        },
+        {
+          "label": "残りを好きな順序で山札の下に置く",
+          "type": "revealedToDeckBottom",
+          "order": "choose"
+        }
+      ]
+    },
+    "id": 108
+  },
+  {
+    "name": "コレンココ・タンク",
+    "type": "twinpact",
+    "civ": "nature",
+    "cost": 6,
+    "race": "グランセクト",
+    "power": 12000,
+    "keywords": [
+      "guardman"
+    ],
+    "cantAttackPlayer": true,
+    "effect": "ガードマン（このクリーチャーをタップして、相手クリーチャーの攻撃先を、自分の他のクリーチャーからこのクリーチャーに変更してもよい）\nこのクリーチャーは、相手プレイヤーを攻撃できない。\nこのクリーチャーが出た時、自分の山札の上から3枚を表向きにする。その中から、パワー12000以上のクリーチャーを好きな数手札に加え、残りをタップしてマナゾーンに置く。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の山札の上から3枚を表向きにする",
+          "type": "reveal",
+          "amount": 3
+        },
+        {
+          "label": "パワー12000以上のクリーチャーを好きな数手札に加える",
+          "type": "revealedToHand",
+          "any": true,
+          "filter": {
+            "type": "creature",
+            "minPower": 12000
+          }
+        },
+        {
+          "label": "残りをタップしてマナゾーンに置く",
+          "type": "revealedToMana",
+          "takeAll": true,
+          "tapped": true
+        }
+      ]
+    },
+    "spellSide": {
+      "name": "ボント・プラントボ",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から1枚をマナゾーンに置く。それがパワー12000以上のクリーチャーなら、自分の山札の上からもう1枚、マナゾーンに置く。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "置いたカードがパワー12000以上のクリーチャーか数える",
+            "type": "count",
+            "zone": "lastMoved",
+            "filter": {
+              "type": "creature",
+              "minPower": 12000
+            }
+          },
+          {
+            "label": "それがパワー12000以上のクリーチャーなら、自分の山札の上からもう1枚、マナゾーンに置く",
+            "type": "topToMana",
+            "amount": "count"
+          }
+        ]
+      }
+    },
+    "id": 109
   }
 ]
