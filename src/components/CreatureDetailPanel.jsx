@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, computeGrantedKeywords, ssxKeywords } from "../gameLogic";
+import { getCardCivs, computeGrantedKeywords, ssxKeywords, isCreatureSide } from "../gameLogic";
 import { EffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -12,7 +12,8 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   const civs=getCardCivs(card);
   const c=CIV[civs[0]]||CIV.fire;
   const c2=civs[1]?CIV[civs[1]]:null;
-  const isCreature=card.type==="creature"||card.type==="evo_creature";
+  // 攻撃できるのはクリーチャーだけ（ツインパクトのクリーチャー面を含む。タマシード／フィールドは不可）
+  const isCreature=isCreatureSide(card);
   const ownKw=[...(card.keywords||[]), ...ssxKeywords(card)];
   const effectiveSA=ownKw.includes("speedAttacker")||computeGrantedKeywords(card,battleZone||[],ownerState).includes("speedAttacker");
   const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!(card.summonedThisTurn&&!effectiveSA)&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;

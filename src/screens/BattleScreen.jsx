@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, sTriggerSide, isCreatureSide } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
+import { CARD_TYPE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
 import { EffectStepModal } from "../components/modals/EffectStepModal";
@@ -502,8 +503,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle}));
       const fromLabel=fromZone==="grave"?"（墓地から）":fromZone==="mana"?"（マナゾーンから）":"";
-      addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) ${fromLabel}召喚！`:"（タマシード）を出した"}`);
-      showCutIn({title:isCreature?"召喚！":"タマシード！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
+      const typeLabel=CARD_TYPE_LABELS[card.type]||"カード";
+      addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) ${fromLabel}召喚！`:`（${typeLabel}）を出した`}`);
+      showCutIn({title:isCreature?"召喚！":`${typeLabel}！`,cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
       // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）
@@ -575,6 +577,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // 革命チェンジで攻撃クリーチャーが入れ替わった場合に確認が飛んでしまい、
     // ダイレクトアタックもブロックの機会を経ずに通ってしまう。
   };
+  // 攻撃先に選べるか。「相手が自分のクリーチャーを選ぶ時、選ばれない」は攻撃先の選択にも効く
+  const isUnselectableBy=(card,ownerPid,selectorPid)=>
+    selectorPid!==ownerPid && isUnselectableByOpponent(card,stateRef.current[ownerPid]);
   // ブロック・ステップ。攻撃先（クリーチャー／シールド／プレイヤー）を決めた後に必ず通す。
   // 防御側に未タップのブロッカーがいればモーダルを出し、ブロックしなければ intent をそのまま実行する。
   const blockersFor=()=>otherState.battle.filter(c=>
@@ -688,6 +693,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     const target=otherState.battle.find(c=>c.uid===targetUid);
     if(!attacker||!target)return;
+    // 攻撃できるのはクリーチャーだけ。タマシードとフィールドは攻撃されない
+    if(!isCreatureSide(target)){
+      addLog(`${target.name} は ${CARD_TYPE_LABELS[target.type]||"エレメント"} なので攻撃されない`);
+      setMessage("クリーチャー以外は攻撃できません");return;
+    }
+    // 「相手が自分のクリーチャーを選ぶ時、選ばれない」
+    if(isUnselectableBy(target,otherPid,active)){
+      addLog(`${target.name} は相手に選ばれない`);
+      setMessage("このクリーチャーは相手に選ばれません");return;
+    }
     // ハイパーモード：相手に選ばれた時、相手シールドをブレイクしてもよい（ブロックより先）
     if(target.hyperMode&&target.hyperOnTargeted?.type==="breakAttackerShields"){
       setHyperTargetedModal({kind:"attack",targetUid,targetName:target.name,attackerUid:attacker.uid,

@@ -16,7 +16,9 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
   const step = steps[stepIdx];
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const otherState = ownerPid === "p1" ? p2 : p1;
-  const { candidates, isAuto, maxSelect: dynMaxSelect, ordered } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
+  const { candidates, isAuto, maxSelect: dynMaxSelect, ordered, optional: dynOptional } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
+  // 「好きな枚数」(any) は0枚も選べるので、JSON に optional が無くても任意扱いにする
+  const isOptional = step.optional || dynOptional;
 
   const civs = getCardCivs(srcCard || {});
   const c = CIV[civs[0]] || CIV.fire;
@@ -27,7 +29,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
   };
 
   // ordered（好きな順序で置く）は、選んだ順がそのまま並び順になるので全部選び終えるまで確定できない
-  const canConfirm = isAuto || (ordered ? selected.length === maxSel : (step.optional || selected.length > 0));
+  const canConfirm = isAuto || (ordered ? selected.length === maxSel : (isOptional || selected.length > 0));
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:380, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -45,7 +47,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
         {candidates.length > 0 && (
           <div style={{ overflowY:"auto", maxHeight:220 }}>
             <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
-              {isAuto ? "公開カード：" : `選択（${selected.length}/${maxSel}）：`}
+              {isAuto ? "公開カード：" : (step.any ? `好きな枚数を選択（${selected.length}/${maxSel}）：` : `選択（${selected.length}/${maxSel}）：`)}
               {ordered && <span style={{ color: "#ffcc66", marginLeft: 6 }}>選んだ順に上から置かれます</span>}
             </div>
             <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
@@ -88,7 +90,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
             style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
             {isAuto ? "確認" : "実行"}
           </button>
-          {step.optional && (
+          {isOptional && (
             <button onClick={() => onAdvance([])} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
               スキップ
             </button>

@@ -3231,5 +3231,115 @@
       }
     },
     "id": 97
+  },
+  {
+    "name": "シェル・アルカザール",
+    "type": "creature",
+    "civ": "nature",
+    "race": "コロニー・ビートル",
+    "cost": 2,
+    "power": 1000,
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー（このクリーチャーをシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい）\nこのクリーチャーが出た時、コスト3以下のエレメントを1つ選び、持ち主のマナゾーンにタップして置いてもよい。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "コスト3以下のエレメントを1つ選び、持ち主のマナゾーンにタップして置いてもよい",
+          "type": "bzToMana",
+          "target": "both",
+          "amount": 1,
+          "optional": true,
+          "filter": {
+            "element": true,
+            "maxCost": 3
+          }
+        }
+      ]
+    },
+    "id": 98
+  },
+  {
+    "name": "完全水中要塞 アカシック3",
+    "type": "field",
+    "civ": "water",
+    "race": "ヒストリック・フィールド",
+    "cost": 10,
+    "effect": "ヒストリック・フィールド\n自分は呪文をコストを支払わずに唱えてもよい。",
+    "autoEffect": null,
+    "freeCast": [
+      {
+        "filter": {
+          "type": "spell"
+        }
+      }
+    ],
+    "id": 99,
+    "keywords": []
+  },
+  {
+    "name": "悪魔の契約",
+    "type": "spell",
+    "civ": "darkness",
+    "cost": 2,
+    "effect": "好きな枚数のカードを、自分のマナゾーンから墓地に置く。その後、同じ枚数のカードを引く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "好きな枚数のカードを、自分のマナゾーンから墓地に置く",
+          "type": "manaToGrave",
+          "target": "self",
+          "any": true,
+          "as": "捨てた枚数"
+        },
+        {
+          "label": "その後、同じ枚数のカードを引く",
+          "type": "drawCards",
+          "amount": "捨てた枚数"
+        }
+      ]
+    },
+    "id": 100,
+    "keywords": []
+  },
+  {
+    "name": "森夢龍 フィオナ・フォレスト",
+    "type": "creature",
+    "civ": "nature",
+    "race": "ドリームメイト/ドラゴン",
+    "cost": 7,
+    "power": 7000,
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "W・ブレイカー\nこのクリーチャーが出た時、フィールドを1枚、自分のマナゾーンから出してもよい。\n相手が自分のクリーチャーを選ぶ時、自分の他のドリームメイトは選ばれない。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "フィールドを1枚、自分のマナゾーンから出してもよい",
+          "type": "manaToBz",
+          "target": "self",
+          "amount": 1,
+          "optional": true,
+          "filter": {
+            "type": "field"
+          }
+        }
+      ]
+    },
+    "grantKeywords": [
+      {
+        "keyword": "unselectable",
+        "filter": {
+          "raceContains": "ドリームメイト",
+          "notSelf": true
+        }
+      }
+    ],
+    "id": 101
   }
 ]

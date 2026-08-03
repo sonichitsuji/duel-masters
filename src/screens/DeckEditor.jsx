@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CIV, CIVS } from "../constants";
+import { CIV, CIVS, CARD_TYPE_LABELS } from "../constants";
 import { getCardCivs } from "../gameLogic";
 
 // ===========================
@@ -57,7 +57,7 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
               <span style={{fontSize:11,fontWeight:900,color:c.textColor,background:`${c.color}33`,borderRadius:3,padding:"1px 4px",fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</div>
-                <div style={{fontSize:10,color:"#555"}}>コスト:{card.cost} {card.type==="creature"?`/ P:${card.power}`:"/ 呪文"}{card.keywords?.includes("sTrigger")&&<span style={{color:"#ff8",marginLeft:4}}>ST</span>}</div>
+                <div style={{fontSize:10,color:"#555"}}>コスト:{card.cost} {card.power!=null?`/ P:${card.power}`:`/ ${CARD_TYPE_LABELS[card.type]||"呪文"}`}{card.keywords?.includes("sTrigger")&&<span style={{color:"#ff8",marginLeft:4}}>ST</span>}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:5}}>
                 <button onClick={()=>remove(card.id)} style={{width:26,height:26,borderRadius:4,background:"#1a0a0a",border:"1px solid #f8444444",color:"#f84",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>

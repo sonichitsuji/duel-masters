@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { EffectText } from "./EffectText";
@@ -48,6 +48,19 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     (!selectedCard.gZero.nameContains||c.name?.includes(selectedCard.gZero.nameContains))&&
     (!selectedCard.gZero.raceContains||c.race?.includes(selectedCard.gZero.raceContains))
   );
+  // コストを支払わずにプレイできるか（アカシック3の「呪文をコストを支払わずに唱えてもよい」等）。
+  // ツインパクトは呪文面が対象になることがあるので、両面で判定する。
+  const freeCastPerms=collectFreeCastPermissions(state,isActive);
+  const freeCastPerm=selectedCard?(
+    freeCastPermissionFor(selectedCard.type==="twinpact"?{ ...selectedCard, side:"creature" }:selectedCard,freeCastPerms)
+    ||(selectedCard.type==="twinpact"
+      ?freeCastPermissionFor({ ...selectedCard, ...selectedCard.spellSide, uid:selectedCard.uid, side:"spell" },freeCastPerms)
+      :null)
+  ):null;
+  // 呪文面だけが許可に合致するツインパクトは、呪文として唱える
+  const freeCastSide=selectedCard?.type==="twinpact"&&freeCastPerm
+    ?(freeCastPermissionFor({ ...selectedCard, side:"creature" },freeCastPerms)?"creature":"spell")
+    :null;
   const selBattleCard=selBattle?state.battle.find(c=>c.uid===selBattle):null;
   // 墓地・マナからの召喚許可（summonFrom / turnSummonFrom）
   const summonPerms=collectSummonPermissions(state,isActive);
@@ -118,6 +131,18 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       if(!openEvolutionSelect({handIdx:selHand,card,gZero:true}))return;
     }else{
       const ok=onPlayCard(selHand,[],null,null);
+      if(ok!==false)setSelHand(null);
+    }
+  };
+
+  // コストを支払わずにプレイ（マナを1枚もタップしない）
+  const handleFreeCastPlay=()=>{
+    if(!freeCastPerm||selHand===null)return;
+    const card=state.hand[selHand];
+    if(card.type==="evo_creature"){
+      if(!openEvolutionSelect({handIdx:selHand,card,freeCast:true}))return;
+    }else{
+      const ok=onPlayCard(selHand,[],freeCastSide,null);
       if(ok!==false)setSelHand(null);
     }
   };
@@ -301,6 +326,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           {drewThisTurn&&!chargedThisTurn&&selHand!==null&&<Btn onClick={handleCharge} col="#8888ff">CHARGE</Btn>}
           {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>PLAY</Btn>}
           {drewThisTurn&&selHand!==null&&gZeroOk&&<Btn onClick={handleGZeroPlay} col="#ff44ff">G-ZERO</Btn>}
+          {drewThisTurn&&selHand!==null&&freeCastPerm&&<Btn onClick={handleFreeCastPlay} col="#66ddff">コスト不要</Btn>}
           {drewThisTurn&&attackingUid&&otherState.shields.length===0&&<Btn onClick={onDirectAttack} col="#ff4444">DIRECT</Btn>}
           {drewThisTurn&&<Btn onClick={onEndTurn} col="#ffaa44">END TURN</Btn>}
         </div>

@@ -208,7 +208,7 @@ export function sTriggerSide(card) {
 }
 
 // 「エレメント」= クリーチャー(進化・ツインパクトのクリーチャー面を含む)またはタマシード
-export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed" || (card.type === "twinpact" && card.side !== "spell"); }
+export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed" || card.type === "field" || (card.type === "twinpact" && card.side !== "spell"); }
 
 // ===========================
 // 超魂X (SSX / Super Soul Cross)
@@ -458,6 +458,46 @@ export function computeGrantedKeywords(card, battleZone, ownerState) {
     }
   }
   return granted;
+}
+
+// ===========================
+// コストを支払わずにプレイする許可（freeCast）
+// 「自分は呪文をコストを支払わずに唱えてもよい」のような継続能力。
+// バトルゾーン＋表向きシールドのカードから集める（summonFrom と同じ有効範囲）。
+// 「〜してもよい」なので、通常どおりコストを払ってプレイすることも選べる。
+//   freeCast: { filter?: {…}, timing?: "ownTurn"(既定)|"any" }
+// ===========================
+export function collectFreeCastPermissions(ownerState, isOwnTurn) {
+  if (!ownerState) return [];
+  const out = [];
+  const add = (perm, key) => {
+    if ((perm?.timing || "ownTurn") === "ownTurn" && !isOwnTurn) return;
+    out.push({ ...perm, key });
+  };
+  const fromCard = c => {
+    const fc = effectiveCard(c).freeCast;
+    if (!fc) return;
+    (Array.isArray(fc) ? fc : [fc]).forEach((p, i) => add(p, `${c.uid}#fc${i}`));
+  };
+  for (const c of ownerState.battle || []) fromCard(c);
+  for (const c of ownerState.shields || []) if (c.faceUp) fromCard(c);
+  return out;
+}
+
+// card をコストを支払わずにプレイできる許可を1つ返す。無ければ null。
+export function freeCastPermissionFor(card, perms) {
+  if (!card) return null;
+  return (perms || []).find(p => matchCardFilter(card, p.filter)) || null;
+}
+
+// 「相手が自分のクリーチャーを選ぶ時、選ばれない」
+// キーワード "unselectable" で表す（カード自身が持つか、grantKeywords で付与される）。
+// 自分で自分のカードを選ぶのは妨げないので、呼ぶ側で「選ぶのが相手か」を判定すること。
+// また「選ぶ」効果にだけ効く。全体除去のように選ばない効果は防げない。
+export function isUnselectableByOpponent(card, ownerState) {
+  if (!card) return false;
+  if (hasKeyword(card, "unselectable")) return true;
+  return computeGrantedKeywords(card, ownerState?.battle, ownerState).includes("unselectable");
 }
 
 // autoEffect inference from keywords/effect text

@@ -13,8 +13,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
-const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle"]);
-const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer"]);
+const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
+const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","unselectable"]);
 const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
@@ -31,7 +31,7 @@ const EFFECT_TYPES = new Set([
   // 手札から
   "handToBz","handToShield","handToGrave","playFromHand",
   // マナから
-  "manaToBz","manaToHand",
+  "manaToBz","manaToHand","manaToGrave",
   // バトルゾーンから
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
@@ -197,6 +197,13 @@ function checkAbilityFields(obj, where) {
     if (!KEYWORDS.has(rule.keyword)) errors.push(`${where}.grantKeywords: 未知のkeyword "${rule.keyword}"`);
     checkCondition(rule.condition, `${where}.grantKeywords`);
   }
+  // freeCast: コストを支払わずにプレイできる許可（バトルゾーン／表向きシールドで有効）
+  const fcs = obj.freeCast == null ? [] : (Array.isArray(obj.freeCast) ? obj.freeCast : [obj.freeCast]);
+  for (const fc of fcs) {
+    if (typeof fc !== "object" || fc == null) { errors.push(`${where}.freeCast: オブジェクトで書いてください`); continue; }
+    if (fc.timing != null && !["ownTurn", "any"].includes(fc.timing)) errors.push(`${where}.freeCast: 未知のtiming "${fc.timing}"`);
+    if (fc.filter != null && typeof fc.filter !== "object") errors.push(`${where}.freeCast: filter はオブジェクト`);
+  }
   const cr = obj.costReduce;
   if (cr) {
     for (const z of cr.zones || []) if (!COST_REDUCE_ZONES.has(z)) errors.push(`${where}.costReduce: 未知のzone "${z}"`);
@@ -216,8 +223,13 @@ for (const c of cards) {
   if (seenNames.has(c.name)) warnings.push(`name重複: "${c.name}"（id ${seenNames.get(c.name)} と ${c.id}）`);
   seenNames.set(c.name, c.id);
 
-  for (const k of ["id","name","type","civ","cost","power","keywords","effect"]) if (!(k in c)) errors.push(`${tag}: 必須フィールド欠落 "${k}"`);
+  // power を持たない種別（呪文・タマシード・城・フィールド）は power 必須から外す
+  const NO_POWER = new Set(["spell", "tamaseed", "castle", "field"]);
+  const required = ["id","name","type","civ","cost","keywords","effect"];
+  if (!NO_POWER.has(c.type)) required.push("power");
+  for (const k of required) if (!(k in c)) errors.push(`${tag}: 必須フィールド欠落 "${k}"`);
   if (c.type && !TYPES.has(c.type)) errors.push(`${tag}: 未知のtype "${c.type}"`);
+  if (c.type === "field" && c.power != null) warnings.push(`${tag}: フィールドにパワーはありません`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
   for (const cv of civs) if (!["light","water","darkness","fire","nature"].includes(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
 

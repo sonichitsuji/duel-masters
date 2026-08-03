@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent } from "../gameLogic";
 import { KEYWORD_LABELS } from "../constants";
 
 // ===========================
@@ -110,6 +110,7 @@ const SOURCE = {
   handToGrave:    { zone: "hand",     target: "self" },
   playFromHand:   { zone: "hand",     target: "self" },
   manaToBz:       { zone: "mana",     target: "self" },
+  manaToGrave:    { zone: "mana",     target: "self" },
   manaToHand:     { zone: "mana",     target: "self" },
   bzToMana:       { zone: "bz",       target: "opponent" },
   bzToHand:       { zone: "bz",       target: "opponent" },
@@ -155,12 +156,21 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   const zone = effect.zone || spec.zone;
   const tgt = effect.target || spec.target;
 
+  // 「選ぶ」効果かどうか。全体除去やランダムは選ばないので「選ばれない」では防げない
+  const selects = !(effect.all || effect.random || effect.takeAll);
   let cards = [];
   if (zone === "revealed" || zone === "lastMoved") {
     cards = zoneCards(null, zone, c2);
   } else {
     const states = tgt === "opponent" ? [otherState] : tgt === "both" ? [selfState, otherState] : [selfState];
-    for (const st of states) cards.push(...zoneCards(st, zone, c2));
+    for (const st of states) {
+      let got = zoneCards(st, zone, c2);
+      // 相手のバトルゾーンから「選ぶ」時だけ、「相手に選ばれない」カードを候補から外す
+      if (selects && st === otherState && (zone === "bz" || zone === "battle")) {
+        got = got.filter(c => !isUnselectableByOpponent(c, st));
+      }
+      cards.push(...got);
+    }
   }
   // 「このクリーチャーを破壊する」は選択不要
   if (type === "destroy" && effect.self) return { candidates: [], isAuto: true };
@@ -180,6 +190,10 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   }
   // 一括処理（選択不要）
   if (effect.all || effect.random || effect.takeAll) return { candidates: cards, isAuto: true };
+  // 「好きな枚数」: 0枚〜候補すべてから好きなだけ選ぶ（0枚も選べるので必ず任意）
+  if (effect.any) {
+    return { candidates: cards, isAuto: cards.length === 0, maxSelect: cards.length, optional: true };
+  }
   // 選択枚数は通常 amount。ただし powerBuff の amount は「パワー増減値」なので count で指定する（既定1体）
   const countSpec = type === "powerBuff" ? (effect.count ?? 1) : (effect.count ?? effect.amount);
   const maxSelect = Math.max(1, resolveAmount(c2, countSpec, 1) || 1);
@@ -432,6 +446,20 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→手札`);
       }
+      break;
+    }
+    case "manaToGrave": {
+      let moved = 0;
+      for (const { pidx, cards } of pickSelected("mana")) {
+        const uids = cards.map(c => c.uid);
+        setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)), grave: [...s.grave, ...cards.map(c => ({ ...c, tapped: false }))] }));
+        addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→墓地`);
+        ctx.lastMoved = cards;
+        moved += cards.length;
+      }
+      // as で枚数を控えておくと、後続ステップの amount から名前で参照できる（「同じ枚数」）
+      if (effect.as) ctx.vars[effect.as] = moved;
+      ctx.stepDone = moved > 0;
       break;
     }
 
