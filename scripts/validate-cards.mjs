@@ -14,8 +14,8 @@ const root = path.join(__dirname, "..");
 
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
-const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable"]);
-const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
+const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker"]);
+const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
 const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
@@ -29,7 +29,7 @@ const EFFECT_TYPES = new Set([
   // 公開カードの行き先
   "revealedToHand","revealedToBz","revealedToMana","revealedToGrave","revealedToDeckTop","revealedToDeckBottom",
   // 手札から
-  "handToBz","handToShield","handToGrave","playFromHand",
+  "handToBz","handToShield","handToGrave","handToHyper","playFromHand",
   // マナから
   "manaToBz","manaToHand","manaToGrave",
   // バトルゾーンから
@@ -58,7 +58,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","replaceLose","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -73,6 +73,7 @@ const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
+const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
 
 const errors = [];
 const warnings = [];
@@ -196,6 +197,13 @@ function checkAbilityFields(obj, where) {
   for (const rule of obj.grantKeywords || []) {
     if (!KEYWORDS.has(rule.keyword)) errors.push(`${where}.grantKeywords: 未知のkeyword "${rule.keyword}"`);
     checkCondition(rule.condition, `${where}.grantKeywords`);
+  }
+  // replaceLeave: 「離れる時、かわりに〜へ置く」
+  const rls = obj.replaceLeave == null ? [] : (Array.isArray(obj.replaceLeave) ? obj.replaceLeave : [obj.replaceLeave]);
+  for (const rl of rls) {
+    if (typeof rl !== "object" || rl == null) { errors.push(`${where}.replaceLeave: オブジェクトで書いてください`); continue; }
+    if (!LEAVE_TO.has(rl.to || "mana")) errors.push(`${where}.replaceLeave: to は ${[...LEAVE_TO].join("/")}`);
+    if (rl.filter != null && typeof rl.filter !== "object") errors.push(`${where}.replaceLeave: filter はオブジェクト`);
   }
   // freeCast: コストを支払わずにプレイできる許可（バトルゾーン／表向きシールドで有効）
   const fcs = obj.freeCast == null ? [] : (Array.isArray(obj.freeCast) ? obj.freeCast : [obj.freeCast]);

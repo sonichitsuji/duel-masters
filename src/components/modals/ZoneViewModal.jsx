@@ -8,8 +8,9 @@ import { CardFace } from "../CardFace";
 // entries: [{ card, idx, perm, payable }]  perm が null なら閲覧のみ
 // ===========================
 const ZONE_META = {
-  grave: { label: "墓地",       color: "#b866ff" },
-  mana:  { label: "マナゾーン", color: "#27ae60" },
+  grave: { label: "墓地",         color: "#b866ff" },
+  mana:  { label: "マナゾーン",   color: "#27ae60" },
+  hyper: { label: "超次元ゾーン", color: "#66ddff" },
 };
 
 export function ZoneViewModal({ zone, entries, ownerState, onSummon, onClose }) {

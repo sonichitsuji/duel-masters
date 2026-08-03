@@ -3344,5 +3344,193 @@
       }
     ],
     "id": 101
+  },
+  {
+    "name": "黒豆だんしゃく",
+    "type": "twinpact",
+    "civ": "nature",
+    "race": "グランセクト/スペシャルズ",
+    "cost": 8,
+    "power": 12000,
+    "keywords": [
+      "tBreaker"
+    ],
+    "effect": "T・ブレイカー\n相手の、「このクリーチャーが出た時」で始まる能力を持つクリーチャーがバトルゾーンに出た時、そのクリーチャーを持ち主のマナゾーンに置く。",
+    "autoEffect": null,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "target": "opponent",
+        "filter": {
+          "hasCip": true
+        },
+        "effects": [
+          {
+            "label": "そのクリーチャーを持ち主のマナゾーンに置く",
+            "type": "bzToMana",
+            "target": "opponent",
+            "subject": true
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "白米男しゃく",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から1枚目をマナゾーンに置く。その後、カードを1枚、自分のマナゾーンから手札に戻してもよい。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚目をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "その後、カードを1枚、自分のマナゾーンから手札に戻してもよい",
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    },
+    "id": 102
+  },
+  {
+    "name": "八頭竜 ACE-Yamata",
+    "type": "twinpact",
+    "civ": "nature",
+    "race": "アース・ドラゴン/オリジン",
+    "cost": 10,
+    "power": 16000,
+    "keywords": [
+      "machFighter",
+      "tBreaker"
+    ],
+    "effect": "マッハファイター\nT・ブレイカー\n自分のクリーチャーが離れる時、かわりにマナゾーンに置いてもよい。\nこのクリーチャーがバトルに勝った時、自分のマナゾーンにあるカードの枚数以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい。",
+    "autoEffect": null,
+    "replaceLeave": [
+      {
+        "to": "mana",
+        "filter": {
+          "creatureOnly": true
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "on": "battleWin",
+        "optional": true,
+        "effects": [
+          {
+            "type": "count",
+            "zone": "mana",
+            "target": "self",
+            "as": "マナの枚数",
+            "label": "自分のマナゾーンにあるカードの枚数を数える"
+          },
+          {
+            "label": "その枚数以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい",
+            "type": "manaToBz",
+            "target": "self",
+            "amount": 1,
+            "optional": true,
+            "filter": {
+              "creatureOnly": true,
+              "maxCost": "マナの枚数"
+            }
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "神秘の宝剣",
+      "cost": 3,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札を見る。その中から自然ではないカードを1枚、タップしてマナゾーンに置いてもよい。その後、山札をシャッフルする。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "山札から自然ではないカードを1枚、タップしてマナゾーンに置いてもよい（その後シャッフル）",
+            "type": "search",
+            "destination": "mana",
+            "amount": 1,
+            "tapped": true,
+            "optional": true,
+            "filter": {
+              "civNot": "nature"
+            }
+          }
+        ]
+      }
+    },
+    "id": 103
+  },
+  {
+    "name": "呪烏竜 ACE-Curase",
+    "type": "twinpact",
+    "civ": [
+      "water",
+      "darkness"
+    ],
+    "race": "キング・コマンド・ドラゴン/オリジン",
+    "cost": 15,
+    "power": 30000,
+    "keywords": [
+      "worldBreaker"
+    ],
+    "effect": "ワールド・ブレイカー\nこのクリーチャーが出た時、各プレイヤーは自身の手札をすべて、超次元ゾーンに置く。その後、各プレイヤーは自身のマナゾーンにあるクリーチャーをすべて、手札に戻す。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "各プレイヤーは自身の手札をすべて、超次元ゾーンに置く",
+          "type": "handToHyper",
+          "target": "both",
+          "all": true
+        },
+        {
+          "label": "その後、各プレイヤーは自身のマナゾーンにあるクリーチャーをすべて、手札に戻す",
+          "type": "manaToHand",
+          "target": "both",
+          "all": true,
+          "filter": {
+            "creatureOnly": true
+          }
+        }
+      ]
+    },
+    "spellSide": {
+      "name": "繁栄の鏡",
+      "cost": 4,
+      "civ": "nature",
+      "keywords": [],
+      "effect": "自分の山札の上から2枚をタップしてマナゾーンに置く。その後、カードを2枚まで、自分のマナゾーンから手札に戻す。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から2枚をタップしてマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 2,
+            "tapped": true
+          },
+          {
+            "label": "その後、カードを2枚まで、自分のマナゾーンから手札に戻す",
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 2,
+            "optional": true
+          }
+        ]
+      }
+    },
+    "id": 104
   }
 ]

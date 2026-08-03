@@ -49,7 +49,8 @@
 | `target` | **`"self"` / `"opponent"` / `"both"`**（どちらも） |
 | `amount` | 数値、**または変数名の文字列**（例 `"count"`）。選択枚数の上限にもなる |
 | `filter` | 対象条件（下記） |
-| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `revealed` `lastMoved` `under` `stack`） |
+| `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `hyper` `revealed` `lastMoved` `under` `stack`） |
+| `subject` | **「そのクリーチャー」**。誘発の主体そのものを対象にする（選択させない） |
 | `all` | 条件一致すべてに適用（選択不要） |
 | `any` | **「好きな枚数」**。0枚〜候補すべてから好きなだけ選ぶ（0枚も選べるので常に任意） |
 | `as` | 実際に動いた枚数を変数に控える。後続の `amount` から名前で参照できる（「同じ枚数」） |
@@ -62,6 +63,7 @@
 **filter**: `side`(ツインパクトの面) `civ` `civNot` `raceContains` `nameContains` `keyword`
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
 `element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `minPower` `notNameSelf`
+`hasCip`(「このクリーチャーが出た時」で始まる能力を持つ)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
 
 > `maxPower` / `minPower` が見るのは**カードに印刷されたパワー**です。
@@ -182,6 +184,7 @@
 
 **手札から**
 - `handToBz {filter,amount,tempKeyword,summoningSickness}` — 手札から**出す**
+- `handToHyper {target,amount,all,filter}` — **超次元ゾーン**へ置く（ゲーム外の公開領域。戻ってこない）
 - `handToShield {amount}` — シールド化
 - `handToGrave {target,amount,all,random}` — 捨てる（`random`=見ないで選ぶ）
 - `playFromHand {free,filter}` — **実行**（呪文=唱える／クリーチャー=召喚／城=表向きシールド化）
@@ -269,6 +272,7 @@
 
 **keywords**: `speedAttacker` `wBreaker` `tBreaker` `blocker` `cantAttack` `sTrigger` `drawOnPlay`
 `revolutionChange` `gStrike` `charger` `zRush` `escape` `slayer` `guardman` `unselectable`
+`machFighter` `worldBreaker`
 
 **文明**: `light` `water` `darkness` `fire` `nature`（表示順もこの順）
 
@@ -304,6 +308,7 @@
 | `leave` | カードが離れた時 |
 | `destroyed` | 破壊された時 |
 | `battleDestroy` | バトルで破壊された時 |
+| `battleWin` | **バトルに勝った時**（相手を破壊して自分は生き残った時。相打ちは勝ちではない）。攻撃によるバトルと `battle` 効果の両方で誘発 |
 | `draw` | カードを引いた時。`"lastCard": true` で「**それが最後の1枚だったら**」（引いた結果、山札が0枚になった時）に限定できる |
 | `discard` | 手札を捨てた時 |
 | `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時。`shieldLeave` はシールドゾーンの中身を監視して検出するので、**ブレイク・効果・エスケープ・置換など離れ方と行き先を問わず**誘発する（`target` でどちらのシールドかを指定） |
@@ -626,6 +631,37 @@
 - **攻撃先の選択にも効きます**（攻撃するクリーチャーを選ぶのも「選ぶ」ため）
 - **「選ぶ」効果にだけ効きます。** `all` / `random` のように選ばない効果（全体除去など）は防げません
 
+## 7.15. マッハファイター（`machFighter`）／ワールド・ブレイカー（`worldBreaker`）
+
+- **`machFighter`**: 「召喚酔いしていても攻撃できる」。ただし**召喚酔いのまま攻撃している間は
+  クリーチャーしか攻撃できません**（シールドもプレイヤーも攻撃不可）。
+  スピードアタッカーも持っていれば普通の攻撃なので、この制限はかかりません。
+- **`worldBreaker`**: シールドを**すべて**ブレイクします。
+
+## 7.16. 離れる時の置換（`replaceLeave`）
+
+「自分のクリーチャーが離れる時、かわりに〜に置いてもよい」。有効なゾーンは
+**バトルゾーン＋表向きのシールド**です。
+
+```jsonc
+"replaceLeave": [ { "to": "mana", "filter": { "creatureOnly": true } } ]
+```
+
+| キー | 説明 |
+|---|---|
+| `to` | `"mana"`(既定) / `"hand"` / `"shield"` / `"deck"` |
+| `filter` | どのカードに適用するか（省略で全部） |
+
+- §0のとおり**必ず例外処理で中止できる**モーダルで提示します（中止すると通常どおり破壊）
+- 置換されたカードは破壊されていないので `destroyed` は誘発せず、`leave` だけ誘発します
+- **現状、破壊のパイプラインだけに掛かります。** 効果による手札・マナ・シールドへの移動は
+  まだ置換の対象になりません
+
+## 7.17. 超次元ゾーン（`hyper`）
+
+ゲーム外の公開領域です。`handToHyper` で置けます。**置かれたカードは戻す手段がありません。**
+枚数が1枚以上ある時だけ盤面にカウンタが出て、タップすると中身を閲覧できます。
+
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
@@ -668,6 +704,7 @@
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
 - `evolution`: 進化元のゾーンと枚数 → **§7.8**
+- `replaceLeave`: 離れる時の置換 → **§7.16**
 - `freeCast`: コストを支払わずにプレイできる許可 → **§7.12**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
   > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく

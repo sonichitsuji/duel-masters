@@ -35,7 +35,7 @@ export function defaultDeckIds(cardDb) {
 
 export function initPlayerState(deckIds, cardDb) {
   const deck=makeDeckFromList(deckIds, cardDb);
-  return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[]};
+  return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[],hyper:[]};
 }
 
 // civs: 単色="fire" or 多色=["fire","nature"]
@@ -144,6 +144,7 @@ export function matchCardFilter(card, filter) {
   if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
   if (filter.maxPower != null && !((card.power || 0) <= filter.maxPower)) return false;
   if (filter.minPower != null && !((card.power || 0) >= filter.minPower)) return false;
+  if (filter.hasCip != null && hasPlayTrigger(card) !== !!filter.hasCip) return false;
   return true;
 }
 const costReduceMatches = matchCardFilter;
@@ -253,6 +254,16 @@ export function ssxKeywords(card){
 export function getCardTriggers(card){ return effectiveCard(card)?.triggers || []; }
 // カードが持つ起動型能力（通常 + 超魂X）
 export function getCardActivated(card){ return effectiveCard(card)?.activated || []; }
+// 「このクリーチャーが出た時」で始まる能力（cip）を持つか。
+// autoEffect{trigger:"play"} でも triggers:[{on:"creaturePutBz"}] でも書けるので両方見る。
+// ツインパクトはクリーチャー面の能力を見る（呪文面の autoEffect は cip ではない）。
+export function hasPlayTrigger(card){
+  const ec = effectiveCard(card);
+  if (!ec) return false;
+  if (ec.autoEffect?.trigger === "play") return true;
+  return (ec.triggers || []).some(tr =>
+    tr.on === "creaturePutBz" && (!tr.target || tr.target === "this"));
+}
 // カードが持つキーワード判定（通常 + 超魂X + 一時付与）。
 // 他カードからの継続付与は computeGrantedKeywords を併用すること。
 export function hasKeyword(card, kw){
@@ -268,6 +279,8 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
   const kw = [...(ec.keywords || []), ...(card.tempBuff?.keywords || []), ...extraKeywords,
               ...((card.hyperMode && ec.hyperKeywords) || [])];
   let n = 1;
+  // ワールド・ブレイカー: シールドをすべてブレイクする（何枚でも足りるよう Infinity を返す）
+  if (kw.includes("worldBreaker")) return Infinity;
   if (kw.includes("tBreaker")) n = Math.max(n, 3);
   else if (kw.includes("wBreaker")) n = Math.max(n, 2);
   if (ec.poweredBreaker) n = Math.max(n, Math.max(1, Math.floor((effPower || 0) / 6000)));
@@ -281,6 +294,24 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
 // 置換は必ず例外処理で中止できる形で提示すること（BattleScreen の ReplacementModal）。
 // ===========================
 export const LOSE_CAUSES = ["deckOut"];
+
+// 「自分のクリーチャーが離れる時、かわりに〜する」の置換元を探す。
+// 有効なゾーンはバトルゾーン＋表向きシールド（replaceLose と同じ）。
+//   replaceLeave: { to:"mana"|"hand"|"shield"|"deck", filter?, optional? }
+// 置換は §0 のとおり必ず例外処理で中止できる形で提示すること。
+export function findLeaveReplacement(ownerState, card) {
+  if (!ownerState || !card) return null;
+  const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    const rules = effectiveCard(c).replaceLeave;
+    if (!rules) continue;
+    for (const rule of (Array.isArray(rules) ? rules : [rules])) {
+      if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
+      return { card: c, rule };
+    }
+  }
+  return null;
+}
 
 export function findLoseReplacement(ownerState, cause) {
   if (!ownerState) return null;
