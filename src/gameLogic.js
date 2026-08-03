@@ -65,6 +65,16 @@ export function makeCardBg(civs) {
   return `linear-gradient(225deg, ${stops.join(', ')})`;
 }
 
+// マナゾーンに置かれたカードが供給する文明。
+// ツインパクトはバトルゾーン以外では両方の面の特性を持つので、
+// マナゾーンではクリーチャー面と呪文面の**どちらの文明としても**使える。
+export function getManaCivs(card){
+  const civs=getCardCivs(card);
+  if(card?.type!=="twinpact"||!card.spellSide?.civ) return civs;
+  const spell=Array.isArray(card.spellSide.civ)?card.spellSide.civ:[card.spellSide.civ];
+  return [...new Set([...civs,...spell])].sort((a,b)=>CIVS.indexOf(a)-CIVS.indexOf(b));
+}
+
 export function canPayCost(mana,card,costSource,opts={}){
   const effectiveCost=costSource?getEffectiveCost(card,costSource,opts):card.cost;
   const untapped=mana.filter(c=>!c.tapped);
@@ -72,7 +82,7 @@ export function canPayCost(mana,card,costSource,opts={}){
   if(effectiveCost===0) return {ok:true};
   const civs=getCardCivs(card);
   for(const civ of civs){
-    if(!untapped.some(c=>getCardCivs(c).includes(civ))){
+    if(!untapped.some(c=>getManaCivs(c).includes(civ))){
       return {ok:false,reason:`${CIV[civ]?.label}文明のマナが必要です`};
     }
   }

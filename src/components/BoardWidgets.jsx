@@ -1,16 +1,19 @@
 import { CIV } from "../constants";
-import { getCardCivs } from "../gameLogic";
+import { getCardCivs, getManaCivs } from "../gameLogic";
 
 // ===========================
 // MANA DISPLAY
 // ===========================
 export function ManaDisplay({mana}){
   const civCounts={};
+  // ツインパクトはマナゾーンで両面の文明を持つので、どちらの文明としても数える
+  // （枚数は文明ごとに「その文明として使える枚数」を表す）
   mana.forEach(c=>{
-    const civKey=getCardCivs(c)[0];
-    if(!civCounts[civKey])civCounts[civKey]={total:0,available:0};
-    civCounts[civKey].total++;
-    if(!c.tapped)civCounts[civKey].available++;
+    getManaCivs(c).forEach(civKey=>{
+      if(!civCounts[civKey])civCounts[civKey]={total:0,available:0};
+      civCounts[civKey].total++;
+      if(!c.tapped)civCounts[civKey].available++;
+    });
   });
   const available=mana.filter(c=>!c.tapped).length;
   return(
