@@ -1,5 +1,5 @@
 import { CIV } from "../constants";
-import { getCardCivs, makeCardBg, ssxKeywords } from "../gameLogic";
+import { getCardCivs, makeCardBg, ssxKeywords, cardDisplayName } from "../gameLogic";
 
 // ===========================
 // CARD COMPONENTS
@@ -20,12 +20,12 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
   const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
   return(
-    <div onClick={onClick} title={card.name} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:(card.tapped||sideways)?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
+    <div onClick={onClick} title={cardDisplayName(card)} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:(card.tapped||sideways)?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:1}}>
         <span style={{background:c.color,color:"#fff",fontWeight:700,fontSize:small?8:10,borderRadius:3,padding:"0 3px",lineHeight:"15px"}}>{card.cost}</span>
         <div style={{display:"flex",gap:1}}>{civs.map(cv=>{const cv_=CIV[cv];return cv_?<span key={cv} style={{fontSize:small?6:8,fontWeight:900,color:cv_.textColor,background:`${cv_.color}44`,borderRadius:2,padding:"0 2px",lineHeight:"13px",fontFamily:"'Noto Sans JP',sans-serif"}}>{cv_.label}</span>:null;})}</div>
       </div>
-      <div style={{color:"#fff",fontSize:small?6.5:8.5,fontWeight:700,lineHeight:1.2,textAlign:"center",flex:1,overflow:"hidden",wordBreak:"break-all",margin:"2px 0",textShadow:`0 0 5px ${c.glow}`}}>{card.name.length>13?card.name.slice(0,12)+"…":card.name}</div>
+      <div style={{color:"#fff",fontSize:small?6.5:8.5,fontWeight:700,lineHeight:1.2,textAlign:"center",flex:1,overflow:"hidden",wordBreak:"break-all",margin:"2px 0",textShadow:`0 0 5px ${c.glow}`}}>{(()=>{const dn=cardDisplayName(card);return dn.length>13?dn.slice(0,12)+"…":dn;})()}</div>
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}

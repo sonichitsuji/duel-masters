@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, computeGrantedKeywords, ssxKeywords, isCreatureSide } from "../gameLogic";
-import { EffectText } from "./EffectText";
+import { getCardCivs, computeGrantedKeywords, ssxKeywords, isCreatureSide, cardDisplayName } from "../gameLogic";
+import { CardEffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
 // ===========================
@@ -45,7 +45,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
                 {c2&&<div style={{width:24,height:24,borderRadius:"50%",background:c2.color,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:10,color:"#fff",fontFamily:"'Noto Sans JP',sans-serif"}}>{c2.label}</div>}
               </div>
               {/* Name */}
-              <div style={{fontWeight:900,color:"#fff",fontSize:15,lineHeight:1.2,textShadow:`0 0 8px ${c.glow}`}}>{card.name}</div>
+              <div style={{fontWeight:900,color:"#fff",fontSize:15,lineHeight:1.2,textShadow:`0 0 8px ${c.glow}`}}>{cardDisplayName(card)}</div>
               {/* Race */}
               {card.race&&<div style={{fontSize:11,color:c.textColor,marginTop:2,fontStyle:"italic"}}>{card.race}</div>}
             </div>
@@ -56,7 +56,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
 
         {/* Effect text box - official style */}
         <div style={{margin:"10px 12px",background:"rgba(0,0,0,0.5)",border:`1px solid ${c.color}44`,borderRadius:6,padding:"10px 12px",minHeight:80}}>
-          <EffectText text={card.effect} civColor={c.textColor}/>
+          <CardEffectText card={card} civColor={c.textColor}/>
         </div>
 
         {/* Power - big and prominent */}

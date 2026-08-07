@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV, CIVS, CARD_TYPE_LABELS } from "../constants";
-import { getCardCivs } from "../gameLogic";
+import { getCardCivs, cardDisplayName } from "../gameLogic";
 
 // ===========================
 // DECK EDITOR
@@ -18,7 +18,7 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
   const remove=id=>{if((counts[id]||0)===0)return;setCounts(c=>({...c,[id]:c[id]-1}));};
   const deckIds=[];Object.entries(counts).forEach(([id,cnt])=>{for(let i=0;i<cnt;i++)deckIds.push(Number(id));});
   const filtered=cardDb.filter(c=>{
-    if(search&&!c.name.includes(search))return false;
+    if(search&&!cardDisplayName(c).includes(search))return false;
     if(civFilter!=="all"){
       const civs=getCardCivs(c);
       if(!civs.includes(civFilter))return false;
@@ -56,7 +56,7 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
             <div key={card.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:8,border:`1px solid ${cnt>0?c.color+"44":"#1a1a2a"}`}}>
               <span style={{fontSize:11,fontWeight:900,color:c.textColor,background:`${c.color}33`,borderRadius:3,padding:"1px 4px",fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cardDisplayName(card)}</div>
                 <div style={{fontSize:10,color:"#555"}}>コスト:{card.cost} {card.power!=null?`/ P:${card.power}`:`/ ${CARD_TYPE_LABELS[card.type]||"呪文"}`}{card.keywords?.includes("sTrigger")&&<span style={{color:"#ff8",marginLeft:4}}>ST</span>}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:5}}>

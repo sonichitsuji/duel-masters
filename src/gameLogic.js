@@ -65,6 +65,15 @@ export function makeCardBg(civs) {
   return `linear-gradient(225deg, ${stops.join(', ')})`;
 }
 
+// カードに印刷されている名前。ツインパクトは「クリーチャー名 / 呪文名」の1枚のカードなので、
+// 表示では両面の名前を並べる。card.name（クリーチャー面の名前）は識別子として使い続けるので、
+// ログや nameContains の判定はこれを通さないこと。
+export function cardDisplayName(card){
+  if(!card) return "";
+  if(card.type==="twinpact"&&card.spellSide?.name) return `${card.name} / ${card.spellSide.name}`;
+  return card.name || "";
+}
+
 // マナゾーンに置かれたカードが供給する文明。
 // ツインパクトはバトルゾーン以外では両方の面の特性を持つので、
 // マナゾーンではクリーチャー面と呪文面の**どちらの文明としても**使える。
