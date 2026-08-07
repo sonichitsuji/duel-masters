@@ -56,7 +56,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
 
         {/* Effect text box - official style */}
         <div style={{margin:"10px 12px",background:"rgba(0,0,0,0.5)",border:`1px solid ${c.color}44`,borderRadius:6,padding:"10px 12px",minHeight:80}}>
-          <CardEffectText card={card} civColor={c.textColor}/>
+          <CardEffectText card={card}/>
         </div>
 
         {/* Power - big and prominent */}
