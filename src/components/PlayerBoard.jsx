@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
-import { EffectText } from "./EffectText";
+import { CardEffectText } from "./EffectText";
 import { CreatureDetailPanel } from "./CreatureDetailPanel";
 import { ExceptionPanel } from "./ExceptionPanel";
 import { AttackTriggerModal } from "./modals/AttackTriggerModal";
@@ -316,10 +316,10 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       {selectedCard&&(
         <div style={{background:"#080818",border:`1px solid ${CIV[getCardCivs(selectedCard)[0]]?.color}55`,borderRadius:8,padding:"8px 12px",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {selectedCard.name}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}{selectedCard.race&&` / 種族:${selectedCard.race}`}</span></div>
+            <div><span style={{fontWeight:700,color:"#fff",fontSize:12}}>{getCardCivs(selectedCard).map(cv=>CIV[cv]?.label).join("")} {cardDisplayName(selectedCard)}</span><span style={{color:"#666",fontSize:10,marginLeft:8}}>コスト:{selectedCard.cost}{selectedCard.type==="creature"&&` / パワー:${selectedCard.power}`}{selectedCard.race&&` / 種族:${selectedCard.race}`}</span></div>
             <div style={{fontSize:10,color:civCheck?.ok?"#4f8":"#f84",fontWeight:700}}>{civCheck?.ok?`✓ プレイ可 (${availMana}マナ)`:`✗ ${civCheck?.reason}`}</div>
           </div>
-          <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}><EffectText text={selectedCard.effect}/></div>
+          <div style={{fontSize:10,color:"#999",marginTop:4,lineHeight:1.5}}><CardEffectText card={selectedCard}/></div>
         </div>
       )}
       {attackingUid&&!isActive&&(

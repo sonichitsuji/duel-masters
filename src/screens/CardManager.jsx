@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CIV, CIVS, KEYWORD_LABELS, CARD_TYPE_LABELS } from "../constants";
 import { CardEditor } from "./CardEditor";
+import { cardDisplayName } from "../gameLogic";
 
 // ===========================
 // CARD MANAGER
@@ -12,7 +13,7 @@ export function CardManager({cardDb,setCardDb,onClose}){
   const [confirmDelete,setConfirmDelete]=useState(null);
 
   const filtered=cardDb.filter(c=>{
-    if(search&&!c.name.includes(search))return false;
+    if(search&&!cardDisplayName(c).includes(search))return false;
     if(civFilter!=="all"&&c.civ!==civFilter)return false;
     return true;
   });
@@ -55,7 +56,7 @@ export function CardManager({cardDb,setCardDb,onClose}){
           <div key={card.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1a1a2a"}}>
             <span style={{fontSize:11,fontWeight:900,color:c.textColor,background:`${c.color}33`,borderRadius:3,padding:"1px 4px",fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{card.name}</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{cardDisplayName(card)}</div>
               <div style={{fontSize:10,color:"#555"}}>コスト:{card.cost} {card.power!=null?`/ P:${card.power}`:`/ ${CARD_TYPE_LABELS[card.type]||"呪文"}`} {card.keywords?.map(k=><span key={k} style={{color:c.textColor,marginRight:3}}>{KEYWORD_LABELS[k]||k}</span>)}</div>
             </div>
             <button onClick={()=>setEditing(card)} style={{padding:"4px 10px",borderRadius:4,background:"rgba(255,224,102,0.1)",border:"1px solid #ffe06644",color:"#ffe066",cursor:"pointer",fontSize:11}}>編集</button>
