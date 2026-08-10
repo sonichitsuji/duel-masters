@@ -3777,5 +3777,59 @@
       }
     },
     "id": 109
+  },
+  {
+    "name": "百鬼の邪王門",
+    "race": "鬼札王国",
+    "cost": 6,
+    "type": "spell",
+    "civ": [
+      "darkness",
+      "fire"
+    ],
+    "keywords": [],
+    "effect": "＜鬼エンド＞クリーチャーが攻撃する時、シールドが1つもないプレイヤーがいて、自分のマナゾーンに闇と火文明があれば、この呪文を自分の手札からコストを支払わずに唱えてもよい。\n自分の山札の上から4枚を墓地に置く。こうして墓地に置いたカードの中から、闇または火の、コスト6以下の、進化ではないクリーチャーを1体出す。その後、相手のクリーチャーを1体選んでもよい。その2体をバトルさせる。",
+    "oniEnd": {
+      "on": "attack",
+      "target": "both",
+      "manaHas": [
+        {
+          "civ": "darkness"
+        },
+        {
+          "civ": "fire"
+        }
+      ]
+    },
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から4枚を墓地に置く",
+          "type": "topToGrave",
+          "amount": 4
+        },
+        {
+          "label": "こうして墓地に置いたカードの中から、闇または火のコスト6以下の進化ではないクリーチャーを1体出す",
+          "type": "graveToBz",
+          "zone": "lastMoved",
+          "filter": {
+            "type": "nonEvoCreature",
+            "civ": [
+              "darkness",
+              "fire"
+            ],
+            "maxCost": 6
+          }
+        },
+        {
+          "label": "その後、相手のクリーチャーを1体選んでもよい。その2体をバトルさせる",
+          "type": "battle",
+          "selfFrom": "lastPut",
+          "optional": true
+        }
+      ]
+    },
+    "id": 110
   }
 ]

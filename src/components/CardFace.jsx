@@ -47,6 +47,8 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
         {ownKw.includes("sTrigger")&&<span style={{fontSize:7,color:"#ff8"}}>ST</span>}
         {ownKw.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
         {ownKw.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
+        {/* 鬼エンド。手札から使う能力なので、手札でも見えるようバッジに出す */}
+        {card.oniEnd&&<span style={{fontSize:7,fontWeight:900,color:"#ff4466",textShadow:"0 0 4px #ff4466"}}>鬼</span>}
         {card.ssx&&<span style={{fontSize:6,fontWeight:900,color:"#c9f",textShadow:"0 0 4px #a0f"}}>SSX</span>}
       </div>
       {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>HYPER</div>}

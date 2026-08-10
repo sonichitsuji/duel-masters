@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent, findOniEndPlays } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -13,6 +13,7 @@ import { FinalRevolutionModal } from "../components/modals/FinalRevolutionModal"
 import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
 import { ReplacementModal } from "../components/modals/ReplacementModal";
+import { OniEndModal } from "../components/modals/OniEndModal";
 import { PlayerBoard } from "../components/PlayerBoard";
 import { StepIndicator } from "../components/BoardWidgets";
 
@@ -97,6 +98,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
   const [hyperTargetedModal,setHyperTargetedModal]=useState(null);
   const [templateChoiceModal,setTemplateChoiceModal]=useState(null);
+  const [oniEndModal,setOniEndModal]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const [isPC,setIsPC]=useState(()=>window.innerWidth>=768);
@@ -145,6 +147,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // pending から取り出したエントリを実際に解決開始する
   const resolveEntry=(entry)=>{
     const {effect,ownerPid,srcCard,subjectCard,sourceName}=entry;
+    // 鬼エンドは「唱えるかどうか」を先に聞く。カット演出は唱えると決めてから出す
+    if(entry.kind==="oniEnd"){ setOniEndModal({pid:ownerPid,cards:entry.oniCards,oniEvent:entry.oniEvent}); return; }
     if(entry.onceKey) markAbilityUsed(effect,entry.onceKey);
     showCutIn({title:"効果発動！",cardName:sourceName||srcCard?.name,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
     if(effect.type==="chooseTimes"){
@@ -156,7 +160,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||oniEndModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     if(pendingEffects.length===0) return;
@@ -164,7 +168,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const group=pendingEffects.filter(e=>e.priority===minP);
     // 呪文は順序固定（割り込ませず enqueue 順で解決）。誘発が2件以上、または任意誘発(単体でも)は選択モーダル。
     // 起動型能力はプレイヤーが既に「使う」と宣言しているので確認しない。
-    const spell=group.find(e=>e.kind==="spell");
+    const spell=group.find(e=>e.kind==="spell"||e.kind==="oniEnd");
     if(spell){
       setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
       resolveEntry(spell);
@@ -264,7 +268,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // Skip conditional steps when their precondition is not met
       while (nextIdx < prev.steps.length && (
         (prev.steps[nextIdx].type === "graveToBz" && prev.steps[nextIdx].owner === "destroyed" && !updatedCtx.destroyedCreatureOwner) ||
-        (prev.steps[nextIdx].type === "breakShield" && !updatedCtx.etbBattleWon)
+        (prev.steps[nextIdx].type === "breakShield" && !updatedCtx.etbBattleWon) ||
+        // 「その2体をバトルさせる」: 出せるクリーチャーがいなければバトルも起こらない
+        (prev.steps[nextIdx].type === "battle" && prev.steps[nextIdx].selfFrom === "lastPut" && !(updatedCtx.lastPutBz || []).length)
       )) {
         nextIdx++;
       }
@@ -292,7 +298,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const cur=stateRef.current;
     const runOne=(card,ownerPid,tr,subject)=>{
       if(tr.hyperOnly&&!card.hyperMode) return;
-      if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid],card)) return;
+      if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid],card,stateRef.current[ownerPid==="p1"?"p2":"p1"])) return;
       // 「各ターンに一度」「ゲーム中に一度」の誘発は使用済みなら発火しない
       const idx=getCardTriggers(card).indexOf(tr);
       const onceKey=(tr.oncePerTurn||tr.oncePerGame)?`${card.uid}#t${idx}`:null;
@@ -327,8 +333,50 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         });
       });
     });
+    // 3) 鬼エンド（手札から、コストを支払わずにプレイする）。1)2) と違い手札を見るので別枠。
+    offerOniEnd(event,ev);
   };
   fireTriggerRef.current=fireTrigger;
+
+  // 鬼エンド: 条件を満たす手札があれば、pending へ積んでリゾルバに順番を任せる。
+  // 「〜してもよい」なので必ず見送れる。複数枚あれば1枚ずつ、解決のたびに再提示する。
+  const offerOniEnd=(event,ev)=>{
+    ["p1","p2"].forEach(pid=>{
+      const oPid=pid==="p1"?"p2":"p1";
+      const cards=findOniEndPlays(stateRef.current[pid],stateRef.current[oPid],event,ev,pid);
+      // priority 2 = 誘発（0/1）より後。先に誘発を解決しきってから「使うかどうか」を聞く。
+      // （唱えた後に再提示するので、これが先に来ると誘発が後回しになり続けてしまう）
+      if(cards.length) enqueueEffectRef.current({
+        kind:"oniEnd", effect:{ label:"鬼エンド" }, ownerPid:pid, sourceName:"鬼エンド", priority:2,
+        oniCards:cards.map(c=>({...c})), oniEvent:{event,ev},
+      });
+    });
+  };
+  const handleOniEndCast=(card)=>{
+    const {pid,oniEvent}=oniEndModal;
+    setOniEndModal(null);
+    const setSelf=pid==="p1"?setP1:setP2;
+    const isCreature=isCreatureSide(card);
+    const civ=Array.isArray(card.civ)?card.civ[0]:card.civ;
+    addLog(`[鬼エンド] ${pid}: 「${card.name}」をコストを支払わずに${isCreature?"召喚":"唱える"}`);
+    showCutIn({title:"鬼エンド！",cardName:card.name,civ});
+    if(isCreature){
+      const put={...card,tapped:false,enteredThisTurn:true,summonedThisTurn:!hasKeyword(card,"speedAttacker")};
+      setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),battle:[...s.battle,put]}));
+      maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
+      if(card.autoEffect) enqueueEffect({kind:"trigger",effect:card.autoEffect,ownerPid:pid,srcCard:{...card,srcCardUid:put.uid},sourceName:card.name});
+      setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:pid,subjectCard:put,method:"summon"}),0);
+    }else{
+      // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ
+      const isCharger=card.keywords?.includes("charger");
+      setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),
+        ...(isCharger?{mana:[...s.mana,{...card,tapped:true}]}:{grave:[...s.grave,card]})}));
+      if(card.autoEffect) enqueueEffect({kind:"spell",effect:card.autoEffect,ownerPid:pid,srcCard:card,sourceName:card.name});
+      setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card}),0);
+    }
+    // 同じ誘発に対して2枚目以降も使える。盤面が変わっているので条件は取り直す
+    setTimeout(()=>offerOniEnd(oniEvent.event,oniEvent.ev),0);
+  };
 
   // 起動型能力（activated）: 自分のバトルゾーン＋表向きシールドから、今使えるものを集める
   const collectActivated=(pid)=>{
@@ -341,7 +389,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         if(isAbilityUsed(ab,key)) return;
         const timing=ab.timing||"ownTurn";
         if(timing==="ownTurn"&&pid!==active) return;
-        if(ab.condition&&!checkGrantCondition(ab.condition,st,card)) return;
+        if(ab.condition&&!checkGrantCondition(ab.condition,st,card,stateRef.current[pid==="p1"?"p2":"p1"])) return;
         out.push({ key, pid, card, ability:ab, fromSsx: !(card.activated||[]).includes(ab) });
       });
     });
@@ -892,7 +940,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           // "opponent"=相手のターンの終わり / "both"=各ターンの終わり
           if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:active})) return;
           if(tr.hyperOnly&&!card.hyperMode) return;
-          if(tr.condition&&!checkGrantCondition(tr.condition,st,card)) return;
+          if(tr.condition&&!checkGrantCondition(tr.condition,st,card,stateRef.current[oPid])) return;
           setTimeout(()=>triggerEffect(tr,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);
         });
       });
@@ -994,6 +1042,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         onDeclineAll={()=>{const ids=triggerOrderModal.entries.filter(e=>e.effect?.optional).map(e=>e.id);addLog("任意の誘発能力を発動しなかった");setPendingEffects(p=>p.filter(e=>!ids.includes(e.id)));setTriggerOrderModal(prev=>{const rest=(prev?.entries||[]).filter(e=>!ids.includes(e.id));return rest.length?{entries:rest}:null;});}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
+      {oniEndModal&&<OniEndModal pid={oniEndModal.pid} cards={oniEndModal.cards} onCast={handleOniEndCast} onSkip={()=>{addLog(`[鬼エンド] ${oniEndModal.pid}: 使わない`);setOniEndModal(null);}}/>}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
       {hyperUnlockModal&&<HyperUntapModal modal={hyperUnlockModal} onSelect={uid2=>{

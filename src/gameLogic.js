@@ -446,11 +446,54 @@ export function civicCount(state, civ){
   return inBattle + inShield;
 }
 
-// grant規則やパワー強化に付く condition の評価
-export function checkGrantCondition(cond, ownerState, card){
+// ===========================
+// 鬼エンド（ONI END）
+// ===========================
+// 「シールドが1つもないプレイヤーがいる」ことを条件に働く能力。
+// 自分・相手どちらのシールドが0でも成立する（自分が追い詰められている時にも使える）。
+export function oniEndActive(stateA, stateB){
+  return [stateA, stateB].some(s => (s?.shields || []).length === 0);
+}
+
+// 自分のマナゾーンが、指定した filter を「それぞれ1枚以上」満たすか。
+// 「マナゾーンに闇と火文明があれば」= [{civ:"darkness"},{civ:"fire"}]。
+// ツインパクトはマナゾーンで両面の文明を持つので、civ の判定だけ getManaCivs を通す。
+export function manaHasAll(state, filters){
+  if(!filters?.length) return true;
+  const mana = state?.mana || [];
+  return filters.every(f => mana.some(c => {
+    const wanted = f.civ == null ? null : (Array.isArray(f.civ) ? f.civ : [f.civ]);
+    if(wanted && !wanted.some(x => getManaCivs(c).includes(x))) return false;
+    // civ は上で判定済みなので matchCardFilter には渡さない（getManaCivs と結果が変わるため）
+    const rest = Object.fromEntries(Object.entries(f).filter(([k]) => k !== "civ"));
+    return matchCardFilter(c, rest);
+  }));
+}
+
+// 手札にある「鬼エンド」のうち、いまコストを支払わずにプレイできるカードを返す。
+// event/ev は誘発の中身（fireTrigger と同じ形）。ownerPid はこの手札の持ち主。
+export function findOniEndPlays(state, otherState, event, ev = {}, ownerPid){
+  if(!oniEndActive(state, otherState)) return [];
+  return (state?.hand || []).filter(card => {
+    const oe = card.oniEnd;
+    if(!oe) return false;
+    if((oe.on || "attack") !== event) return false;
+    const scope = oe.target || "both";                       // 誰のイベントに反応するか
+    if(scope === "self" && ev.sourcePid !== ownerPid) return false;
+    if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
+    return manaHasAll(state, oe.manaHas);
+  });
+}
+
+// grant規則やパワー強化に付く condition の評価。
+// otherState は「両者の盤面を見る条件」（鬼エンド）専用。渡せる呼び出し元だけが渡す。
+export function checkGrantCondition(cond, ownerState, card, otherState){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
   if(cond.type === "stackCount") return stackCount(card) >= cond.count;
+  // 鬼エンド: シールドが1つもないプレイヤーがいる。相手の盤面が要るので、
+  // otherState を渡さない継続能力（パワー強化・grant）では使えない（validator で弾く）。
+  if(cond.type === "oniEnd") return !!otherState && oniEndActive(ownerState, otherState);
   if(cond.flag) return !!ownerState?.[cond.flag];
   return true;
 }

@@ -70,7 +70,9 @@ const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
 const AMOUNT_PER_ZONES = new Set([...COUNT_ZONES, "evolutionBase"]);
 const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
 const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
+// count(数値)を要する condition。oniEnd のように count を持たないものは COUNTLESS 側。
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
+const COUNTLESS_CONDITION_TYPES = new Set(["oniEnd"]);
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
 const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
@@ -79,7 +81,7 @@ const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
 // 出典: src/engine/effects.js の effect.X 参照。新しいキーを実装したらここにも足すこと。
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","filter","amount","count","maxSelect",
-  "all","any","takeAll","random","order","as","optional","ifPrevious","subject","onePlayer",
+  "all","any","takeAll","random","order","as","optional","ifPrevious","subject","selfFrom","onePlayer",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -117,6 +119,10 @@ function checkOne(e, where) {
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
   if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
   if (e.order && !["shuffle", "choose"].includes(e.order)) errors.push(`${where}: order は "shuffle" か "choose"`);
+  if (e.selfFrom != null) {
+    if (e.type !== "battle") errors.push(`${where}: selfFrom は type:"battle" でのみ使えます`);
+    else if (e.selfFrom !== "lastPut") errors.push(`${where}: selfFrom は "lastPut" のみ`);
+  }
   if (e.type === "meteorBurn") {
     if (e.to && !METEOR_BURN_TO.has(e.to)) errors.push(`${where}: meteorBurn の to は ${[...METEOR_BURN_TO].join("/")}`);
     if (e.count != null && typeof e.count !== "number") errors.push(`${where}: meteorBurn の count は数値`);
@@ -158,10 +164,16 @@ function checkEffect(eff, where) {
   if (eff.type) errors.push(`${where}: 単純効果 "${eff.type}" は廃止（effects 配列へ）`);
 }
 
-function checkCondition(cond, where) {
+// allowBothSides: 相手の盤面も見られる文脈か（triggers / activated）。
+// oniEnd は両者のシールドを見るので、継続能力の条件には書けない。
+function checkCondition(cond, where, allowBothSides = false) {
   if (!cond || typeof cond !== "object") return;
   if (cond.flag) return; // 任意のプレイヤー状態フラグ
   if (!cond.type) { errors.push(`${where}: condition に type も flag もありません`); return; }
+  if (COUNTLESS_CONDITION_TYPES.has(cond.type)) {
+    if (!allowBothSides) errors.push(`${where}: condition "${cond.type}" は triggers / activated でのみ使えます`);
+    return;
+  }
   if (!CONDITION_TYPES.has(cond.type)) errors.push(`${where}: 未知の condition.type "${cond.type}"`);
   else if (typeof cond.count !== "number") errors.push(`${where}: condition "${cond.type}" に count(数値) が必要です`);
 }
@@ -178,7 +190,7 @@ function checkTrigger(tr, where) {
     if (tr.on !== "draw") errors.push(`${where}(${tr.on}): lastCard は on:"draw" でのみ使えます`);
   }
   if (tr.oncePerGame != null && typeof tr.oncePerGame !== "boolean") errors.push(`${where}(${tr.on}): oncePerGame は真偽値`);
-  checkCondition(tr.condition, `${where}(${tr.on})`);
+  checkCondition(tr.condition, `${where}(${tr.on})`, true);
   checkEffect(tr, `${where}(${tr.on})`);
 }
 
@@ -195,7 +207,7 @@ function checkActivated(list, where) {
     if (ab.oncePerTurn != null && typeof ab.oncePerTurn !== "boolean") errors.push(`${w}: oncePerTurn は真偽値`);
     if (ab.oncePerGame != null && typeof ab.oncePerGame !== "boolean") errors.push(`${w}: oncePerGame は真偽値`);
     if (!ab.label) warnings.push(`${w}: label が無いとUIに説明が出ません`);
-    checkCondition(ab.condition, w);
+    checkCondition(ab.condition, w, true);
   });
 }
 
@@ -230,6 +242,23 @@ function checkAbilityFields(obj, where) {
     if (typeof rl !== "object" || rl == null) { errors.push(`${where}.replaceLeave: オブジェクトで書いてください`); continue; }
     if (!LEAVE_TO.has(rl.to || "mana")) errors.push(`${where}.replaceLeave: to は ${[...LEAVE_TO].join("/")}`);
     if (rl.filter != null && typeof rl.filter !== "object") errors.push(`${where}.replaceLeave: filter はオブジェクト`);
+  }
+  // oniEnd: 鬼エンド（手札から、コストを支払わずにプレイする）
+  if (obj.oniEnd != null) {
+    const oe = obj.oniEnd;
+    if (typeof oe !== "object" || Array.isArray(oe)) errors.push(`${where}.oniEnd: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(oe)) {
+        if (!["on", "target", "manaHas"].includes(k)) errors.push(`${where}.oniEnd: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (oe.on != null && !TRIGGER_ONS.has(oe.on)) errors.push(`${where}.oniEnd: 未知の on "${oe.on}"`);
+      if (oe.target != null && !TRIGGER_SCOPES.includes(oe.target)) errors.push(`${where}.oniEnd: 未知の target "${oe.target}"`);
+      if (oe.target === "this") errors.push(`${where}.oniEnd: 手札のカードなので target:"this" は使えません`);
+      if (oe.manaHas != null) {
+        if (!Array.isArray(oe.manaHas)) errors.push(`${where}.oniEnd.manaHas: 配列である必要があります`);
+        else oe.manaHas.forEach((f, i) => checkFilterKeys(f, `${where}.oniEnd.manaHas[${i}]`));
+      }
+    }
   }
   // freeCast: コストを支払わずにプレイできる許可（バトルゾーン／表向きシールドで有効）
   const fcs = obj.freeCast == null ? [] : (Array.isArray(obj.freeCast) ? obj.freeCast : [obj.freeCast]);
