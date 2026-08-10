@@ -390,7 +390,10 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const where = { revealedToHand:"手札", revealedToBz:"バトルゾーン", revealedToMana:"マナ", revealedToGrave:"墓地", revealedToDeckTop:"山札の上", revealedToDeckBottom:"山札の下" }[type];
         addLog(`${pid}: ${take.map(c => c.name).join(", ")} → ${where}`);
         ctx.lastMoved = take;
-        if (type === "revealedToBz") ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...take.map(c => ({ card: c, ownerPid, method: "put" }))];
+        if (type === "revealedToBz") {
+          ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...take.map(c => ({ card: c, ownerPid, method: "put" }))];
+          ctx.lastPutBz = take.map(c => ({ card: c, ownerPid }));
+        }
       }
       const takenUids = take.map(c => c.uid);
       ctx.revealed = pool.filter(c => !takenUids.includes(c.uid));
@@ -408,6 +411,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を手札からバトルゾーンへ`);
         ctx.lastMoved = cards;
         ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
+        ctx.lastPutBz = cards.map(c => ({ card: c, ownerPid: pidx }));
       }
       break;
     }
@@ -466,6 +470,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true }] }));
             addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}召喚`);
             ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
+            ctx.lastPutBz = [{ card, ownerPid: pidx }];
           }
         }
       }
@@ -481,6 +486,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→バトルゾーン`);
         ctx.lastMoved = cards;
         ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
+        ctx.lastPutBz = cards.map(c => ({ card: c, ownerPid: pidx }));
       }
       break;
     }
@@ -631,7 +637,13 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     }
     case "battle": {
       const target = otherState.battle.find(c => c.uid === selectedUids[0]);
-      const self = selfState.battle.find(c => c.uid === ctx.srcCardUid);
+      // selfFrom:"lastPut" … 直前にこの効果でバトルゾーンに出たクリーチャーがバトルする。
+      // （呪文には「このクリーチャー」がいないので、出したクリーチャーを自分側にする用。
+      //   subject:true は「そのクリーチャー＝誘発の主体」で意味が違うので別キーにしている）
+      const selfUid = effect.selfFrom === "lastPut"
+        ? ctx.lastPutBz?.[ctx.lastPutBz.length - 1]?.card?.uid
+        : ctx.srcCardUid;
+      const self = selfState.battle.find(c => c.uid === selfUid);
       if (!target || !self) break;
       const sEff = getEffectivePower(self, selfState, selfState.battle);
       const tEff = getEffectivePower(target, otherState, otherState.battle);
@@ -659,6 +671,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
       ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: ownerOfGrave, method: "put" }))];
+      ctx.lastPutBz = cards.map(c => ({ card: c, ownerPid: ownerOfGrave }));
       break;
     }
     // メテオバーン: このクリーチャーの下のカードを指定数、指定ゾーンへ動かす「コスト」。

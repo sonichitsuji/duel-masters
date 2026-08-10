@@ -229,7 +229,10 @@
     {"type":"powerBuff","target":"opponent","count":1,"amount":"graveCre","perUnit":-1000,"expires":"endOfTurn"}
     ```
 - `grant {keywords,untapAfterAttack,untap,expires}` — 能力付与
-- `battle {target}` — このクリーチャーと相手1体をバトル
+- `battle {target, selfFrom}` — このクリーチャーと相手1体をバトル。
+  `selfFrom:"lastPut"` を書くと、**直前にこの効果でバトルゾーンに出したクリーチャー**が
+  自分側になる（呪文には「このクリーチャー」がいないため）。何も出ていなければステップごと飛ばされる。
+  ※ `subject:true`（＝「そのクリーチャー」＝誘発の主体）とは別物なので混同しないこと
 
 **墓地・シールド**
 - `graveToBz {filter,owner,self,tempKeywords,destroyAtEndOfTurn,summoningSickness}` — 墓地から出す
@@ -687,6 +690,49 @@
 ゲーム外の公開領域です。`handToHyper` で置けます。**置かれたカードは戻す手段がありません。**
 枚数が1枚以上ある時だけ盤面にカウンタが出て、タップすると中身を閲覧できます。
 
+## 7.18. 鬼エンド（`oniEnd`）
+
+**シールドが1つもないプレイヤーがいる**ことを条件に働く能力です。自分・相手のどちらのシールドが
+0でも成立します（追い詰められている側でも使えます）。使い方は2通りあります。
+
+### (a) 手札から、コストを支払わずにプレイする — カード直下の `oniEnd`
+
+> ＜鬼エンド＞クリーチャーが攻撃する時、シールドが1つもないプレイヤーがいて、自分のマナゾーンに
+> 闇のカードと火のカードがそれぞれ1枚以上あれば、この呪文を自分の手札からコストを支払わずに唱えてもよい。
+
+```jsonc
+"oniEnd": {
+  "on": "attack",                                        // 誘発イベント（既定 "attack"）
+  "target": "both",                                      // 誰のイベントか（既定 "both"。"this" は不可）
+  "manaHas": [ {"civ":"darkness"}, {"civ":"fire"} ]       // 追加条件（省略可）
+}
+```
+
+| キー | 説明 |
+|---|---|
+| `on` | §7 のイベント名。既定 `"attack"` |
+| `target` | `self` / `opponent` / `both`（既定）。手札のカードなので `this` は使えません |
+| `manaHas` | 自分のマナゾーンが、**それぞれ1枚以上**満たすべき filter の配列。§2 の filter 語彙 |
+
+- 条件が揃うと、そのプレイヤーに確認モーダルが出ます。「〜してもよい」なので必ず見送れます
+- **呪文なら唱え、クリーチャーなら召喚**します（チャージャーはマナゾーンへ行きます）
+- 唱えた後にもう一度条件を判定して再提示するので、同じ攻撃に対して**複数枚を続けて**使えます
+- 解決の順番は、同時に誘発した能力を**すべて解決した後**です
+
+### (b) 誘発を「鬼エンド」で条件付ける — `condition`
+
+> ＜鬼エンド＞このクリーチャーがバトルゾーンに出た時、シールドが1つもないプレイヤーがいれば、〜
+
+```jsonc
+"triggers": [
+  { "on": "creaturePutBz", "condition": { "type": "oniEnd" }, "effects": [ … ] }
+]
+```
+
+`condition:{type:"oniEnd"}` は**両者のシールドを見る**ため、相手の盤面を参照できる
+`triggers` / `activated` でのみ使えます（パワー強化や `grantKeywords` の条件には書けません。
+validator がエラーにします）。
+
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
@@ -697,7 +743,8 @@
 - `powerAttacker`: `N` — パワーアタッカー+N（**攻撃中のみ**パワー+N）
 - `poweredBreaker`: `true` — パワード・ブレイカー（パワー6000ごとに1つブレイク、最低1）。
   W/Tブレイカーと併用した場合は**大きい方**が採用される
-- `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"…"}`
+- `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` /
+  `{type:"oniEnd"}`（→ **§7.18**。triggers / activated でのみ使える） / `{flag:"…"}`
   - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
 - `costReduce`: `{amount | amountPer, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
   - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
