@@ -9,14 +9,16 @@ import { CardFace } from "../CardFace";
 // ===========================
 export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onAdvance, onException }) {
   const [selected, setSelected] = useState([]);
-  useEffect(() => { setSelected([]); }, [activeSteps?.stepIdx]);
+  // 「プレイヤーを1人選ぶ」。uid ではないので selected には混ぜず、別の state で持つ
+  const [chosenPlayer, setChosenPlayer] = useState(null);
+  useEffect(() => { setSelected([]); setChosenPlayer(null); }, [activeSteps?.stepIdx]);
   if (!activeSteps) return null;
 
   const { steps, stepIdx, ownerPid, srcCard, context } = activeSteps;
   const step = steps[stepIdx];
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const otherState = ownerPid === "p1" ? p2 : p1;
-  const { candidates, isAuto, maxSelect: dynMaxSelect, ordered, optional: dynOptional, owners } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
+  const { candidates, isAuto, maxSelect: dynMaxSelect, ordered, optional: dynOptional, owners, choosePlayer } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
   // 「好きな枚数」(any) は0枚も選べるので、JSON に optional が無くても任意扱いにする
   const isOptional = step.optional || dynOptional;
 
@@ -33,7 +35,15 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
   };
 
   // ordered（好きな順序で置く）は、選んだ順がそのまま並び順になるので全部選び終えるまで確定できない
-  const canConfirm = isAuto || (ordered ? selected.length === maxSel : (isOptional || selected.length > 0));
+  const canConfirm = choosePlayer ? !!chosenPlayer
+    : isAuto || (ordered ? selected.length === maxSel : (isOptional || selected.length > 0));
+
+  // 「プレイヤーを1人選ぶ」＋ all は、カードを1枚ずつ選ぶ効果ではない。
+  // 選んだプレイヤーのカードだけを「これが動きます」と見せるだけにして、選択UIは出さない。
+  const previewOnly = choosePlayer && step.all;
+  const shown = previewOnly
+    ? (chosenPlayer ? candidates.filter(card => owners?.[card.uid] === chosenPlayer) : [])
+    : candidates;
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:380, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -47,16 +57,38 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
           </div>
         </div>
 
+        {/* プレイヤーを1人選ぶ（カードではなくプレイヤーを選ばせる） */}
+        {choosePlayer && (
+          <div>
+            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>プレイヤーを1人選択：</div>
+            <div style={{ display:"flex", gap:8 }}>
+              {["p1", "p2"].map(pid => {
+                const on = chosenPlayer === pid;
+                const mine = pid === ownerPid;
+                return (
+                  <button key={pid} onClick={() => setChosenPlayer(on ? null : pid)}
+                    style={{ flex:1, padding:"12px 10px", borderRadius:8, cursor:"pointer",
+                      background: on ? `${c.color}33` : "#111",
+                      border:`1px solid ${on ? c.color : "#333"}`, color: on ? c.textColor : "#888" }}>
+                    <div style={{ fontSize:14, fontWeight:900 }}>{pid.toUpperCase()}</div>
+                    <div style={{ fontSize:10, marginTop:2 }}>{mine ? "自分" : "相手"}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Card grid */}
-        {candidates.length > 0 && (
+        {shown.length > 0 && (
           <div style={{ overflowY:"auto", maxHeight:220 }}>
             <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
-              {isAuto ? "公開カード：" : (step.any ? `好きな枚数を選択（${selected.length}/${maxSel}）：` : `選択（${selected.length}/${maxSel}）：`)}
+              {previewOnly ? "このカードが対象になります：" : isAuto ? "公開カード：" : (step.any ? `好きな枚数を選択（${selected.length}/${maxSel}）：` : `選択（${selected.length}/${maxSel}）：`)}
               {ordered && <span style={{ color: "#ffcc66", marginLeft: 6 }}>選んだ順に上から置かれます</span>}
               {step.onePlayer && <span style={{ color: "#ffcc66", marginLeft: 6 }}>プレイヤー1人からだけ選べます</span>}
             </div>
             <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-              {candidates.map((card, i) => (
+              {shown.map((card, i) => (
                 step.type === "breakShield" ? (
                   <div key={card.uid}
                     onClick={() => toggleSelect(card.uid)}
@@ -68,8 +100,8 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
                   <div key={card.uid} style={{ position:"relative", display:"flex" }}>
                     <CardFace card={card}
                       selected={selected.includes(card.uid)}
-                      dimmed={!isAuto && !selectable(card.uid)}
-                      onClick={isAuto ? undefined : () => toggleSelect(card.uid)}
+                      dimmed={!isAuto && !previewOnly && !selectable(card.uid)}
+                      onClick={isAuto || previewOnly ? undefined : () => toggleSelect(card.uid)}
                       small />
                     {ordered && selected.includes(card.uid) && (
                       <span style={{ position:"absolute", top:-4, left:-4, width:17, height:17, borderRadius:"50%", background:"#ffe066", color:"#000", fontSize:10, fontWeight:900, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 8px #ffe066" }}>
@@ -84,14 +116,14 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
         )}
 
         {/* Empty state */}
-        {candidates.length === 0 && !isAuto && (
+        {candidates.length === 0 && !isAuto && !previewOnly && (
           <div style={{ fontSize:11, color:"#555", textAlign:"center", padding:8 }}>対象カードがありません</div>
         )}
 
         {/* Buttons */}
         <div style={{ display:"flex", gap:8 }}>
           <button
-            onClick={() => canConfirm && onAdvance(selected)}
+            onClick={() => canConfirm && onAdvance(selected, chosenPlayer ? { chosenPlayer } : undefined)}
             disabled={!canConfirm}
             style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
             {isAuto ? "確認" : "実行"}

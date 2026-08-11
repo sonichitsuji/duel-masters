@@ -14,7 +14,8 @@ const root = path.join(__dirname, "..");
 
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
-const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker"]);
+const CIVS = new Set(["light","water","darkness","fire","nature"]);
+const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"]);
 const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
@@ -88,7 +89,7 @@ const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","filter","amount","count","maxSelect",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
-  "asCost","canUseTrigger",
+  "asCost","canUseTrigger","choosePlayer",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -135,6 +136,13 @@ function checkOne(e, where) {
     }
   }
   if (e.asCost != null && e.type !== "destroy") errors.push(`${where}: asCost は type:"destroy" でのみ使えます`);
+  if (e.choosePlayer != null) {
+    if (typeof e.choosePlayer !== "boolean") errors.push(`${where}: choosePlayer は真偽値`);
+    else if (e.choosePlayer) {
+      if (e.target !== "both") errors.push(`${where}: choosePlayer は target:"both" と一緒に使います（どちらのプレイヤーも選べるため）`);
+      if (e.onePlayer) errors.push(`${where}: choosePlayer と onePlayer は併用できません（前者はプレイヤーを、後者はカードを選ばせる）`);
+    }
+  }
   if (e.canUseTrigger != null) {
     if (e.type !== "shieldToHand") errors.push(`${where}: canUseTrigger は type:"shieldToHand" でのみ使えます（他のゾーンへ動かす時はS・トリガーを使えません）`);
     else if (typeof e.canUseTrigger !== "boolean") errors.push(`${where}: canUseTrigger は真偽値`);
@@ -287,6 +295,32 @@ function checkAbilityFields(obj, where) {
       }
     }
   }
+  // ddd: D・D・D（手札から、指定のコストを支払ってプレイする）
+  if (obj.ddd != null) {
+    const d = obj.ddd;
+    if (typeof d !== "object" || Array.isArray(d)) errors.push(`${where}.ddd: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(d)) {
+        if (!["on", "target", "cost"].includes(k)) errors.push(`${where}.ddd: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (d.on != null && !TRIGGER_ONS.has(d.on)) errors.push(`${where}.ddd: 未知の on "${d.on}"`);
+      if (d.target != null && !TRIGGER_SCOPES.includes(d.target)) errors.push(`${where}.ddd: 未知の target "${d.target}"`);
+      if (d.target === "this") errors.push(`${where}.ddd: 手札のカードなので target:"this" は使えません`);
+      // cost は alternateCost と同じ形（{cost, civs}）。支払いが本体なので必須にする
+      if (typeof d.cost !== "object" || d.cost == null || Array.isArray(d.cost)) {
+        errors.push(`${where}.ddd: cost（{cost, civs} のオブジェクト）が必要です`);
+      } else {
+        for (const k of Object.keys(d.cost)) {
+          if (!["cost", "civs"].includes(k)) errors.push(`${where}.ddd.cost: 未知のキー "${k}"（綴り違い？）`);
+        }
+        if (typeof d.cost.cost !== "number") errors.push(`${where}.ddd.cost: cost（数値）が必要です`);
+        if (d.cost.civs != null) {
+          if (!Array.isArray(d.cost.civs)) errors.push(`${where}.ddd.cost.civs: 配列である必要があります`);
+          else for (const cv of d.cost.civs) if (!CIVS.has(cv)) errors.push(`${where}.ddd.cost.civs: 未知のciv "${cv}"`);
+        }
+      }
+    }
+  }
   // freeCast: コストを支払わずにプレイできる許可（バトルゾーン／表向きシールドで有効）
   const fcs = obj.freeCast == null ? [] : (Array.isArray(obj.freeCast) ? obj.freeCast : [obj.freeCast]);
   for (const fc of fcs) {
@@ -309,7 +343,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","autoEffect",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","staticDeny","reactivePassive",
+  "alternateCost","oniEnd","ddd","staticDeny","reactivePassive",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent, findOniEndPlays } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -13,7 +13,8 @@ import { FinalRevolutionModal } from "../components/modals/FinalRevolutionModal"
 import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
 import { ReplacementModal } from "../components/modals/ReplacementModal";
-import { OniEndModal } from "../components/modals/OniEndModal";
+import { HandPlayModal } from "../components/modals/HandPlayModal";
+import { ManaPayModal } from "../components/modals/ManaPayModal";
 import { PlayerBoard } from "../components/PlayerBoard";
 import { StepIndicator } from "../components/BoardWidgets";
 
@@ -104,7 +105,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
   const [hyperTargetedModal,setHyperTargetedModal]=useState(null);
   const [templateChoiceModal,setTemplateChoiceModal]=useState(null);
-  const [oniEndModal,setOniEndModal]=useState(null);
+  const [handPlayModal,setHandPlayModal]=useState(null);
+  // 手札宣言プレイのコスト支払い（D・D・D）。PlayerBoard の ManaPayModal は isActive の内側に
+  // あって非ターンプレイヤーが使えないので、こちらにもう1つ置く
+  const [handPlayPayModal,setHandPlayPayModal]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const [isPC,setIsPC]=useState(()=>window.innerWidth>=768);
@@ -155,7 +159,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const resolveEntry=(entry)=>{
     const {effect,ownerPid,srcCard,subjectCard,sourceName}=entry;
     // 鬼エンドは「唱えるかどうか」を先に聞く。カット演出は唱えると決めてから出す
-    if(entry.kind==="oniEnd"){ setOniEndModal({pid:ownerPid,cards:entry.oniCards,oniEvent:entry.oniEvent}); return; }
+    if(entry.kind==="handPlay"){ setHandPlayModal({pid:ownerPid,plays:entry.plays,srcEvent:entry.srcEvent}); return; }
     if(entry.onceKey) markAbilityUsed(effect,entry.onceKey);
     showCutIn({title:"効果発動！",cardName:sourceName||srcCard?.name,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
     if(effect.type==="chooseTimes"){
@@ -167,7 +171,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||oniEndModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     if(pendingEffects.length===0) return;
@@ -175,7 +179,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const group=pendingEffects.filter(e=>e.priority===minP);
     // 呪文は順序固定（割り込ませず enqueue 順で解決）。誘発が2件以上、または任意誘発(単体でも)は選択モーダル。
     // 起動型能力はプレイヤーが既に「使う」と宣言しているので確認しない。
-    const spell=group.find(e=>e.kind==="spell"||e.kind==="oniEnd");
+    const spell=group.find(e=>e.kind==="spell"||e.kind==="handPlay");
     if(spell){
       setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
       resolveEntry(spell);
@@ -188,10 +192,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[resolverBusy,pendingEffects]);
 
-  const advanceStep = useCallback((selectedUids) => {
+  // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」など）。
+  // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
+  // stepDone が配列長で判定したりするので、混ぜずに ctx へ載せる。
+  const advanceStep = useCallback((selectedUids, extra) => {
     setActiveSteps(prev => {
       if (!prev) return null;
-      const updatedCtx = executeEffect(prev.steps[prev.stepIdx], selectedUids, prev.context, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
+      const stepCtx = extra ? { ...prev.context, ...extra } : prev.context;
+      const updatedCtx = executeEffect(prev.steps[prev.stepIdx], selectedUids, stepCtx, prev.ownerPid, p1, setP1, p2, setP2, addLog, prev.srcCard);
       // 「相手がこのクリーチャーを選んだ時」：効果の対象に選ばれた場合もここで誘発させる
       if (selectedUids && selectedUids.length) {
         setTimeout(() => onTargetedRef.current && onTargetedRef.current(prev.ownerPid, selectedUids), 0);
@@ -370,37 +378,41 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         });
       });
     });
-    // 3) 鬼エンド（手札から、コストを支払わずにプレイする）。1)2) と違い手札を見るので別枠。
-    offerOniEnd(event,ev);
+    // 3) 手札からの宣言型プレイ（鬼エンド / D・D・D）。1)2) と違い手札を見るので別枠。
+    offerHandPlays(event,ev);
   };
   fireTriggerRef.current=fireTrigger;
   fireShieldTriggersRef.current=fireShieldTriggers;
 
-  // 鬼エンド: 条件を満たす手札があれば、pending へ積んでリゾルバに順番を任せる。
+  // 手札からの宣言型プレイ（鬼エンド / D・D・D）。
+  // 条件を満たす手札があれば pending へ積み、リゾルバに順番を任せる。
   // 「〜してもよい」なので必ず見送れる。複数枚あれば1枚ずつ、解決のたびに再提示する。
-  const offerOniEnd=(event,ev)=>{
+  const offerHandPlays=(event,ev)=>{
     ["p1","p2"].forEach(pid=>{
       const oPid=pid==="p1"?"p2":"p1";
-      const cards=findOniEndPlays(stateRef.current[pid],stateRef.current[oPid],event,ev,pid);
+      const plays=findHandPlays(stateRef.current[pid],stateRef.current[oPid],event,ev,pid);
       // priority 2 = 誘発（0/1）より後。先に誘発を解決しきってから「使うかどうか」を聞く。
-      // （唱えた後に再提示するので、これが先に来ると誘発が後回しになり続けてしまう）
-      if(cards.length) enqueueEffectRef.current({
-        kind:"oniEnd", effect:{ label:"鬼エンド" }, ownerPid:pid, sourceName:"鬼エンド", priority:2,
-        oniCards:cards.map(c=>({...c})), oniEvent:{event,ev},
+      // （プレイした後に再提示するので、これが先に来ると誘発が後回しになり続けてしまう）
+      if(plays.length) enqueueEffectRef.current({
+        kind:"handPlay", effect:{ label:"手札からのプレイ" }, ownerPid:pid,
+        sourceName:handPlayLabel(plays[0].kind), priority:2,
+        plays:plays.map(p=>({...p,card:{...p.card}})), srcEvent:{event,ev},
       });
     });
   };
-  const handleOniEndCast=(card)=>{
-    const {pid,oniEvent}=oniEndModal;
-    setOniEndModal(null);
+  // 実際に手札からプレイする。コストは支払い済みの前提（払う場合は先に ManaPayModal を通す）
+  const playFromHandDeclared=(pid,card,kind,srcEvent,paidManaUids)=>{
     const setSelf=pid==="p1"?setP1:setP2;
     const isCreature=isCreatureSide(card);
     const civ=Array.isArray(card.civ)?card.civ[0]:card.civ;
-    addLog(`[鬼エンド] ${pid}: 「${card.name}」をコストを支払わずに${isCreature?"召喚":"唱える"}`);
-    showCutIn({title:"鬼エンド！",cardName:card.name,civ});
+    const label=handPlayLabel(kind);
+    const paid=paidManaUids?.length>0;
+    addLog(`[${label}] ${pid}: 「${card.name}」を${paid?"コストを支払って":"コストを支払わずに"}${isCreature?"召喚":"唱える"}`);
+    showCutIn({title:`${label}！`,cardName:card.name,civ});
+    const payMana=st=>paid?tapManaByUids(st.mana,paidManaUids):st.mana;
     if(isCreature){
-      const put={...card,tapped:false,enteredThisTurn:true,summonedThisTurn:!hasKeyword(card,"speedAttacker")};
-      setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),battle:[...s.battle,put]}));
+      const put=withJustDiver({...card,tapped:false,enteredThisTurn:true,summonedThisTurn:!hasKeyword(card,"speedAttacker")});
+      setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),mana:payMana(s),battle:[...s.battle,put]}));
       maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
       if(card.autoEffect) enqueueEffect({kind:"trigger",effect:card.autoEffect,ownerPid:pid,srcCard:{...card,srcCardUid:put.uid},sourceName:card.name});
       setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:pid,subjectCard:put,method:"summon"}),0);
@@ -408,12 +420,21 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ
       const isCharger=card.keywords?.includes("charger");
       setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),
-        ...(isCharger?{mana:[...s.mana,{...card,tapped:true}]}:{grave:[...s.grave,card]})}));
+        ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
       if(card.autoEffect) enqueueEffect({kind:"spell",effect:card.autoEffect,ownerPid:pid,srcCard:card,sourceName:card.name});
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card}),0);
     }
     // 同じ誘発に対して2枚目以降も使える。盤面が変わっているので条件は取り直す
-    setTimeout(()=>offerOniEnd(oniEvent.event,oniEvent.ev),0);
+    setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);
+  };
+  // モーダルで「プレイする」を押した時。コストが要るなら支払いへ、要らなければ即プレイ
+  const handleHandPlay=(play)=>{
+    const {pid,srcEvent}=handPlayModal;
+    setHandPlayModal(null);
+    if(!play.cost){ playFromHandDeclared(pid,play.card,play.kind,srcEvent,null); return; }
+    // 代替コストと同じ手口: コストと文明を差し替えた仮カードを支払いUIに渡す
+    setHandPlayPayModal({ pid, srcEvent, kind:play.kind, card:play.card,
+      payCard:{...play.card, cost:play.cost.cost, civ:play.cost.civs||play.card.civ} });
   };
 
   // 起動型能力（activated）: 自分のバトルゾーン＋表向きシールドから、今使えるものを集める
@@ -592,7 +613,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         else if(spec.zone==="mana")  newMana=newMana.filter(c=>!used.has(c.uid));
         else                         battleWithoutBase=activeState.battle.filter(c=>!used.has(c.uid));
       }
-      const newCreature={...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase};
+      // ジャストダイバー: 出た時に「相手に選ばれず、攻撃されない」を次の自分のターンまで付ける
+      const newCreature=withJustDiver({...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase});
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle}));
       const fromLabel=fromZone==="grave"?"（墓地から）":fromZone==="mana"?"（マナゾーンから）":"";
@@ -855,6 +877,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       addLog(`${target.name} は相手に選ばれない`);
       setMessage("このクリーチャーは相手に選ばれません");return;
     }
+    // ジャストダイバー等の「攻撃されない」
+    if(isUnattackable(target,stateRef.current[otherPid])){
+      addLog(`${target.name} は攻撃されない（ジャストダイバー）`);
+      setMessage("このクリーチャーは攻撃されません");return;
+    }
     // DMの基本ルール: 攻撃できるのは「タップされているクリーチャー」だけ。
     // マッハファイターは出たターンの間、アンタップしているクリーチャーも攻撃できる。
     if(!target.tapped&&!machFighterActive(attacker)){
@@ -1084,7 +1111,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         onDeclineAll={()=>{const ids=triggerOrderModal.entries.filter(e=>e.effect?.optional).map(e=>e.id);addLog("任意の誘発能力を発動しなかった");setPendingEffects(p=>p.filter(e=>!ids.includes(e.id)));setTriggerOrderModal(prev=>{const rest=(prev?.entries||[]).filter(e=>!ids.includes(e.id));return rest.length?{entries:rest}:null;});}}/>}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
-      {oniEndModal&&<OniEndModal pid={oniEndModal.pid} cards={oniEndModal.cards} onCast={handleOniEndCast} onSkip={()=>{addLog(`[鬼エンド] ${oniEndModal.pid}: 使わない`);setOniEndModal(null);}}/>}
+      {handPlayModal&&<HandPlayModal pid={handPlayModal.pid} plays={handPlayModal.plays} onPlay={handleHandPlay} onSkip={()=>{addLog(`[${handPlayLabel(handPlayModal.plays[0]?.kind)}] ${handPlayModal.pid}: 使わない`);setHandPlayModal(null);}}/>}
+      {handPlayPayModal&&(()=>{const{pid,payCard,card,kind,srcEvent}=handPlayPayModal;const st=stateRef.current[pid];return(
+        <ManaPayModal card={payCard} mana={st.mana} ownerState={st}
+          onConfirm={uids=>{setHandPlayPayModal(null);playFromHandDeclared(pid,card,kind,srcEvent,uids);}}
+          onCancel={()=>{setHandPlayPayModal(null);addLog(`[${handPlayLabel(kind)}] ${pid}: 支払いを取りやめ`);setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);}}/>
+      );})()}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
       {hyperUnlockModal&&<HyperUntapModal modal={hyperUnlockModal} onSelect={uid2=>{
