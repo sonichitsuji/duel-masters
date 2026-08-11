@@ -2072,10 +2072,11 @@
         "optional": true,
         "effects": [
           {
-            "label": "自分のシールドを1つ手札に戻してもよい（S・トリガー不使用）",
+            "label": "自分のシールドを1つ手札に戻してもよい（その「S・トリガー」は使えない）",
             "optional": true,
             "type": "shieldToHand",
-            "target": "self"
+            "target": "self",
+            "canUseTrigger": false
           }
         ]
       },
@@ -3831,5 +3832,246 @@
       ]
     },
     "id": 110
+  },
+  {
+    "name": "豊潤フォージュン",
+    "race": null,
+    "cost": 3,
+    "power": 0,
+    "type": "spell",
+    "civ": "nature",
+    "keywords": [],
+    "effect": "自分の山札の上から1枚をマナゾーンに置く。その後、自分のマナゾーンのカードが5枚以下なら、カードを1枚引く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分の山札の上から1枚をマナゾーンに置く",
+          "type": "topToMana",
+          "amount": 1
+        },
+        {
+          "label": "自分のマナゾーンのカードを数える",
+          "type": "count",
+          "zone": "mana",
+          "target": "self",
+          "as": "manaCount"
+        },
+        {
+          "label": "マナゾーンのカードが5枚以下なら、カードを1枚引く",
+          "type": "drawCards",
+          "amount": 1,
+          "onlyIf": {
+            "count": "manaCount",
+            "max": 5
+          }
+        }
+      ]
+    },
+    "id": 111
+  },
+  {
+    "name": "鬼ヶ大王 ジャオウガ",
+    "race": "デモニオ/鬼札王国",
+    "cost": 5,
+    "power": 7000,
+    "type": "creature",
+    "civ": [
+      "darkness",
+      "fire"
+    ],
+    "keywords": [
+      "speedAttacker",
+      "wBreaker"
+    ],
+    "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）\nW・ブレイカー（このクリーチャーはシールドを2つブレイクする）\nこのクリーチャーが出た時、自分のシールドをすべて手札に加えてもよい。ただし、その「S・トリガー」は使えない。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分のシールドをすべて手札に加えてもよい（その「S・トリガー」は使えない）",
+          "type": "shieldToHand",
+          "target": "self",
+          "all": true,
+          "optional": true,
+          "canUseTrigger": false
+        }
+      ]
+    },
+    "id": 112
+  },
+  {
+    "name": "MAX鬼無双",
+    "race": null,
+    "cost": 4,
+    "power": 0,
+    "type": "spell",
+    "civ": [
+      "darkness",
+      "fire"
+    ],
+    "keywords": [],
+    "effect": "自分のクリーチャー1体またはタマシードを1枚破壊する。その後、その破壊したカードよりコストが1大きい、クリーチャー1体またはタマシードを1枚、自分の墓地から出す。こうして出したカードがクリーチャーなら、このターン「スピードアタッカー」を与え、タマシードならカードを1枚引く。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分のクリーチャー1体またはタマシードを1枚破壊する",
+          "type": "destroy",
+          "target": "self",
+          "filter": {
+            "type": [
+              "creature",
+              "tamaseed"
+            ]
+          },
+          "asCost": "destroyedCost"
+        },
+        {
+          "label": "破壊したカードよりコストが1大きいクリーチャーまたはタマシードを、自分の墓地から出す（クリーチャーならこのターン「スピードアタッカー」）",
+          "type": "graveToBz",
+          "tempKeywords": [
+            "speedAttacker"
+          ],
+          "filter": {
+            "type": [
+              "creature",
+              "tamaseed"
+            ],
+            "cost": {
+              "var": "destroyedCost",
+              "plus": 1
+            }
+          }
+        },
+        {
+          "label": "こうして出したカードのうちクリーチャーを数える",
+          "type": "count",
+          "zone": "lastMoved",
+          "filter": {
+            "creatureOnly": true
+          },
+          "as": "putCreature"
+        },
+        {
+          "label": "出したのがタマシードなら、カードを1枚引く",
+          "type": "drawCards",
+          "amount": 1,
+          "onlyIf": {
+            "count": "putCreature",
+            "max": 0
+          }
+        }
+      ]
+    },
+    "id": 113
+  },
+  {
+    "name": "忍蛇の聖沌 c0br4",
+    "race": "メカ・デル・ステラ/シノビ",
+    "cost": 6,
+    "power": 5000,
+    "type": "creature",
+    "civ": "darkness",
+    "keywords": [
+      "sTrigger",
+      "blocker"
+    ],
+    "effect": "S・トリガー（このカードを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\nブロッカー（このクリーチャーをタップして、相手クリーチャーの攻撃先をこのクリーチャーに変更してもよい）\nこのクリーチャーが出た時、自分の山札の上から2枚を墓地に置く。その後、コスト5以下のクリーチャーを1体、自分の墓地から出す。\n相手のターンにこのクリーチャーが出た時、このターンに2つ以上自分のシールドがブレイクされていなければ、このクリーチャーを破壊する。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の山札の上から2枚を墓地に置く",
+          "type": "topToGrave",
+          "amount": 2
+        },
+        {
+          "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す",
+          "type": "graveToBz",
+          "filter": {
+            "creatureOnly": true,
+            "maxCost": 5
+          }
+        }
+      ]
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "turnOf": "opponent",
+        "condition": {
+          "type": "shieldsBroken",
+          "who": "self",
+          "max": 1
+        },
+        "effects": [
+          {
+            "label": "このターンに2つ以上自分のシールドがブレイクされていないので、このクリーチャーを破壊する",
+            "type": "destroy",
+            "self": true
+          }
+        ]
+      }
+    ],
+    "id": 114
+  },
+  {
+    "name": "鬼ヶ魔槍 ジャオウガ",
+    "race": "デモニオ",
+    "cost": 6,
+    "power": 6000,
+    "type": "creature",
+    "civ": [
+      "darkness",
+      "fire"
+    ],
+    "keywords": [
+      "speedAttacker",
+      "slayer",
+      "wBreaker"
+    ],
+    "effect": "＜鬼エンド＞クリーチャーが攻撃する時、シールドが1つもないプレイヤーがいて、自分のマナゾーンに闇と火文明があれば、このクリーチャーを自分の手札からコストを支払わずに召喚してもよい。\nスピードアタッカー\nスレイヤー\nW・ブレイカー\nこのクリーチャーが出た時、プレイヤーを1人選ぶ。そのプレイヤーは自身の墓地にあるカードの枚数を数え、シャッフルして山札の下に置く。その後、こうして山札の下に置かれたカードの枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊してもよい。",
+    "oniEnd": {
+      "on": "attack",
+      "target": "both",
+      "manaHas": [
+        {
+          "civ": "darkness"
+        },
+        {
+          "civ": "fire"
+        }
+      ]
+    },
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "プレイヤーを1人選ぶ。そのプレイヤーの墓地のカードをシャッフルして山札の下に置く",
+          "type": "graveToDeckBottom",
+          "target": "both",
+          "any": true,
+          "onePlayer": true,
+          "order": "shuffle"
+        },
+        {
+          "label": "こうして山札の下に置いた枚数を数える",
+          "type": "count",
+          "zone": "lastMoved",
+          "as": "toDeckCount"
+        },
+        {
+          "label": "その枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊してもよい",
+          "type": "destroy",
+          "target": "opponent",
+          "optional": true,
+          "filter": {
+            "maxCost": "toDeckCount"
+          }
+        }
+      ]
+    },
+    "id": 115
   }
 ]
