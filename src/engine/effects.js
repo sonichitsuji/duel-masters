@@ -8,7 +8,9 @@ import { KEYWORD_LABELS } from "../constants";
 // ゾーン移動は <from>To<To>（topToMana 等）、「実行(プレイ)」は playFromHand と命名を分ける。
 // ===========================
 
-// ---- 変数解決（数値ならそのまま、文字列なら ctx.vars を参照）----
+// ---- 変数解決 ----
+// 数値ならそのまま、文字列なら ctx.vars を参照、
+// { var:"c", plus:1 } なら変数に足し引きした値（「破壊したカードよりコストが1大きい」用）。
 export function resolveAmount(ctx, val, fallback = 1) {
   if (typeof val === "number") return val;
   if (typeof val === "string") {
@@ -17,7 +19,22 @@ export function resolveAmount(ctx, val, fallback = 1) {
     if (typeof v === "number") return v;
     return 0;
   }
+  if (val && typeof val === "object" && val.var != null) {
+    return resolveAmount(ctx, val.var, 0) + (val.plus || 0);
+  }
   return fallback;
+}
+
+// ---- ステップ単位の条件（onlyIf）----
+// { count:"変数名", min, max } を満たさなければ、そのステップ「だけ」を飛ばす。
+// ifPrevious（＝直前を実行したか）や shouldStopChain（＝以降すべて中止）とは別物。
+export function stepConditionMet(step, ctx) {
+  const cond = step?.onlyIf;
+  if (!cond) return true;
+  const n = resolveAmount(ctx, cond.count, 0);
+  if (cond.min != null && n < cond.min) return false;
+  if (cond.max != null && n > cond.max) return false;
+  return true;
 }
 
 // ---- フィルタ ----
@@ -60,6 +77,7 @@ export function matchFilter(card, filter, ctx) {
   if (f.element && !isElement(card)) return false;
   if (f.creatureOnly && !isCreatureSide(card)) return false;
   if (f.tapped != null && !!card.tapped !== !!f.tapped) return false;
+  if (f.cost != null && card.cost !== resolveAmount(ctx, f.cost, f.cost)) return false;
   if (f.maxCost != null && !(card.cost <= resolveAmount(ctx, f.maxCost, f.maxCost))) return false;
   if (f.minCost != null && !(card.cost >= resolveAmount(ctx, f.minCost, f.minCost))) return false;
   if (f.maxPower != null && !((card.power || 0) <= resolveAmount(ctx, f.maxPower, f.maxPower))) return false;
@@ -271,6 +289,12 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       if (cards.length) out.push({ pidx, cards });
     }
     return out;
+  };
+  // シールドの選択。all:true なら「すべて」（filter があれば一致するものすべて）
+  const pickShields = pidx => {
+    const pool = stateOf(pidx).shields;
+    return effect.all ? pool.filter(c => matchFilter(c, effect.filter, ctx))
+                      : pool.filter(c => selectedUids.includes(c.uid));
   };
   const markDestroyed = (card, pidx, viaBattle) => {
     ctx.destroyedThisStep = [...(ctx.destroyedThisStep || []), { card, ownerPid: pidx, viaBattle: !!viaBattle }];
@@ -527,6 +551,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
         targets.forEach(c => { addLog(`${pid}: ${c.name} を破壊`); markDestroyed(c, pidx, false); });
+        // 「破壊したカードよりコストが1大きい〜」用に、破壊したカードのコストを控える。
+        // ctx.destroyedThisStep は次のステップに進む前に消費されるので、ここで変数に写す。
+        if (effect.asCost) ctx.vars[effect.asCost] = Math.max(...targets.map(c => c.cost || 0));
         ctx.destroyedCreatureOwner = pidx;
       }
       break;
@@ -670,6 +697,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
+      ctx.lastMoved = cards;
       ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: ownerOfGrave, method: "put" }))];
       ctx.lastPutBz = cards.map(c => ({ card: c, ownerPid: ownerOfGrave }));
       break;
@@ -767,19 +795,26 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       }
       break;
     }
+    // シールドを手札に加える。既定では「S・トリガー」を使える。
+    // カードテキストに「ただし、その『S・トリガー』は使えない」とあるものだけ
+    // canUseTrigger:false を書く。誘発は ctx 経由で BattleScreen が解決する。
     case "shieldToHand": {
       for (const pidx of pids) {
-        const cards = stateOf(pidx).shields.filter(c => selectedUids.includes(c.uid));
+        const cards = pickShields(pidx);
         if (!cards.length) continue;
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, shields: s.shields.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false, faceUp: false }))] }));
-        addLog(`${pid}: シールド「${cards.map(c => c.name).join(", ")}」を手札へ（S・トリガー不使用）`);
+        const canUse = effect.canUseTrigger !== false;
+        addLog(`${pid}: シールド「${cards.map(c => c.name).join(", ")}」を手札へ${canUse ? "" : "（S・トリガー不使用）"}`);
+        if (canUse) {
+          ctx.shieldTriggerCards = [...(ctx.shieldTriggerCards || []), ...cards.map(c => ({ card: c, ownerPid: pidx }))];
+        }
       }
       break;
     }
     case "shieldToGrave": {
       for (const pidx of pids) {
-        const cards = stateOf(pidx).shields.filter(c => selectedUids.includes(c.uid));
+        const cards = pickShields(pidx);
         if (!cards.length) continue;
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, shields: s.shields.filter(c => !uids.includes(c.uid)), grave: [...s.grave, ...cards] }));
