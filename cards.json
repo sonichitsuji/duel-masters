@@ -4048,11 +4048,11 @@
       "trigger": "play",
       "effects": [
         {
-          "label": "プレイヤーを1人選ぶ。そのプレイヤーの墓地のカードをシャッフルして山札の下に置く",
+          "label": "プレイヤーを1人選ぶ。そのプレイヤーは自身の墓地をシャッフルして山札の下に置く",
           "type": "graveToDeckBottom",
           "target": "both",
-          "any": true,
-          "onePlayer": true,
+          "all": true,
+          "choosePlayer": true,
           "order": "shuffle"
         },
         {
@@ -4073,5 +4073,40 @@
       ]
     },
     "id": 115
+  },
+  {
+    "name": "危識：この先、レッドゾーンあり",
+    "race": null,
+    "cost": 4,
+    "type": "spell",
+    "civ": "nature",
+    "keywords": [],
+    "effect": "D・D・D[自然(2)]（自分のクリーチャーが攻撃する時、このカードを[自然(2)]支払って自分の手札から実行してもよい）\n自分のマナゾーンにあるカードを5枚アンタップする。",
+    "ddd": {
+      "on": "attack",
+      "target": "self",
+      "cost": {
+        "cost": 2,
+        "civs": [
+          "nature"
+        ]
+      }
+    },
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "自分のマナゾーンにあるカードを5枚アンタップする",
+          "type": "untap",
+          "zone": "mana",
+          "target": "self",
+          "amount": 5,
+          "filter": {
+            "tapped": true
+          }
+        }
+      ]
+    },
+    "id": 116
   }
 ]
