@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -34,6 +34,9 @@ const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd", "battleWin"]);
 // この誘発が「自分自身に起きた出来事」を見るのか、プレイヤーのイベントを見張るのか
 function triggerScope(tr, event){ return tr.target || DEFAULT_TRIGGER_SCOPE[event] || "self"; }
 
+// spellAfterCast の行き先の表示名
+const SPELL_AFTER_CAST_LABELS={ deckBottom:"山札の下", deckTop:"山札の上", hand:"手札", mana:"マナゾーン", shield:"シールド" };
+
 function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   if(tr.on !== event) return false;
   const scope = triggerScope(tr, event);
@@ -46,6 +49,8 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
     if(ev.sourcePid === watcherPid) return false;
   }
   if(tr.method && ev.method && tr.method !== ev.method) return false;
+  // fromZone: どこから唱えた呪文か。「自分の手札から呪文を唱えた時」用（castSpell）
+  if(tr.fromZone && (ev.fromZone || "hand") !== tr.fromZone) return false;
   // turnOf: 誰のターンに起きたイベントか。「相手のターンにこのクリーチャーが出た時」用
   if(tr.turnOf && tr.turnOf !== "both" && ev.activePid){
     const onOwnTurn = ev.activePid === watcherPid;
@@ -127,6 +132,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const fireShieldTriggersRef=useRef();
   const onTargetedRef=useRef();
   const enqueueEffectRef=useRef();
+  const offerSpellAfterCastRef=useRef();
   const pendingIdRef=useRef(0);
   const [replacementModal,setReplacementModal]=useState(null);
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
@@ -225,13 +231,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // シールドが離れた時（zRush 解放と shieldLeave）はシールドゾーンを監視する状況起因処理で拾うので、
       // ここでは何もしない。
       if (updatedCtx.castSpell) {
-        const { card: castCard, ownerPid: castOwnerPid } = updatedCtx.castSpell;
+        const { card: castCard, ownerPid: castOwnerPid, fromZone: castFrom } = updatedCtx.castSpell;
         delete updatedCtx.castSpell;
         if (castCard.autoEffect) {
           // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
           setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castCard.autoEffect, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
         }
-        setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard}), 0);
+        setTimeout(() => offerSpellAfterCastRef.current(castOwnerPid, castCard, castFrom || "hand"), 0);
+        setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard,fromZone:castFrom||"hand"}), 0);
       }
       // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
       if (updatedCtx.drewCards && updatedCtx.drewCards.length) {
@@ -324,6 +331,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const setSelf=ownerPid==="p1"?setP1:setP2;
     const setOther=ownerPid==="p1"?setP2:setP1;
     cards.map(c=>({card:c,side:sTriggerSide(c)})).filter(x=>x.side).forEach(({side})=>{
+      // 呪文を唱えられない状態なら、呪文の S・トリガーは使えない（ラフルル・ラブ等）。
+      // sTriggerSide が呪文面を返した場合は side:"spell" が付いている（クリーチャーのSTは対象外）
+      const deny=spellDenyReason(side,stateRef.current[ownerPid],stateRef.current[oPid]);
+      if(deny){addLog(`ST 「${side.name}」は${deny}`);return;}
       addLog(`ST 「${side.name}」`);
       showCutIn({title:"S-TRIGGER!",cardName:side.name,civ:Array.isArray(side.civ)?side.civ[0]:side.civ});
       if(side.autoEffect) setTimeout(()=>triggerEffect(side.autoEffect,ownerPid,stateRef.current[ownerPid],setSelf,stateRef.current[oPid],setOther,side.name,{...side}),delay);
@@ -384,6 +395,43 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   fireTriggerRef.current=fireTrigger;
   fireShieldTriggersRef.current=fireShieldTriggers;
 
+  // 唱えた後の行き先の置換（「自分の墓地から呪文を唱えた後、墓地のかわりに山札の下に置く」）。
+  // 呪文はすでに墓地に置かれているので、そこから移し替える形で実装する。
+  // 置換なので必ず例外処理で中止できるようにモーダルを挟む（§0）。
+  const offerSpellAfterCast=(pid,card,fromZone)=>{
+    const st=stateRef.current[pid];
+    if(!st?.grave?.some(c=>c.uid===card.uid)) return;   // チャージャー等で墓地に無ければ何もしない
+    const hit=findSpellAfterCast(st,card,fromZone);
+    if(!hit) return;
+    const setSelf=pid==="p1"?setP1:setP2;
+    const to=hit.rule.to||"deckBottom";
+    setReplacementModal({
+      title:"置換効果",
+      card:hit.card,
+      message:`「${hit.card.name}」の効果により、唱え終えた「${card.name}」を墓地のかわりに${SPELL_AFTER_CAST_LABELS[to]||to}へ置きます。`,
+      applyLabel:`${SPELL_AFTER_CAST_LABELS[to]||to}へ置く`,
+      onApply:()=>{
+        setReplacementModal(null);
+        setSelf(s=>{
+          const target=s.grave.find(c=>c.uid===card.uid);
+          if(!target) return s;
+          const grave=s.grave.filter(c=>c.uid!==card.uid);
+          const moved={...target,tapped:false,faceUp:false,side:undefined};
+          if(to==="deckBottom") return {...s,grave,deck:[...s.deck,moved]};
+          if(to==="deckTop")    return {...s,grave,deck:[moved,...s.deck]};
+          if(to==="hand")       return {...s,grave,hand:[...s.hand,moved]};
+          if(to==="mana")       return {...s,grave,mana:[...s.mana,{...moved,tapped:true}]};
+          if(to==="shield")     return {...s,grave,shields:[...s.shields,moved],shieldAddedThisTurn:true};
+          return s;
+        });
+        addLog(`[置換] ${pid}: 「${card.name}」は墓地のかわりに${SPELL_AFTER_CAST_LABELS[to]||to}へ`);
+        if(to==="shield") setTimeout(()=>fireTriggerRef.current("shieldAdded",{sourcePid:pid}),0);
+      },
+      onCancel:()=>{setReplacementModal(null);addLog(`[置換] ${pid}: 例外処理で中止（「${card.name}」は墓地のまま）`);},
+    });
+  };
+  offerSpellAfterCastRef.current=offerSpellAfterCast;
+
   // 手札からの宣言型プレイ（鬼エンド / D・D・D）。
   // 条件を満たす手札があれば pending へ積み、リゾルバに順番を任せる。
   // 「〜してもよい」なので必ず見送れる。複数枚あれば1枚ずつ、解決のたびに再提示する。
@@ -422,7 +470,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),
         ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
       if(card.autoEffect) enqueueEffect({kind:"spell",effect:card.autoEffect,ownerPid:pid,srcCard:card,sourceName:card.name});
-      setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card}),0);
+      if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(pid,card,"hand"),0);
+      setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
     // 同じ誘発に対して2枚目以降も使える。盤面が変わっているので条件は取り直す
     setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);
@@ -568,6 +617,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(!card) return true;
     const isSpell=card.type==="spell"||(card.type==="twinpact"&&twinpactSide==="spell");
     if(fromZone!=="hand"&&(isSpell||card.type==="castle")){addLog(`${active}: ${card.name} は召喚できない`);return true;}
+    // 呪文を唱えられない（ラフルル・ラブ等）。面が確定しているのでここで弾ける
+    if(isSpell){
+      const deny=spellDenyReason({...card,...(twinpactSide==="spell"?card.spellSide:{}),side:"spell"},activeState,otherState);
+      if(deny){addLog(`${active}: ${deny}`);setMessage(deny);return false;}
+    }
     let newMana=tapManaByUids(activeState.mana,selectedManaUids);
     let newHand=activeState.hand;
     let newGrave=activeState.grave;
@@ -637,8 +691,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       const spellEffect=effectiveSide?.autoEffect||card.autoEffect;
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
+      // 唱えた後の行き先の置換（チャージャーはマナへ行くので対象外）
+      if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(active,card,"hand"),0);
       // 汎用トリガー: 呪文を唱えた時
-      setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card}),0);
+      setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card,fromZone:"hand"}),0);
     }
     return true;
   };
@@ -1064,6 +1120,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(reactiveCreature){
       const affected=otherState.battle.filter(c=>tappedOtherUids.has(c.uid));
       if(affected.length>0) addLog(`[反応] ${reactiveCreature.name}: アンタップした${affected.map(c=>c.name).join("、")}は次の自分のターンまで攻撃できない`);
+    }
+    // 「次の、そのプレイヤーのターンの終わりまで、呪文を唱えられない」の期限切れ。
+    // 縛られている側のターンが終わったところで解除する
+    if(activeState.spellDeny?.length){
+      setActiveState(s=>({...s,spellDeny:[]}));
+      addLog(`${active}: 呪文を唱えられない効果が切れた`);
     }
     setAttackingUid(null);setUsedFinalRevThisTurn(false);setAttackedThisTurn(false);setUsedThisTurn(new Set());
     // 「そのターン限り」の召喚許可と使用回数をリセット

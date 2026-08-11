@@ -231,7 +231,9 @@
 - `handToHyper {target,amount,all,filter}` — **超次元ゾーン**へ置く（ゲーム外の公開領域。戻ってこない）
 - `handToShield {amount}` — シールド化
 - `handToGrave {target,amount,all,random}` — 捨てる（`random`=見ないで選ぶ）
-- `playFromHand {free,filter}` — **実行**（呪文=唱える／クリーチャー=召喚／城=表向きシールド化）
+- `playFromHand {free,filter,zone,side,subject}` — **実行**（呪文=唱える／クリーチャー=召喚／城=表向きシールド化）
+  - `zone`: 唱える（出す）元のゾーン。`"hand"`（既定）/ `"grave"` → **§5.2**
+  - `side`: ツインパクトのどちらの面としてプレイするか（`"creature"` / `"spell"`）→ **§5.2**
 
 **マナから**：`manaToBz {filter}` / `manaToHand {amount}` / `manaToGrave {amount|any, as}`
 
@@ -334,6 +336,48 @@
 | `choosePlayer` | プレイヤー | 「プレイヤーを1人選ぶ。そのプレイヤーは〜」 |
 | `onePlayer` | カード（ただし1人の側から） | 「プレイヤー1人の墓地からカードを1枚以上選ぶ」 |
 
+### 5.2. 墓地から呪文を唱える（`playFromHand {zone:"grave"}`）
+
+> コスト4以下の呪文を1枚、**自分の墓地から**コストを支払わずに唱えてもよい。
+
+型名は `playFromHand` のままで、`zone` に唱える元のゾーンを書きます（既定 `"hand"`）。
+
+```jsonc
+{
+  "type": "playFromHand",
+  "zone": "grave",                              // "hand"(既定) / "grave"
+  "target": "self",
+  "free": true,
+  "optional": true,
+  "filter": { "type": "spell", "maxCost": 4 }
+}
+```
+
+- 唱えた呪文は**墓地へ行きます**（墓地から唱えた場合はそのまま墓地に残ります）。
+  行き先を変えたい時は `spellAfterCast` → **§7.22**
+- チャージャーを持つ呪文はマナゾーンへ行きます（手札から唱えた時と同じ）
+
+**「その呪文を」＝誘発の主体**は `subject: true` で指定します（選択は出ません）。
+
+```jsonc
+// 各ターンに1度、自分の手札から呪文を唱えた時、その呪文を墓地から唱えてもよい
+"triggers": [{
+  "on": "castSpell", "target": "self", "fromZone": "hand", "oncePerTurn": true, "optional": true,
+  "effects": [{ "type": "playFromHand", "zone": "grave", "side": "spell",
+                "subject": true, "free": true, "optional": true }]
+}]
+```
+
+**ツインパクトはどちらの面としてプレイするかを決める必要があります。** 決め方は上から順に:
+
+1. `side`（`"creature"` / `"spell"`）に書いてあればそれ
+2. カードに `side` が付いていれば（プレイ中に確定済み）それ
+3. `filter.type` が `"spell"` だけを指していれば呪文、クリーチャー系だけを指していればクリーチャー
+4. それ以外は印刷された `type`（**ツインパクトはクリーチャー面が既定**）
+
+**`filter` は「プレイする面」に対して判定します。** ツインパクトは呪文面のコストが
+クリーチャー面と違うので、`{"type":"spell","maxCost":4}` は**呪文面のコスト**を見ます。
+
 ### 効果でバトルゾーンに出したクリーチャーの召喚酔い
 
 `handToBz` / `manaToBz` / `graveToBz` / `revealedToBz` / `search{destination:"bz"}` で出したクリーチャーは、
@@ -383,7 +427,7 @@
 | on | 契機 |
 |---|---|
 | `creaturePutBz` | クリーチャーがバトルゾーンに出た時（`method` 指定可） |
-| `castSpell` | 呪文を唱えた時 |
+| `castSpell` | 呪文を唱えた時（`fromZone` 指定可＝どこから唱えたか） |
 | `attack` | クリーチャーが攻撃する時（`firstEachTurn` 指定可） |
 | `attackEnd` | **攻撃の終わり**（攻撃終了ステップ）。攻撃したクリーチャーが戦闘で破壊されていた場合、そのクリーチャー自身の能力は誘発しない |
 | `leave` | カードが離れた時 |
@@ -436,6 +480,7 @@
 | `oncePerTurn` | 「各ターンに一度」。実際に解決した時だけ消費（辞退しても消費しない） |
 | `oncePerGame` | 「ゲーム中に一度」（終極宣言など） |
 | `lastCard` | `on:"draw"` 専用。引いた結果、山札が0枚になった時だけ誘発 |
+| `fromZone` | `on:"castSpell"` 専用。**どこから唱えた呪文か**（`hand` / `grave`）。「自分の手札から呪文を唱えた時」用 |
 | `turnOf` | **誰のターンに起きたイベントか**。`self` / `opponent` / `both`(既定)。「相手のターンにこのクリーチャーが出た時」用 |
 | `condition` | → **§7.19**（`shieldCount` / `shieldsBroken` / `civicCount` / `stackCount` / `{flag:"…"}`） |
 
@@ -882,6 +927,68 @@
 - 唱えた後にもう一度条件を判定して再提示するので、同じ攻撃に対して**複数枚を続けて**使えます
 - 解決の順番は鬼エンドと同じく、同時に誘発した能力を**すべて解決した後**です
 
+## 7.22. 唱えた後の行き先の置換（`spellAfterCast`）
+
+> 自分の**墓地から呪文を唱えた後**、墓地のかわりに山札の下に置く。
+
+`replaceLeave`（→ §7.16）と同じ流儀の**継続的な置換**です。カード直下に書き、
+そのカードが**バトルゾーンか表向きシールドにいる間**、その持ち主の呪文に効きます。
+
+```jsonc
+"spellAfterCast": [
+  { "from": "grave", "to": "deckBottom" }
+]
+```
+
+| キー | 説明 |
+|---|---|
+| `from` | その呪文を**唱えたゾーン**。`"hand"` / `"grave"` / `"any"`（既定＝どこからでも） |
+| `to` | 墓地のかわりの行き先。`deckBottom`(既定) / `deckTop` / `hand` / `mana` / `shield` |
+| `filter` | 対象の呪文の条件（省略可） |
+
+- **置換なので必ず確認モーダルが出ます。**「例外処理で中止」を選べば墓地のままです（§0）
+- チャージャーはマナゾーンへ行くので、置換の対象外です
+- 唱え終えて墓地に置かれた直後に判定します。呪文の効果はすでに解決されています
+
+## 7.23. 呪文を唱えられない（`denySpell` / `staticDeny`）
+
+> このクリーチャーが出た時、次の、相手のターンの終わりまで、相手は呪文を唱えられない。
+
+**(a) 期限付き — 効果 `denySpell`**
+
+```jsonc
+{ "type": "denySpell", "target": "opponent", "until": "endOfNextTurn" }
+```
+
+| キー | 説明 |
+|---|---|
+| `target` | 縛るプレイヤー。`self` / `opponent` / `both` |
+| `until` | `"endOfNextTurn"`（既定）＝**縛られている側のターンが終わると切れる** |
+| `filter` | 呪文の条件（省略すると全部）。例 `{"maxCost":5}` |
+| `label` | 弾いた時にUIに出す理由（省略時は既定文言） |
+
+**(b) 常在型 — カード直下の `staticDeny`**
+
+```jsonc
+"staticDeny": { "type": "cantCastSpell", "filter": { "civ": "fire" } }
+```
+
+`staticDeny` は**相手**に効きます（バトルゾーン＋表向きシールドで有効）。
+`type` は `cantPutCreature` / `cantPutCreatureFromNonHand` / `cantCastSpell`。
+
+**効く場所は5つ**あり、どれも「見せてから弾く」のではなく**先に外す**ようにしてあります。
+
+| 経路 | 挙動 |
+|---|---|
+| 手札からプレイ | PLAY ボタンが押せなくなり、理由が出る |
+| `playFromHand`（効果） | 唱える候補から外れる |
+| 鬼エンド / D・D・D | 提示されない |
+| S・トリガー | 呪文（呪文面）の S・トリガーは誘発しない。クリーチャーの S・トリガーは通る |
+| ツインパクト | **クリーチャー面は普通にプレイできます**（呪文面だけが止まります） |
+
+> 期限は「縛られている側のターンが終わる時」に切れます。相手のターン中にこの効果を使った場合は
+> **そのターンの終わりまで**になります（このゲームでは「次の」を厳密に数え直しません）。
+
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
@@ -929,6 +1036,8 @@
 - `freeCast`: コストを支払わずにプレイできる許可 → **§7.12**
 - `oniEnd`: 鬼エンド（手札から、コストを支払わずにプレイする） → **§7.18**
 - `ddd`: D・D・D（手札から、指定のコストを支払ってプレイする） → **§7.21**
+- `spellAfterCast`: 唱えた後の行き先の置換 → **§7.22**
+- `staticDeny`: 相手のプレイを止める常在型（`cantCastSpell` 等） → **§7.23**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
   > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく
   > 相手の効果の対象に選ばれた時にも**誘発します。ブレイクするのは**選んだ側**のシールドです。

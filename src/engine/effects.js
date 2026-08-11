@@ -1,5 +1,5 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, withJustDiver } from "../gameLogic";
-import { KEYWORD_LABELS } from "../constants";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, withJustDiver, spellDenyReason } from "../gameLogic";
+import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
 // EFFECT ENGINE
@@ -52,6 +52,27 @@ function isSpellSide(card) {
   if (card.side) return card.side === "spell";
   return card.type === "spell" || card.type === "twinpact";
 }
+// playFromHand で「どちらの面としてプレイするか」。
+// ツインパクトはクリーチャーでも呪文でもあるので、決め方を1箇所にまとめてある。
+//   1) effect.side に書いてあればそれ
+//   2) カードに side が付いていれば（プレイ中に確定済み）それ
+//   3) filter.type が呪文/クリーチャーを指していればそれ（「呪文を1枚唱える」等）
+//   4) それ以外は印刷された type（ツインパクトはクリーチャー面が既定）
+function playSide(effect, card) {
+  if (effect.side) return effect.side;
+  if (card.side) return card.side;
+  const t = effect.filter?.type;
+  const types = t == null ? [] : (Array.isArray(t) ? t : [t]);
+  if (types.length && types.every(x => x === "spell")) return "spell";
+  if (types.length && types.every(x => x === "creature" || x === "nonEvoCreature" || x === "evo_creature")) return "creature";
+  return card.type === "spell" ? "spell" : "creature";
+}
+// ツインパクトを呪文として唱える時の面。単体の呪文はそのまま返す。
+function spellFace(card) {
+  if (card.type !== "twinpact" || !card.spellSide) return card;
+  return { ...card, ...card.spellSide, uid: card.uid, side: "spell" };
+}
+
 function matchesType(card, t) {
   if (t === "creature") return isCreatureSide(card);
   if (t === "nonCreature") return !isCreatureSide(card);
@@ -89,6 +110,9 @@ export function matchFilter(card, filter, ctx) {
 }
 
 // ---- ゾーン取得 ----
+// ゾーン名 → プレイヤー状態のキー（カードを取り除く時に使う）
+const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper" };
+
 function zoneCards(state, zone, ctx) {
   switch (zone) {
     case "hand": return state?.hand || [];
@@ -163,7 +187,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","winGame","shuffleDeck"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","winGame","shuffleDeck"]);
 
 // ===========================
 // 候補算出（選択UI用）
@@ -224,7 +248,14 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
     }
     if (effect.self) cards = cards.filter(c => c.uid === srcCard?.uid);
   }
-  cards = cards.filter(c => matchFilter(c, effect.filter, c2));
+  // playFromHand は「唱える／出す面」で filter を判定する。
+  // ツインパクトは呪文面のコストが違うので、カード全体の cost で見ると「コスト4以下の呪文」を取りこぼす。
+  const faceFor = c => (type === "playFromHand" && playSide(effect, c) === "spell") ? spellFace(c) : c;
+  cards = cards.filter(c => matchFilter(faceFor(c), effect.filter, c2));
+  // 呪文を唱えられない状態なら、唱える候補から呪文を外す（見せてから弾かない）
+  if (type === "playFromHand") {
+    cards = cards.filter(c => !spellDenyReason(faceFor(c), selfState, otherState));
+  }
   // 「好きな順序で置く」は選んだ順がそのまま並び順になるので、all 指定でも必ず選択させる
   if (effect.order === "choose") {
     const n = resolveAmount(c2, effect.amount, cards.length) || cards.length;
@@ -487,20 +518,29 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "playFromHand": {
-      for (const { pidx, cards } of pickSelected("hand")) {
+      // 型名は playFromHand のままだが、zone で唱える場所を選べる（既定 "hand"、"grave" など）
+      const fromZone = effect.zone || "hand";
+      const key = ZONE_STATE_KEY[fromZone] || "hand";
+      for (const { pidx, cards } of pickSelected(fromZone)) {
         for (const card of cards) {
           const uid = card.uid;
-          if (card.type === "spell") {
-            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), grave: [...s.grave, card] }));
-            addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}唱えた`);
-            ctx.castSpell = { card, ownerPid: pidx };
+          const take = s => ({ ...s, [key]: s[key].filter(c => c.uid !== uid) });
+          const zoneLabel = fromZone === "hand" ? "" : `${ZONE_LABELS[fromZone] || fromZone}から`;
+          const freeLabel = effect.free ? "コストを支払わずに" : "";
+          if (playSide(effect, card) === "spell") {
+            // ツインパクトは呪文面に差し替えて唱える（効果も呪文面のものを使う）
+            const face = spellFace(card);
+            // 墓地から唱えた場合、take で取り除いた後の墓地に置き直す（二重に増えないように）
+            setOf(pidx)(s => { const t = take(s); return { ...t, grave: [...t.grave, card] }; });
+            addLog(`${pid}: 「${face.name}」を${zoneLabel}${freeLabel}唱えた`);
+            ctx.castSpell = { card: face, ownerPid: pidx, fromZone };
           } else if (card.type === "castle") {
-            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), shields: [...s.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }));
+            setOf(pidx)(s => { const t = take(s); return { ...t, shields: [...t.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }; });
             ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
-            addLog(`${pid}: 城「${card.name}」を表向きシールド化`);
+            addLog(`${pid}: 城「${card.name}」を${zoneLabel}表向きシールド化`);
           } else {
-            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, withJustDiver({ ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true })] }));
-            addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}召喚`);
+            setOf(pidx)(s => { const t = take(s); return { ...t, battle: [...t.battle, withJustDiver({ ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true })] }; });
+            addLog(`${pid}: 「${card.name}」を${zoneLabel}${freeLabel}召喚`);
             ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
             ctx.lastPutBz = [{ card, ownerPid: pidx }];
           }
@@ -626,6 +666,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "untapAllMana": {
       setSelf(s => ({ ...s, mana: s.mana.map(c => ({ ...c, tapped: false })) }));
       addLog(`${pid}: マナゾーンをすべてアンタップ`);
+      break;
+    }
+    // 「次の、相手のターンの終わりまで、相手は呪文を唱えられない」（例: ラフルル・ラブ）
+    // 期限の管理は BattleScreen の handleEndTurn 側（対象プレイヤーのターンが終わると切れる）。
+    case "denySpell": {
+      const rule = { until: effect.until || "endOfNextTurn", filter: effect.filter, label: effect.label };
+      for (const pidx of pids) setOf(pidx)(s => ({ ...s, spellDeny: [...(s.spellDeny || []), rule] }));
+      addLog(`${pid}: 次の相手のターンの終わりまで、${tgt === "self" ? "自分" : "相手"}は呪文を唱えられない`);
       break;
     }
     // そのターン限り、指定ゾーンからの召喚を許可する（例: 蛇手の親分ゴエモンキー！）
