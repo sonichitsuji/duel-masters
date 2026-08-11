@@ -490,19 +490,57 @@ export function manaHasAll(state, filters){
   }));
 }
 
-// 手札にある「鬼エンド」のうち、いまコストを支払わずにプレイできるカードを返す。
+// ===========================
+// 手札からの宣言型プレイ（鬼エンド / D・D・D）
+// ===========================
+// どちらも「誘発のタイミングで、手札のカードをプレイしてもよい」能力。
+// 違いは ①提示の条件 ②コストを払うかどうか の2つだけなので、1つの枠組みにまとめてある。
+//   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
+//   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
+export const HAND_PLAY_KINDS = ["oniEnd", "ddd"];
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D" };
+export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
+
+// 誘発の on / target がこのイベントに合うか（両方の能力で共通）
+function handPlayMatchesEvent(spec, event, ev, ownerPid){
+  if((spec.on || "attack") !== event) return false;
+  const scope = spec.target || "both";
+  if(scope === "self" && ev.sourcePid !== ownerPid) return false;
+  if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
+  return true;
+}
+
+// 手札から今プレイを宣言できるカードを返す。
 // event/ev は誘発の中身（fireTrigger と同じ形）。ownerPid はこの手札の持ち主。
+// 戻り値は [{ card, kind, cost }]。cost があれば支払いが要る。
+export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
+  const out = [];
+  for(const card of state?.hand || []){
+    for(const kind of HAND_PLAY_KINDS){
+      const spec = card[kind];
+      if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid)) continue;
+      if(kind === "oniEnd"){
+        // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
+        if(!oniEndActive(state, otherState)) continue;
+        if(!manaHasAll(state, spec.manaHas)) continue;
+        out.push({ card, kind, cost: null });
+      }else{
+        // D・D・D: 指定コストを払えること（払えないなら提示しない）
+        const cost = spec.cost;
+        if(!cost) continue;
+        const asCard = { ...card, cost: cost.cost, civ: cost.civs || card.civ };
+        if(!canPayCost(state?.mana || [], asCard, state).ok) continue;
+        out.push({ card, kind, cost });
+      }
+    }
+  }
+  return out;
+}
+
+// 鬼エンドだけを返す旧API（テストと互換のため残す）
 export function findOniEndPlays(state, otherState, event, ev = {}, ownerPid){
-  if(!oniEndActive(state, otherState)) return [];
-  return (state?.hand || []).filter(card => {
-    const oe = card.oniEnd;
-    if(!oe) return false;
-    if((oe.on || "attack") !== event) return false;
-    const scope = oe.target || "both";                       // 誰のイベントに反応するか
-    if(scope === "self" && ev.sourcePid !== ownerPid) return false;
-    if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
-    return manaHasAll(state, oe.manaHas);
-  });
+  return findHandPlays(state, otherState, event, ev, ownerPid)
+    .filter(x => x.kind === "oniEnd").map(x => x.card);
 }
 
 // このターンにブレイクされたシールドの枚数を見る条件。
@@ -628,9 +666,30 @@ export function freeCastPermissionFor(card, perms) {
 // 自分で自分のカードを選ぶのは妨げないので、呼ぶ側で「選ぶのが相手か」を判定すること。
 // また「選ぶ」効果にだけ効く。全体除去のように選ばない効果は防げない。
 export function isUnselectableByOpponent(card, ownerState) {
+  return hasEffectiveKeyword(card, "unselectable", ownerState);
+}
+
+// 「攻撃されない」。ジャストダイバーが与える（相手からの攻撃先に選べなくなる）。
+export function isUnattackable(card, ownerState) {
+  return hasEffectiveKeyword(card, "unattackable", ownerState);
+}
+
+// カード自身のキーワード＋付与されたキーワードをまとめて見る
+function hasEffectiveKeyword(card, kw, ownerState) {
   if (!card) return false;
-  if (hasKeyword(card, "unselectable")) return true;
-  return computeGrantedKeywords(card, ownerState?.battle, ownerState).includes("unselectable");
+  if (hasKeyword(card, kw)) return true;
+  return computeGrantedKeywords(card, ownerState?.battle, ownerState).includes(kw);
+}
+
+// ジャストダイバー: 「このクリーチャーが出た時、次の自分のターンのはじめまで、
+// このクリーチャーは相手に選ばれず、攻撃されない」。
+// 期限つきの付与なので、既存の tempBuff（expires:"ownTurnStart"）に乗せる。
+export const JUST_DIVER_BUFF = { keywords: ["unselectable", "unattackable"], expires: "ownTurnStart" };
+export function withJustDiver(card) {
+  if (!card || !hasKeyword(card, "justDiver")) return card;
+  const prev = card.tempBuff || {};
+  return { ...card, tempBuff: { ...prev, ...JUST_DIVER_BUFF,
+    keywords: [...new Set([...(prev.keywords || []), ...JUST_DIVER_BUFF.keywords])] } };
 }
 
 // autoEffect inference from keywords/effect text

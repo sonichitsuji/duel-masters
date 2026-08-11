@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { CardEffectText } from "./EffectText";
@@ -286,7 +286,12 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
             const attacker=beingAttacked?otherState.battle.find(c=>c.uid===attackingUid):null;
             const machNow=!!attacker?.enteredThisTurn&&
               (attacker.keywords?.includes("machFighter")||computeGrantedKeywords(attacker,otherState.battle,otherState).includes("machFighter"));
-            const notTargetable=c=>beingAttacked&&(!isCreatureSide(c)||(!c.tapped&&!machNow));
+            // 攻撃先に選べないカードは薄く表示する。
+            // クリーチャー以外／アンタップ（マッハファイターを除く）に加え、
+            // 「相手に選ばれない」「攻撃されない」（ジャストダイバー等）も対象。
+            const notTargetable=c=>beingAttacked&&(
+              !isCreatureSide(c)||(!c.tapped&&!machNow)
+              ||isUnselectableByOpponent(c,state)||isUnattackable(c,state));
             return state.battle.map(c=><CardFace key={c.uid} card={c} inBattle small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)||notTargetable(c)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
           {state.battle.length===0&&<span style={{color:"#1e1e2e",fontSize:10,alignSelf:"center"}}>空</span>}

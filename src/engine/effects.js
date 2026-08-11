@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, withJustDiver } from "../gameLogic";
 import { KEYWORD_LABELS } from "../constants";
 
 // ===========================
@@ -230,6 +230,8 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
     const n = resolveAmount(c2, effect.amount, cards.length) || cards.length;
     return { candidates: cards, owners, isAuto: cards.length === 0, maxSelect: Math.min(n, cards.length), ordered: true, optional: effect.optional };
   }
+  // choosePlayer:「プレイヤーを1人選ぶ」。誰を選ぶか決めるまで進めないので、all でも選択扱いにする
+  if (effect.choosePlayer) return { candidates: cards, owners, isAuto: false, choosePlayer: true, optional: effect.optional };
   // 一括処理（選択不要）
   if (effect.all || effect.random || effect.takeAll) return { candidates: cards, owners, isAuto: true };
   // 「好きな枚数」: 0枚〜候補すべてから好きなだけ選ぶ（0枚も選べるので必ず任意）
@@ -277,7 +279,13 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
   const stateOf = pidx => (pidx === "p1" ? p1 : p2);
   const setOf   = pidx => (pidx === "p1" ? setP1 : setP2);
-  const pids = targetPids(tgt, ownerPid);
+  // 「プレイヤーを1人選ぶ」。選ばれた側だけを対象にする。
+  // pid は selectedUids に混ぜず ctx で受け渡す（selectedUids は「uid の配列」という契約があり、
+  // case "battle" は先頭要素を uid とみなし、stepDone は配列長で「行ったか」を判定するため）。
+  // 誰も選ばれていなければ何もしない（all と併用するので、両者が対象になる事故を防ぐ）
+  const pids = effect.choosePlayer
+    ? (ctx.chosenPlayer ? [ctx.chosenPlayer] : [])
+    : targetPids(tgt, ownerPid);
   // 選ばれたカードを対象プレイヤーごとにまとめる。
   // all:true なら選択の代わりに filter 一致すべてを対象にする（「すべて〜する」）。
   const pickSelected = (zone) => {
@@ -377,7 +385,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           const rest = s.deck.filter(c => !uids.includes(c.uid));
           const b = { ...s, deck: dest === "deckTop" ? [...take, ...shuffle(rest)] : shuffle(rest) };
           if (dest === "hand") b.hand = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
-          if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
+          if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
           if (dest === "mana") b.mana = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           return b;
         });
@@ -404,7 +412,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         setSelf(s => {
           const b = { ...s };
           if (type === "revealedToHand")  b.hand   = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
-          if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
+          if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
           if (type === "revealedToMana")  b.mana   = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           if (type === "revealedToGrave") b.grave  = [...s.grave, ...take];
           if (type === "revealedToDeckTop")    b.deck = [...take, ...s.deck];
@@ -430,7 +438,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         const kw = effect.tempKeyword;
         setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
+          battle: [...s.battle, ...cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
             grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を手札からバトルゾーンへ`);
         ctx.lastMoved = cards;
@@ -491,7 +499,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
             addLog(`${pid}: 城「${card.name}」を表向きシールド化`);
           } else {
-            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, { ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true }] }));
+            setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => c.uid !== uid), battle: [...s.battle, withJustDiver({ ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true })] }));
             addLog(`${pid}: 「${card.name}」を${effect.free ? "コストを支払わずに" : ""}召喚`);
             ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
             ctx.lastPutBz = [{ card, ownerPid: pidx }];
@@ -506,7 +514,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       for (const { pidx, cards } of pickSelected("mana")) {
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))] }));
+          battle: [...s.battle, ...cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))] }));
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→バトルゾーン`);
         ctx.lastMoved = cards;
         ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
@@ -693,7 +701,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       if (!cards.length) break;
       const uids = cards.map(c => c.uid);
       setOf(ownerOfGrave)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)),
-        battle: [...s.battle, ...cards.map(c => ({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
+        battle: [...s.battle, ...cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
           ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
           ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
       addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
@@ -841,6 +849,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     default: addLog(`[未実装効果] ${type}`);
   }
   // 既定: 自動実行のステップは「行った」、選択が要るステップは1枚以上選ばれていれば「行った」
-  if (ctx.stepDone === undefined) ctx.stepDone = AUTO_TYPES.has(type) || selectedUids.length > 0;
+  if (ctx.stepDone === undefined) ctx.stepDone = AUTO_TYPES.has(type) || selectedUids.length > 0
+    || !!(effect.choosePlayer && ctx.chosenPlayer);
   return ctx;
 }
