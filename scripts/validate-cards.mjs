@@ -70,9 +70,15 @@ const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
 const AMOUNT_PER_ZONES = new Set([...COUNT_ZONES, "evolutionBase"]);
 const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
 const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
-// count(数値)を要する condition。oniEnd のように count を持たないものは COUNTLESS 側。
+// count(数値)を要する condition。
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
+// min/max で枚数の範囲を書く condition（count は取らない）。
+const RANGE_CONDITION_TYPES = new Set(["shieldCount","shieldsBroken"]);
+// 引数を取らない condition。
 const COUNTLESS_CONDITION_TYPES = new Set(["oniEnd"]);
+// 相手の盤面を見る condition は triggers / activated でしか書けない
+// （継続能力の評価経路は otherState を受け取らないため）。
+const CONDITION_WHO = ["self","opponent","any"];
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
 const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
@@ -81,7 +87,8 @@ const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
 // 出典: src/engine/effects.js の effect.X 参照。新しいキーを実装したらここにも足すこと。
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","filter","amount","count","maxSelect",
-  "all","any","takeAll","random","order","as","optional","ifPrevious","subject","selfFrom","onePlayer",
+  "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
+  "asCost","canUseTrigger",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -90,7 +97,7 @@ const EFFECT_KEYS = new Set([
 const FILTER_KEYS = new Set([
   "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
   "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self",
-  "maxCost","minCost","maxPower","minPower",
+  "cost","maxCost","minCost","maxPower","minPower",
 ]);
 function checkFilterKeys(filter, where) {
   if (!filter || typeof filter !== "object") return;
@@ -119,6 +126,19 @@ function checkOne(e, where) {
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
   if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
   if (e.order && !["shuffle", "choose"].includes(e.order)) errors.push(`${where}: order は "shuffle" か "choose"`);
+  if (e.onlyIf != null) {
+    if (typeof e.onlyIf !== "object" || Array.isArray(e.onlyIf)) errors.push(`${where}: onlyIf はオブジェクト`);
+    else {
+      for (const k of Object.keys(e.onlyIf)) if (!["count","min","max"].includes(k)) errors.push(`${where}.onlyIf: 未知のキー "${k}"`);
+      if (e.onlyIf.count == null) errors.push(`${where}.onlyIf: count（変数名）が必要です`);
+      if (e.onlyIf.min == null && e.onlyIf.max == null) errors.push(`${where}.onlyIf: min か max が必要です`);
+    }
+  }
+  if (e.asCost != null && e.type !== "destroy") errors.push(`${where}: asCost は type:"destroy" でのみ使えます`);
+  if (e.canUseTrigger != null) {
+    if (e.type !== "shieldToHand") errors.push(`${where}: canUseTrigger は type:"shieldToHand" でのみ使えます（他のゾーンへ動かす時はS・トリガーを使えません）`);
+    else if (typeof e.canUseTrigger !== "boolean") errors.push(`${where}: canUseTrigger は真偽値`);
+  }
   if (e.selfFrom != null) {
     if (e.type !== "battle") errors.push(`${where}: selfFrom は type:"battle" でのみ使えます`);
     else if (e.selfFrom !== "lastPut") errors.push(`${where}: selfFrom は "lastPut" のみ`);
@@ -165,13 +185,20 @@ function checkEffect(eff, where) {
 }
 
 // allowBothSides: 相手の盤面も見られる文脈か（triggers / activated）。
-// oniEnd は両者のシールドを見るので、継続能力の条件には書けない。
+// who が "opponent"/"any" の条件は継続能力（condPower / grantKeywords）には書けない。
 function checkCondition(cond, where, allowBothSides = false) {
   if (!cond || typeof cond !== "object") return;
   if (cond.flag) return; // 任意のプレイヤー状態フラグ
   if (!cond.type) { errors.push(`${where}: condition に type も flag もありません`); return; }
-  if (COUNTLESS_CONDITION_TYPES.has(cond.type)) {
-    if (!allowBothSides) errors.push(`${where}: condition "${cond.type}" は triggers / activated でのみ使えます`);
+  const needsOpponent = cond.who === "opponent" || cond.who === "any" || COUNTLESS_CONDITION_TYPES.has(cond.type);
+  if (needsOpponent && !allowBothSides) {
+    errors.push(`${where}: 相手の盤面を見る condition は triggers / activated でのみ使えます`);
+  }
+  if (COUNTLESS_CONDITION_TYPES.has(cond.type)) return;
+  if (RANGE_CONDITION_TYPES.has(cond.type)) {
+    if (cond.who != null && !CONDITION_WHO.includes(cond.who)) errors.push(`${where}: condition の who は ${CONDITION_WHO.join("/")}`);
+    if (cond.min == null && cond.max == null) errors.push(`${where}: condition "${cond.type}" に min か max が必要です`);
+    for (const k of ["min","max"]) if (cond[k] != null && typeof cond[k] !== "number") errors.push(`${where}: condition の ${k} は数値`);
     return;
   }
   if (!CONDITION_TYPES.has(cond.type)) errors.push(`${where}: 未知の condition.type "${cond.type}"`);
@@ -277,6 +304,18 @@ function checkAbilityFields(obj, where) {
   }
 }
 
+// カード直下に書けるキー。ABILITY_KEYS（ssx にも書ける能力）に、カード固有のものを足したもの。
+// ここに無いキーはエラーにして、綴り違いが静かに無視されるのを防ぐ。
+const CARD_KEYS = new Set([...ABILITY_KEYS,
+  "id","name","race","cost","power","type","civ","effect","autoEffect",
+  "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
+  "alternateCost","oniEnd","staticDeny","reactivePassive",
+  // ハイパーモード関連
+  "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
+  // その他の常在・置換
+  "cantAttackPlayer","faceUpLeaveTo","endOfTurnEffect",
+]);
+
 const seenIds = new Map();
 const seenNames = new Map();
 for (const c of cards) {
@@ -291,6 +330,7 @@ for (const c of cards) {
   const required = ["id","name","type","civ","cost","keywords","effect"];
   if (!NO_POWER.has(c.type)) required.push("power");
   for (const k of required) if (!(k in c)) errors.push(`${tag}: 必須フィールド欠落 "${k}"`);
+  for (const k of Object.keys(c)) if (!CARD_KEYS.has(k)) errors.push(`${tag}: カード直下の未知のキー "${k}"（綴り違い？）`);
   if (c.type && !TYPES.has(c.type)) errors.push(`${tag}: 未知のtype "${c.type}"`);
   if (c.type === "field" && c.power != null) warnings.push(`${tag}: フィールドにパワーはありません`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];

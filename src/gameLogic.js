@@ -447,12 +447,32 @@ export function civicCount(state, civ){
 }
 
 // ===========================
-// 鬼エンド（ONI END）
+// シールドの数を見る条件（革命n / 鬼エンド）
 // ===========================
-// 「シールドが1つもないプレイヤーがいる」ことを条件に働く能力。
-// 自分・相手どちらのシールドが0でも成立する（自分が追い詰められている時にも使える）。
+// 「自分のシールドが2つ以下なら」(革命2)、「シールドが1つもないプレイヤーがいて」(鬼エンド) など、
+// シールドの枚数を条件にする能力は多いので、1つの条件型にまとめてある。
+//   who: "self"(既定) / "opponent" / "any"（どちらかのプレイヤーが満たせば成立）
+//   min / max: 枚数の下限・上限（両方書けば範囲）
+// who:"self" なら相手の盤面が要らないので、パワー強化や grantKeywords のような
+// 継続能力からも使える（革命0がこれを踏む）。
+export function shieldCountMatches(spec, ownerState, otherState){
+  const inRange = state => {
+    const n = (state?.shields || []).length;
+    if(spec.min != null && n < spec.min) return false;
+    if(spec.max != null && n > spec.max) return false;
+    return true;
+  };
+  const who = spec.who || "self";
+  if(who === "self") return inRange(ownerState);
+  // 相手を見る場合、盤面を渡されていなければ判定できないので成立させない（安全側）
+  if(!otherState) return false;
+  if(who === "opponent") return inRange(otherState);
+  return inRange(ownerState) || inRange(otherState);   // "any"
+}
+
+// 鬼エンド = 「シールドが1つもないプレイヤーがいる」。上の条件の別名。
 export function oniEndActive(stateA, stateB){
-  return [stateA, stateB].some(s => (s?.shields || []).length === 0);
+  return shieldCountMatches({ who: "any", max: 0 }, stateA, stateB);
 }
 
 // 自分のマナゾーンが、指定した filter を「それぞれ1枚以上」満たすか。
@@ -485,15 +505,33 @@ export function findOniEndPlays(state, otherState, event, ev = {}, ownerPid){
   });
 }
 
+// このターンにブレイクされたシールドの枚数を見る条件。
+// 「このターンに2つ以上自分のシールドがブレイクされていなければ」= {who:"self", max:1}
+function shieldsBrokenMatches(spec, ownerState, otherState){
+  const inRange = state => {
+    const n = state?.shieldsBrokenThisTurn || 0;
+    if(spec.min != null && n < spec.min) return false;
+    if(spec.max != null && n > spec.max) return false;
+    return true;
+  };
+  const who = spec.who || "self";
+  if(who === "self") return inRange(ownerState);
+  if(!otherState) return false;
+  if(who === "opponent") return inRange(otherState);
+  return inRange(ownerState) || inRange(otherState);
+}
+
 // grant規則やパワー強化に付く condition の評価。
-// otherState は「両者の盤面を見る条件」（鬼エンド）専用。渡せる呼び出し元だけが渡す。
+// otherState は「相手の盤面も見る条件」専用。渡せる呼び出し元だけが渡す
+// （triggers / activated だけが渡している。validator が書ける場所を制限する）。
 export function checkGrantCondition(cond, ownerState, card, otherState){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
   if(cond.type === "stackCount") return stackCount(card) >= cond.count;
-  // 鬼エンド: シールドが1つもないプレイヤーがいる。相手の盤面が要るので、
-  // otherState を渡さない継続能力（パワー強化・grant）では使えない（validator で弾く）。
-  if(cond.type === "oniEnd") return !!otherState && oniEndActive(ownerState, otherState);
+  if(cond.type === "shieldCount") return shieldCountMatches(cond, ownerState, otherState);
+  if(cond.type === "shieldsBroken") return shieldsBrokenMatches(cond, ownerState, otherState);
+  // 鬼エンド: シールドが1つもないプレイヤーがいる。shieldCount の別名
+  if(cond.type === "oniEnd") return shieldCountMatches({ who: "any", max: 0 }, ownerState, otherState);
   if(cond.flag) return !!ownerState?.[cond.flag];
   return true;
 }

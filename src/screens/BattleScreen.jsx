@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, sTriggerSide, isCreatureSide, isUnselectableByOpponent, findOniEndPlays } from "../gameLogic";
-import { executeEffect, matchFilter, shouldStopChain } from "../engine/effects";
+import { executeEffect, matchFilter, shouldStopChain, stepConditionMet } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -45,6 +45,12 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
     if(ev.sourcePid === watcherPid) return false;
   }
   if(tr.method && ev.method && tr.method !== ev.method) return false;
+  // turnOf: 誰のターンに起きたイベントか。「相手のターンにこのクリーチャーが出た時」用
+  if(tr.turnOf && tr.turnOf !== "both" && ev.activePid){
+    const onOwnTurn = ev.activePid === watcherPid;
+    if(tr.turnOf === "self" && !onOwnTurn) return false;
+    if(tr.turnOf === "opponent" && onOwnTurn) return false;
+  }
   if(tr.firstEachTurn && !ev.firstThisTurn) return false;
   if(tr.filter && subj && !matchFilter(subj, tr.filter, {})) return false;
   return true;
@@ -114,6 +120,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const stateRef=useRef({p1,p2});
   stateRef.current={p1,p2};
   const fireTriggerRef=useRef();
+  const fireShieldTriggersRef=useRef();
   const onTargetedRef=useRef();
   const enqueueEffectRef=useRef();
   const pendingIdRef=useRef(0);
@@ -242,6 +249,17 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           }
         });
       }
+      // 効果でシールドが手札に加わった時の「S・トリガー」
+      if (updatedCtx.shieldTriggerCards && updatedCtx.shieldTriggerCards.length) {
+        const list = updatedCtx.shieldTriggerCards;
+        delete updatedCtx.shieldTriggerCards;
+        setTimeout(() => {
+          for (const pid of ["p1", "p2"]) {
+            const cards = list.filter(x => x.ownerPid === pid).map(x => x.card);
+            if (cards.length) fireShieldTriggersRef.current(cards, pid);
+          }
+        }, 0);
+      }
       // 効果によるバトルに勝った時（攻撃によるバトルは resolveAttackCreature から発火）
       if (updatedCtx.battleWonBy) {
         const { pid: wpid, card: wcard } = updatedCtx.battleWonBy;
@@ -270,7 +288,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         (prev.steps[nextIdx].type === "graveToBz" && prev.steps[nextIdx].owner === "destroyed" && !updatedCtx.destroyedCreatureOwner) ||
         (prev.steps[nextIdx].type === "breakShield" && !updatedCtx.etbBattleWon) ||
         // 「その2体をバトルさせる」: 出せるクリーチャーがいなければバトルも起こらない
-        (prev.steps[nextIdx].type === "battle" && prev.steps[nextIdx].selfFrom === "lastPut" && !(updatedCtx.lastPutBz || []).length)
+        (prev.steps[nextIdx].type === "battle" && prev.steps[nextIdx].selfFrom === "lastPut" && !(updatedCtx.lastPutBz || []).length) ||
+        // onlyIf: 変数の値が条件に合わなければ、そのステップ「だけ」を飛ばす
+        !stepConditionMet(prev.steps[nextIdx], updatedCtx)
       )) {
         nextIdx++;
       }
@@ -287,6 +307,21 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     enqueueEffect({ kind, effect, ownerPid, srcCard, subjectCard, sourceName:sourceName||srcCard?.name });
   };
 
+  // シールドゾーンから手札に加わったカードの「S・トリガー」を解決する。
+  // ブレイク（finalizeBreak）と、効果による shieldToHand の両方から呼ぶ。
+  // ツインパクトは呪文面が S・トリガーを持つことがあるので、唱える面を解決してから絞る。
+  // G・ストライクの除外はブレイク時の話なので、呼び出し側で済ませてから渡すこと。
+  const fireShieldTriggers=(cards,ownerPid,{delay=0}={})=>{
+    const oPid=ownerPid==="p1"?"p2":"p1";
+    const setSelf=ownerPid==="p1"?setP1:setP2;
+    const setOther=ownerPid==="p1"?setP2:setP1;
+    cards.map(c=>({card:c,side:sTriggerSide(c)})).filter(x=>x.side).forEach(({side})=>{
+      addLog(`ST 「${side.name}」`);
+      showCutIn({title:"S-TRIGGER!",cardName:side.name,civ:Array.isArray(side.civ)?side.civ[0]:side.civ});
+      if(side.autoEffect) setTimeout(()=>triggerEffect(side.autoEffect,ownerPid,stateRef.current[ownerPid],setSelf,stateRef.current[oPid],setOther,side.name,{...side}),delay);
+    });
+  };
+
   // 汎用トリガー・ディスパッチャ
   // ゾーン走査型: creatureEnter/selfDraw/shieldLeave/shieldAdded/opponentDiscard（opts.sourcePid）
   // 攻撃型: attack（opts.sourcePid, opts.attackerUid）
@@ -294,8 +329,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 汎用トリガー・ディスパッチャ
   // event: creaturePutBz/castSpell/leave/destroyed/battleDestroy/attack/draw/discard/shieldAdded/shieldLeave/endOfTurn
   // ev: { sourcePid, subjectCard?, method?("summon"|"put"), firstThisTurn? }
-  const fireTrigger=(event,ev={})=>{
+  const fireTrigger=(event,evIn={})=>{
     const cur=stateRef.current;
+    // turnOf 判定用に「今どちらのターンか」を載せる
+    const ev={...evIn, activePid: evIn.activePid || active};
     const runOne=(card,ownerPid,tr,subject)=>{
       if(tr.hyperOnly&&!card.hyperMode) return;
       if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid],card,stateRef.current[ownerPid==="p1"?"p2":"p1"])) return;
@@ -337,6 +374,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     offerOniEnd(event,ev);
   };
   fireTriggerRef.current=fireTrigger;
+  fireShieldTriggersRef.current=fireShieldTriggers;
 
   // 鬼エンド: 条件を満たす手札があれば、pending へ積んでリゾルバに順番を任せる。
   // 「〜してもよい」なので必ず見送れる。複数枚あれば1枚ずつ、解決のたびに再提示する。
@@ -858,12 +896,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const toGraveCards=broken.filter(c=>gset.has(c.uid));
       const toHandAll=broken.filter(c=>!gset.has(c.uid));
       // ツインパクトは呪文面が「S・トリガー」を持つことがあるので、唱える面を解決してから絞る
-      const sTriggers=toHandAll.map(c=>({card:c,side:sTriggerSide(c)})).filter(x=>x.side&&!hasKeyword(x.card,"gStrike"));
+      // G・ストライク持ちは S・トリガーの対象から外す（排他）
+      const stCards=toHandAll.filter(c=>!hasKeyword(c,"gStrike"));
       const gStrikeCards=toHandAll.filter(c=>hasKeyword(c,"gStrike"));
       const toHand=toHandAll.map(c=>({...c,tapped:false,faceUp:false}));
-      setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand],grave:[...s.grave,...toGraveCards]}));
+      // 「このターンに2つ以上自分のシールドがブレイクされていなければ」を書けるよう、
+      // ブレイクされた側の枚数を数えておく（ターン終了時に両者リセット）
+      setOtherState(s=>({...s,shields,hand:[...s.hand,...toHand],grave:[...s.grave,...toGraveCards],
+        shieldsBrokenThisTurn:(s.shieldsBrokenThisTurn||0)+broken.length}));
       if(toGraveCards.length>0) addLog(`[BURN] ${toGraveCards.length}枚を墓地へ（置換効果）`);
-      sTriggers.forEach(({side})=>{addLog(`ST 「${side.name}」`);showCutIn({title:"S-TRIGGER!",cardName:side.name,civ:Array.isArray(side.civ)?side.civ[0]:side.civ});if(side.autoEffect)setTimeout(()=>triggerEffect(side.autoEffect,otherPid,stateRef.current[otherPid],setOtherState,stateRef.current[active],setActiveState,side.name,{...side}),800);});
+      fireShieldTriggers(stCards,otherPid,{delay:800});   // ブレイク演出のあとに解決する
       if(gStrikeCards.length>0){
         gStrikeCards.forEach(c=>addLog(`[GS] G・ストライク「${c.name}」`));
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
@@ -938,7 +980,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         getCardTriggers(card).forEach(tr=>{
           // sourcePid はターンを終えるプレイヤー。target:"self"=自分のターンの終わり /
           // "opponent"=相手のターンの終わり / "both"=各ターンの終わり
-          if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:active})) return;
+          if(!matchTrigger(tr,"endOfTurn",pid,card,{sourcePid:active,activePid:active})) return;
           if(tr.hyperOnly&&!card.hyperMode) return;
           if(tr.condition&&!checkGrantCondition(tr.condition,st,card,stateRef.current[oPid])) return;
           setTimeout(()=>triggerEffect(tr,pid,stateRef.current[pid],setSelf,stateRef.current[oPid],setOther,card.name,{...card}),0);
@@ -970,7 +1012,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       });
     });
     // 終了するプレイヤー: このターン限定のフラグのみリセット（タップ状態・cantAttackUntilMyTurnは自分の次のターン開始時まで維持）
-    setActiveState(s=>({...s,shieldAddedThisTurn:false,battle:s.battle.map(c=>({
+    setActiveState(s=>({...s,shieldAddedThisTurn:false,shieldsBrokenThisTurn:0,battle:s.battle.map(c=>({
       ...c,
       cantAttackThisTurn:false,
       untapAfterAttack:false,
@@ -979,7 +1021,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // 相手の常時能力(cantAttackUntilControllerTurn)を考慮し、次に開始するプレイヤーのクリーチャーをアンタップ
     const reactiveCreature=activeState.battle.find(c=>c.reactivePassive?.type==="cantAttackUntilControllerTurn");
     const tappedOtherUids=new Set(otherState.battle.filter(c=>c.tapped).map(c=>c.uid));
-    setOtherState(s=>({...s,shieldAddedThisTurn:false,battle:s.battle.map(c=>({
+    setOtherState(s=>({...s,shieldAddedThisTurn:false,shieldsBrokenThisTurn:0,battle:s.battle.map(c=>({
       ...c,
       // noUntapNextTurn のクリーチャーはこのターン開始時にアンタップしない（フラグはここで解除）
       tapped:c.noUntapNextTurn?true:false,

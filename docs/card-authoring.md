@@ -145,6 +145,28 @@
 
 ---
 
+## 3.4. そのステップだけ飛ばす（`onlyIf`）
+
+「自分のマナゾーンのカードが5枚以下なら、カードを1枚引く」のように、**条件を満たさない時に
+そのステップだけを飛ばしたい**場合に使います。
+
+```jsonc
+{ "type": "count", "zone": "mana", "target": "self", "as": "manaCount" },
+{ "type": "drawCards", "amount": 1, "onlyIf": { "count": "manaCount", "max": 5 } }
+```
+
+| キー | 説明 |
+|---|---|
+| `count` | 見る変数の名前（`count` / `pick` ステップが `as` で入れたもの） |
+| `min` / `max` | その値の下限・上限。両方書けば範囲 |
+
+- **`ifPrevious` とは別物**です。`ifPrevious` は「直前のステップを実際に行ったか」、
+  `onlyIf` は「変数の値がいくつか」を見ます
+- **`shouldStopChain` とも別物**です。`ifPrevious` が満たされないと**以降すべて**が中止されますが、
+  `onlyIf` は**そのステップ1つだけ**を飛ばして次へ進みます
+- 「こうして出したカードがクリーチャーなら〜、タマシードなら〜」のような分岐は、
+  `count` で数えてから `onlyIf:{min:1}` と `onlyIf:{max:0}` の2ステップを並べて書きます
+
 ## 3.5. 「そうしたら」「そうした場合」（`ifPrevious`）
 
 「〜してもよい。**そうしたら**、…」のように、**前の効果を実際に行った場合だけ**続きが起きる書き方です。
@@ -169,6 +191,18 @@
 > 常に以降のステップが打ち切られます。
 
 ---
+
+### 変数に足し引きする（`{ var, plus }`）
+
+`amount` と `filter` のコスト・パワー指定には、変数そのものではなく**足し引きした値**を書けます。
+
+```jsonc
+// 破壊したカードよりコストが1大きいカードを墓地から出す
+{ "type": "destroy", "target": "self", "asCost": "destroyedCost" },
+{ "type": "graveToBz", "filter": { "cost": { "var": "destroyedCost", "plus": 1 } } }
+```
+
+`filter.cost` は**コストがちょうどその値**という意味です（`maxCost` / `minCost` は以下・以上）。
 
 ## 4. 命名規則
 
@@ -216,7 +250,8 @@
 `meteorBurn{to:"mana"}`** で共通に使えます。
 
 **バトルゾーンから**
-- `destroy {target,filter,amount,all,self}` — 破壊。**`self:true` で「このクリーチャーを破壊する」**（選択不要・自分を対象）
+- `destroy {target,filter,amount,all,self,asCost}` — 破壊。**`self:true` で「このクリーチャーを破壊する」**（選択不要・自分を対象）
+  - `asCost:"変数名"` … 破壊したカードのコストを変数に控える（「破壊したカードよりコストが1大きい〜」用）
 - `bzToHand` / `bzToMana` / `bzToShield`（`target,filter,amount,all`）
 - `tap` / `untap` / `tapToggle`（`target,zone,filter,all,noUntapNextTurn`）
 - `untapAllMana` — 自分のマナを全アンタップ
@@ -252,7 +287,9 @@
   // 自分の墓地から2枚選び、好きな順序で山札の下に置く
   { "type": "graveToDeckBottom", "amount": 2, "order": "choose" }
   ```
-- `shieldToHand {target}` / `shieldToGrave {target}` / `breakShield {target}`
+- `shieldToHand {target, all, canUseTrigger}` — シールドを手札に加える。**既定では「S・トリガー」が使える**。
+  カードテキストに「ただし、その『S・トリガー』は使えない」とあるものだけ `canUseTrigger:false` を書く
+- `shieldToGrave {target, all}` / `breakShield {target}`
 
 **進化元を動かすコスト**
 - `meteorBurn {count,to,optional,tapped}` — メテオバーン → **§7.9**
@@ -369,7 +406,8 @@
 | `oncePerTurn` | 「各ターンに一度」。実際に解決した時だけ消費（辞退しても消費しない） |
 | `oncePerGame` | 「ゲーム中に一度」（終極宣言など） |
 | `lastCard` | `on:"draw"` 専用。引いた結果、山札が0枚になった時だけ誘発 |
-| `condition` | `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` / `{flag:"shieldAddedThisTurn"}` |
+| `turnOf` | **誰のターンに起きたイベントか**。`self` / `opponent` / `both`(既定)。「相手のターンにこのクリーチャーが出た時」用 |
+| `condition` | → **§7.19**（`shieldCount` / `shieldsBroken` / `civicCount` / `stackCount` / `{flag:"…"}`） |
 
 ```jsonc
 // 相手が効果でクリーチャーを出した時（召喚は対象外）
@@ -729,9 +767,38 @@
 ]
 ```
 
-`condition:{type:"oniEnd"}` は**両者のシールドを見る**ため、相手の盤面を参照できる
-`triggers` / `activated` でのみ使えます（パワー強化や `grantKeywords` の条件には書けません。
-validator がエラーにします）。
+`condition:{type:"oniEnd"}` は `{type:"shieldCount", who:"any", max:0}` の**別名**です（→ **§7.19**）。
+両者のシールドを見るため、相手の盤面を参照できる `triggers` / `activated` でのみ使えます
+（パワー強化や `grantKeywords` の条件には書けません。validator がエラーにします）。
+
+## 7.19. シールドの数を見る条件（`shieldCount` / `shieldsBroken`）
+
+「革命2：自分のシールドが2つ以下なら」「シールドが1つもないプレイヤーがいて」（鬼エンド）のように、
+**シールドの枚数を条件にする能力**は1つの条件型にまとめてあります。
+
+```jsonc
+"condition": { "type": "shieldCount", "who": "self", "max": 2 }   // 革命2
+"condition": { "type": "shieldCount", "who": "self", "max": 0 }   // 革命0
+"condition": { "type": "shieldCount", "who": "any",  "max": 0 }   // 鬼エンド（= {type:"oniEnd"}）
+```
+
+| キー | 説明 |
+|---|---|
+| `who` | `self`(既定) / `opponent` / `any`（**どちらかのプレイヤー**が満たせば成立） |
+| `min` / `max` | 枚数の下限・上限。**どちらか一方は必須**、両方書けば範囲 |
+
+**このターンにブレイクされた枚数**を見るときは `shieldsBroken` を使います（キーは同じ）。
+
+```jsonc
+// 「このターンに2つ以上自分のシールドがブレイクされていなければ」
+"condition": { "type": "shieldsBroken", "who": "self", "max": 1 }
+```
+
+- `who:"self"` は**自分の盤面しか見ない**ので、`condPower` や `grantKeywords` のような
+  **継続能力の条件にも書けます**（革命0がこれを使います）
+- `who:"opponent"` / `who:"any"` は相手の盤面が要るため、**`triggers` / `activated` でしか書けません**
+  （継続能力の評価経路には相手の状態が渡らないため。validator がエラーにします）
+- `shieldsBroken` の数はターンの終わりに両者ぶんリセットされます
 
 ## 8. 常在・付与・ハイパー等のフィールド
 
