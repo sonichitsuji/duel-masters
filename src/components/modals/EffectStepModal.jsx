@@ -3,6 +3,7 @@ import { CIV } from "../../constants";
 import { getCardCivs } from "../../gameLogic";
 import { getEffectCandidates } from "../../engine/effects";
 import { CardFace } from "../CardFace";
+import { StepExceptionMenu } from "./StepExceptionMenu";
 
 // ===========================
 // EFFECT STEP MODAL
@@ -13,7 +14,9 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
   const [chosenPlayer, setChosenPlayer] = useState(null);
   // 「数字を1つ選ぶ」。uid ではないので selected には混ぜず、別の state で持つ
   const [chosenNumber, setChosenNumber] = useState(null);
-  useEffect(() => { setSelected([]); setChosenPlayer(null); setChosenNumber(null); }, [activeSteps?.stepIdx]);
+  // 例外処理メニュー（公開ゾーンの確認 / 効果の中止）を開いているか
+  const [exceptionOpen, setExceptionOpen] = useState(false);
+  useEffect(() => { setSelected([]); setChosenPlayer(null); setChosenNumber(null); setExceptionOpen(false); }, [activeSteps?.stepIdx]);
   if (!activeSteps) return null;
 
   const { steps, stepIdx, ownerPid, srcCard, context } = activeSteps;
@@ -157,11 +160,16 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
               スキップ
             </button>
           )}
-          <button onClick={onException} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
+          <button onClick={() => setExceptionOpen(true)} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
             例外処理
           </button>
         </div>
       </div>
+      {exceptionOpen && (
+        <StepExceptionMenu p1={p1} p2={p2} ownerPid={ownerPid}
+          onCancelEffect={() => { setExceptionOpen(false); onException(); }}
+          onClose={() => setExceptionOpen(false)} />
+      )}
     </div>
   );
 }
