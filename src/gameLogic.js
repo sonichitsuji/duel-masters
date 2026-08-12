@@ -245,6 +245,10 @@ export function selfSTriggerGranted(card, ownerState) {
 //   revolutionChangeCond: { civs?, race?/races?, minCost?, minPower?, multiColor?, nameContains? }
 export function revolutionChangeCandidates(attacker, ownerState) {
   if (!attacker || !ownerState) return [];
+  // 入れ替える効果は、そのクリーチャーを構成するカードがすべて手札に戻らない状況では実行されない。
+  // G-NEO進化クリーチャーは離れる時に下のカードが身代わりになるので、革命チェンジできない
+  // （進化元が0枚なら G-NEOクリーチャー扱いで、この制限はかからない）
+  if (isGNeoEvolution(attacker)) return [];
   const attackerCivs = getCardCivs(attacker);
   const attackerPower = getEffectivePower(attacker, ownerState, ownerState.battle);
   return (ownerState.hand || []).filter(c => {
@@ -423,8 +427,14 @@ export function findLoseReplacement(ownerState, cause) {
 // 進化（進化元のゾーンと枚数）
 // 通常の進化はバトルゾーンのクリーチャー1体を進化元にするが、墓地進化 / マナ進化 /
 // 墓地進化GV(3体) / 超無限墓地進化(1体以上) のように、ゾーンと枚数が変わるものがある。
-//   evolution: { zone:"bz"|"grave"|"mana", count:N | min:N, filter:{…} }
+//   evolution: { zone:"bz"|"grave"|"mana", count:N | min:N, neo:true|"g", filter:{…} }
 // 進化元は「バトルゾーンに出た」ことにならない（battle を経由せず evolutionBase に直接積む）。
+//
+// NEO進化（neo:true）は「重ねてもよい」＝進化するかしないかが任意。重ねなければ通常の
+// クリーチャー（NEOクリーチャー）、重ねれば進化クリーチャー（NEO進化クリーチャー）として扱う。
+// そのため type は "creature" のままで、「進化ではないクリーチャー」を指す効果には当たる
+// （ドラゴンズ・サインの「進化でないドラゴンを出す」で NEO を出し、出す時に重ねられる）。
+// G-NEO進化（neo:"g"）は上記に加えて「離れる時、かわりに下のカードすべてが離れる」。
 // ===========================
 export const EVOLUTION_ZONES = ["bz", "grave", "mana"];
 
@@ -434,16 +444,48 @@ export function evolutionSpec(card) {
   if (!e) return null;
   const zone = EVOLUTION_ZONES.includes(e.zone) ? e.zone : "bz";
   const min = typeof e.min === "number" ? e.min : null;
-  return { zone, min, count: min != null ? null : (e.count ?? 1), filter: e.filter || null };
+  const neo = e.neo === "g" ? "g" : e.neo ? true : null;
+  return { zone, min, neo, count: min != null ? null : (e.count ?? 1), filter: e.filter || null };
 }
 
 // 進化の呼び名（UI表示用）
 export function evolutionLabel(spec) {
   if (!spec) return "進化";
+  if (spec.neo === "g") return "G-NEO進化";
+  if (spec.neo) return "NEO進化";
   const base = spec.zone === "grave" ? "墓地進化" : spec.zone === "mana" ? "マナ進化" : "進化";
   if (spec.min != null) return `超無限${base}`;
   if (spec.count >= 3) return `${base}GV`;
   return base;
+}
+
+// 「いまこのカードは進化クリーチャーか」。
+// NEO は下にカードがある間だけ進化クリーチャーとして扱われるので、カードの型ではなく
+// 盤面のカード（evolutionBase を持つ実体）を渡すこと。
+export function isEvolutionNow(card) {
+  if (!card) return false;
+  if (card.type === "evo_creature") return true;
+  return !!(evolutionSpec(card)?.neo && card.evolutionBase?.length);
+}
+
+// G-NEO進化クリーチャーか（＝除去耐性が働くか）。
+// 進化元が0枚なら「G-NEOクリーチャー」であって G-NEO進化クリーチャーではないので耐性は出ない。
+export function isGNeoEvolution(card) {
+  return evolutionSpec(card)?.neo === "g" && (card?.evolutionBase?.length || 0) > 0;
+}
+
+// 召喚酔いしているか。
+// summonedThisTurn は「このターンにバトルゾーンへ出た」という事実だけを記録し、
+// 進化かどうかの判定はここ（読み出し時）で行う。こうすると NEO進化クリーチャーの進化元が
+// 効果で剥がされて0枚になった時に、召喚酔いが復活するという裁定が自然に出る。
+// マッハファイターは召喚酔いしていても攻撃できる（ただしクリーチャーしか攻撃できない → §7.15）
+// ので、ここでは酔っていない扱いにする。
+export function isSummoningSick(card, ownerState, battleZone) {
+  if (!card?.summonedThisTurn) return false;
+  if (isEvolutionNow(card)) return false;
+  const kws = [...(card.keywords || []), ...ssxKeywords(card),
+    ...computeGrantedKeywords(card, battleZone || ownerState?.battle || [], ownerState)];
+  return !kws.includes("speedAttacker") && !kws.includes("machFighter");
 }
 
 // 進化元の候補。マナゾーンはタップ状態を問わない。進化元は常にクリーチャー限定。
@@ -458,10 +500,30 @@ export function evolutionCandidates(card, ownerState) {
 // 進化元に必要な枚数（min 指定なら最低枚数）
 export function evolutionNeeded(spec) { return spec ? (spec.min != null ? spec.min : spec.count) : 0; }
 
-// 進化元が足りているか
+// 選ばれた進化元を、そのゾーンから取り除いて「下に敷くカード列」にする。
+// 進化元は「バトルゾーンに出た」ことにならないので、battle を経由せず evolutionBase に直接積む。
+// 選択順がそのまま重ねる順。進化元がさらに進化元を持っていたら、それも一緒に下へ移る。
+// 戻り値の state は取り除いた後のプレイヤー状態（元の state は変更しない）。
+export function stackEvolutionBases(state, spec, baseUids) {
+  const uids = Array.isArray(baseUids) ? baseUids : baseUids ? [baseUids] : [];
+  if (!uids.length) return { state, bases: undefined };
+  const key = spec?.zone === "grave" ? "grave" : spec?.zone === "mana" ? "mana" : "battle";
+  const picked = uids.map(uid => (state[key] || []).find(c => c.uid === uid)).filter(Boolean);
+  if (!picked.length) return { state, bases: undefined };
+  const used = new Set(picked.map(c => c.uid));
+  // 下に敷かれたカードはタップ状態や表裏を持たず、自分の下にカードも持たない
+  // （マナ進化はタップ済みでも進化元にできる）
+  const bases = picked.flatMap(b => [b, ...(b.evolutionBase || [])])
+    .map(c => { const m = { ...c, tapped: false, faceUp: false }; delete m.evolutionBase; return m; });
+  return { state: { ...state, [key]: state[key].filter(c => !used.has(c.uid)) }, bases };
+}
+
+// 進化元が足りているか（＝そのカードを出せるか）。
+// NEO は重ねなくても出せるので、進化元の有無に関わらず true。
 export function canEvolve(card, ownerState) {
   const spec = evolutionSpec(card);
   if (!spec) return true;
+  if (spec.neo) return true;
   return evolutionCandidates(card, ownerState).length >= evolutionNeeded(spec);
 }
 

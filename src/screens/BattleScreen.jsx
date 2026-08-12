@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates } from "../gameLogic";
-import { executeEffect, matchFilter, shouldStopChain, stepConditionMet } from "../engine/effects";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -16,6 +16,7 @@ import { ReplacementModal } from "../components/modals/ReplacementModal";
 import { HandPlayModal } from "../components/modals/HandPlayModal";
 import { ManaPayModal } from "../components/modals/ManaPayModal";
 import { AttackTriggerModal } from "../components/modals/AttackTriggerModal";
+import { EvolutionSelectModal } from "../components/modals/EvolutionSelectModal";
 import { PlayerBoard } from "../components/PlayerBoard";
 import { StepIndicator } from "../components/BoardWidgets";
 
@@ -110,6 +111,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [usedFinalRevThisTurn,setUsedFinalRevThisTurn]=useState(false);
   const [finalRevModal,setFinalRevModal]=useState(false);
   const [activeSteps,setActiveSteps]=useState(null);
+  // 効果の実行前に挟む割り込み（G-NEO の置換 / NEO進化の選択）から、いま解決中のステップを見る
+  const activeStepsRef=useRef(null);
+  activeStepsRef.current=activeSteps;
   const [pendingEffects,setPendingEffects]=useState([]);
   const [triggerOrderModal,setTriggerOrderModal]=useState(null);
   const [gStrikeModal,setGStrikeModal]=useState(null);
@@ -120,6 +124,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 手札宣言プレイのコスト支払い（D・D・D）。PlayerBoard の ManaPayModal は isActive の内側に
   // あって非ターンプレイヤーが使えないので、こちらにもう1つ置く
   const [handPlayPayModal,setHandPlayPayModal]=useState(null);
+  // 手札宣言プレイで進化元を選ぶ（NEO進化を含む）。支払いの前に決める
+  const [handPlayEvoModal,setHandPlayEvoModal]=useState(null);
+  // 効果でバトルゾーンを離れるカードに G-NEO の除去耐性があるか聞く。
+  // 決めるまで効果の実行を止めるので、選択内容を預かってから advanceStep に渡す
+  const [leaveReplaceModal,setLeaveReplaceModal]=useState(null);
+  // 効果でバトルゾーンに出るカードが NEO なら、重ねるかどうかを聞く
+  const [neoPutModal,setNeoPutModal]=useState(null);
 
   const addLog=useCallback(msg=>setLogs(p=>[...p,msg]),[]);
   const [isPC,setIsPC]=useState(()=>window.innerWidth>=768);
@@ -186,7 +197,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||revChangeModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     // 「攻撃する時」の誘発を解決しきったら、預かっていた攻撃先へ進む
@@ -214,10 +225,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[resolverBusy,pendingEffects,pendingAttack]);
 
-  // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」など）。
+  // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」「G-NEO の置換」など）。
   // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
   // stepDone が配列長で判定したりするので、混ぜずに ctx へ載せる。
-  const advanceStep = useCallback((selectedUids, extra) => {
+  const runStep = useCallback((selectedUids, extra) => {
     setActiveSteps(prev => {
       if (!prev) return null;
       const stepCtx = extra ? { ...prev.context, ...extra } : prev.context;
@@ -330,6 +341,84 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       return null;
     });
   }, [p1, p2, addLog]);
+
+  // G-NEO進化クリーチャーの除去耐性。下のカードすべてを行き先へ送り、本体はバトルゾーンに残す。
+  // 行き先は置換元に従う（破壊なら墓地、バウンスなら手札…）。
+  // 下のカードが0枚になるので、以後そのクリーチャーは G-NEO進化クリーチャーではなくなり、
+  // 進化クリーチャーでもなくなる（＝出たターンなら召喚酔いが復活する）。
+  const sacrificeGNeoBases=(card,ownerPid,to)=>{
+    const setSt=ownerPid==="p1"?setP1:setP2;
+    const n=(stateRef.current[ownerPid].battle.find(c=>c.uid===card.uid)?.evolutionBase||[]).length;
+    setSt(s=>{
+      const live=s.battle.find(c=>c.uid===card.uid);
+      if(!live?.evolutionBase?.length) return s;
+      const moved=live.evolutionBase.map(c=>({...c,tapped:false,faceUp:false}));
+      const battle=s.battle.map(c=>c.uid===card.uid?{...c,evolutionBase:[]}:c);
+      if(to==="hand")   return {...s,battle,hand:[...s.hand,...moved]};
+      if(to==="mana")   return {...s,battle,mana:[...s.mana,...moved]};
+      if(to==="shield") return {...s,battle,shields:[...s.shields,...moved],shieldAddedThisTurn:true};
+      if(to==="deck")   return {...s,battle,deck:[...s.deck,...moved]};
+      return {...s,battle,grave:[...s.grave,...moved]};
+    });
+    addLog(`[G-NEO] ${card.name} のかわりに下のカード${n}枚が${ZONE_LABELS[to]||"墓地"}へ`);
+    if(to==="shield") setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:ownerPid}),0);
+  };
+
+  // 効果でバトルゾーンを離れるカードに、今かけられる置換を1つ返す（無ければ null）。
+  // 順番はバトルによる破壊（processVictims）と同じ: エスケープ → G-NEO → replaceLeave。
+  // asked は「そのカードについて既に聞いた置換の種類」。中止したものを聞き直さないために使う。
+  const leaveReplacementFor=(card,ownerPid,to,asked)=>{
+    const st=stateRef.current[ownerPid];
+    const live=st.battle.find(c=>c.uid===card.uid);
+    if(!live) return null;
+    const seen=k=>(asked||[]).includes(`${card.uid}#${k}`);
+    // エスケープは「破壊されるかわりに」なので、墓地へ送る効果にだけ効く
+    if(to==="grave"&&!seen("escape")&&hasEscapeNow(live,ownerPid)&&st.shields.length>0){
+      return { kind:"escape", title:"エスケープ（置換効果）",
+        message:`${card.name} は破壊されます。\n墓地に置く代わりに、自分のシールドを1つ手札に加えてもよい（エスケープ）。`,
+        applyLabel:"エスケープ（シールド→手札）", cancelLabel:"例外処理で中止（通常どおり）" };
+    }
+    if(!seen("gneo")&&isGNeoEvolution(live)){
+      return { kind:"gneo", title:"G-NEO進化（置換効果）",
+        message:`${card.name} はバトルゾーンを離れます。\nかわりに下のカードすべてを${ZONE_LABELS[to]||"墓地"}に置いてもよい。`,
+        applyLabel:`かわりに下のカードを${ZONE_LABELS[to]||"墓地"}へ`, cancelLabel:"例外処理で中止（通常どおり離れる）" };
+    }
+    const lr=findLeaveReplacement(st,live);
+    if(lr&&!seen("replaceLeave")){
+      const zl=ZONE_LABELS[lr.rule.to||"mana"]||"マナゾーン";
+      return { kind:"replaceLeave", to:lr.rule.to||"mana", title:`${lr.card.name}（置換効果）`,
+        message:`${card.name} はバトルゾーンを離れます。\n${ZONE_LABELS[to]||"墓地"}に置く代わりに、${zl}に置いてもよい。`,
+        applyLabel:`かわりに${zl}へ`, cancelLabel:"例外処理で中止（通常どおり）" };
+    }
+    return null;
+  };
+
+  // 効果を実行する前の割り込み。決めた内容を extra に載せて runStep へ渡す。
+  //   ① バトルゾーンを離れるカードに置換（エスケープ / G-NEO / replaceLeave）があれば聞く
+  //   ② 効果でバトルゾーンに出すカードが NEO進化なら、重ねるか聞く
+  // どちらも1枚ずつ順に聞き、決まったものから extra に積んでいく。
+  const advanceStep=(selectedUids,extra)=>{
+    const cur=activeStepsRef.current;
+    const step=cur?.steps?.[cur.stepIdx];
+    if(!step){ runStep(selectedUids,extra); return; }
+    const ctx=cur.context||{};
+    const done=extra||{};
+    const to=BZ_LEAVE_DEST[step.type];
+    const exempt=done.leaveExempt||[];
+    for(const v of leavingBzCards(step,selectedUids,ctx,p1,p2,cur.ownerPid)){
+      if(exempt.includes(v.card.uid)) continue;    // 置換済み。もう離れないので聞かない
+      const rep=leaveReplacementFor(v.card,v.ownerPid,to,done.leaveAsked);
+      if(rep){ setLeaveReplaceModal({victim:v,to,rep,selectedUids,extra:done}); return; }
+    }
+    const neo=enteringBzCards(step,selectedUids,ctx,p1,p2,cur.ownerPid)
+      .filter(v=>evolutionSpec(v.card)?.neo&&!(done.neoBases&&v.card.uid in done.neoBases));
+    if(neo.length){
+      const st=stateRef.current[neo[0].ownerPid];
+      setNeoPutModal({put:neo[0],candidates:evolutionCandidates(neo[0].card,st),selectedUids,extra:done});
+      return;
+    }
+    runStep(selectedUids,extra);
+  };
 
   const triggerEffect=(effect,ownerPid,selfSnap,setSelf,otherSnap,setOther,sourceName,srcCardOverride,subjectCard)=>{
     if(!effect) return;
@@ -498,8 +587,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     showCutIn({title:`${label}！`,cardName:face.name,civ});
     const payMana=st=>paid?tapManaByUids(st.mana,paidManaUids):st.mana;
     if(isCreature){
+      // 進化元は state を見て取り除くので、setSelf の更新関数の中で組み立てる
+      const spec=evolutionSpec(card);
       const put=withJustDiver({...card,tapped:false,enteredThisTurn:true,summonedThisTurn:!hasKeyword(card,"speedAttacker")});
-      setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),mana:payMana(s),battle:[...s.battle,put]}));
+      setSelf(s=>{
+        const {state:st,bases}=stackEvolutionBases(s,spec||{zone:"bz"},play.evolutionBaseUids);
+        return {...st,hand:st.hand.filter(c=>c.uid!==card.uid),mana:payMana(st),
+          battle:[...st.battle,{...put,evolutionBase:bases}]};
+      });
       maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
       if(card.autoEffect) enqueueEffect({kind:"trigger",effect:card.autoEffect,ownerPid:pid,srcCard:{...card,srcCardUid:put.uid},sourceName:card.name});
       setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:pid,subjectCard:put,method:"summon"}),0);
@@ -516,10 +611,23 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(srcEvent.stCards) setTimeout(()=>offerSTriggers(srcEvent.stCards.filter(c=>c.uid!==card.uid),pid),0);
     else setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);
   };
-  // モーダルで「プレイする」を押した時。コストが要るなら支払いへ、要らなければ即プレイ
+  // モーダルで「プレイする」を押した時。
+  // 進化元を選ぶカード（NEO進化を含む）は先に進化元を決めてから、コストの支払いへ進む
   const handleHandPlay=(play)=>{
     const {pid,srcEvent}=handPlayModal;
     setHandPlayModal(null);
+    const spec=evolutionSpec(play.face||play.card);
+    if(spec&&!play.evolutionBaseUids){
+      const st=stateRef.current[pid];
+      const candidates=evolutionCandidates(play.card,st);
+      // NEO は重ねずにも出せるので候補0でも聞く。通常の進化は候補が無ければ出せない
+      if(candidates.length||spec.neo){ setHandPlayEvoModal({pid,srcEvent,play,spec,candidates}); return; }
+      addLog(`[${handPlayLabel(play.kind)}] 進化元がいないので「${play.card.name}」は出せない`);
+      return;
+    }
+    continueHandPlay(pid,play,srcEvent);
+  };
+  const continueHandPlay=(pid,play,srcEvent)=>{
     if(!play.cost){ playFromHandDeclared(pid,play,srcEvent,null); return; }
     // 代替コストと同じ手口: コストと文明を差し替えた仮カードを支払いUIに渡す
     setHandPlayPayModal({ pid, srcEvent, play,
@@ -688,27 +796,20 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         addLog(`${active}: 相手の常在型能力によりクリーチャーを出せない`);setMessage("相手の常在型能力でクリーチャーを出せません");return true;
       }
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
-      const isEvo=card.type==="evo_creature";
       // クリーチャー側でプレイされたツインパクトもクリーチャーとして扱う（召喚酔い・出た時の誘発）
       const isCreature=isCreatureSide(card);
       // 進化元は「バトルゾーンに出た」ことにならないので、battle を経由せず evolutionBase へ直接積む。
-      // 選択順がそのまま重ねる順。進化元のゾーンは bz / grave / mana のいずれか。
-      let evoBase=undefined;
-      let battleWithoutBase=activeState.battle;
-      const baseUids=Array.isArray(evolutionBaseUids)?evolutionBaseUids:evolutionBaseUids?[evolutionBaseUids]:[];
-      if(baseUids.length){
-        const spec=evolutionSpec(card)||{zone:"bz"};
-        const from=spec.zone==="grave"?newGrave:spec.zone==="mana"?newMana:activeState.battle;
-        const bases=baseUids.map(uid=>from.find(c=>c.uid===uid)).filter(Boolean);
-        const used=new Set(bases.map(c=>c.uid));
-        // 下に敷かれたカードはタップ状態や表裏を持たない（マナ進化はタップ済みでも進化元にできる）
-        evoBase=bases.flatMap(b=>[b,...(b.evolutionBase||[])]).map(({evolutionBase,...c})=>({...c,tapped:false,faceUp:false}));
-        if(spec.zone==="grave")      newGrave=newGrave.filter(c=>!used.has(c.uid));
-        else if(spec.zone==="mana")  newMana=newMana.filter(c=>!used.has(c.uid));
-        else                         battleWithoutBase=activeState.battle.filter(c=>!used.has(c.uid));
-      }
-      // ジャストダイバー: 出た時に「相手に選ばれず、攻撃されない」を次の自分のターンまで付ける
-      const newCreature=withJustDiver({...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed&&!isEvo,evolutionBase:evoBase});
+      // 進化元のゾーンは bz / grave / mana のいずれかで、そのゾーンから取り除かれる。
+      const evoRes=stackEvolutionBases({...activeState,grave:newGrave,mana:newMana},
+        evolutionSpec(card)||{zone:"bz"},evolutionBaseUids);
+      const evoBase=evoRes.bases;
+      const battleWithoutBase=evoRes.state.battle;
+      newGrave=evoRes.state.grave;
+      newMana=evoRes.state.mana;
+      // ジャストダイバー: 出た時に「相手に選ばれず、攻撃されない」を次の自分のターンまで付ける。
+      // summonedThisTurn は「このターン出た」という事実だけを記録する。進化かどうかで酔うかは
+      // isSummoningSick が読み出し時に判定する（NEO は進化元が0枚になると酔いが復活するため）
+      const newCreature=withJustDiver({...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed,evolutionBase:evoBase});
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle}));
       const fromLabel=fromZone==="grave"?"（墓地から）":fromZone==="mana"?"（マナゾーンから）":"";
@@ -742,10 +843,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // タップしたまま攻撃を引き継ぐ（そのあと新しいクリーチャーで「攻撃する時」が誘発する）
   const handleRevChangeExec=(handCard,attacker,intent)=>{
     const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:true,enteredThisTurn:true,summonedThisTurn:false}:c);
+    // 入れ替えたクリーチャーは「それを構成するカードすべて」が手札に戻る。
+    // 進化クリーチャーなら下のカードも一緒に戻る（下のカードを消滅させない）
+    const toHand=[attacker,...(attacker.evolutionBase||[])]
+      .map(c=>{const m={...c,tapped:false,hyperMode:false,cantAttackThisTurn:false,enteredThisTurn:false,summonedThisTurn:false,faceUp:false};delete m.evolutionBase;return m;});
     setActiveState(s=>({
       ...s,
       battle:newBattle,
-      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat({...attacker,tapped:false,hyperMode:false,cantAttackThisTurn:false,enteredThisTurn:false,summonedThisTurn:false}),
+      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat(toHand),
     }));
     addLog(`[REV] 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
     maybeFlagCantAttack([handCard.uid],setActiveState,otherState.battle);
@@ -834,7 +939,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // マッハファイターだけを頼りに攻撃している間は、クリーチャーしか攻撃できない。
   // （スピードアタッカーも持つなら普通に攻撃できるので制限はかからない）
   const machFighterOnly=card=>machFighterActive(card)
-    &&!!card?.summonedThisTurn&&!attackerHas(card,"speedAttacker");
+    &&!!card?.summonedThisTurn&&!isEvolutionNow(card)&&!attackerHas(card,"speedAttacker");
   // 攻撃先に選べるか。「相手が自分のクリーチャーを選ぶ時、選ばれない」は攻撃先の選択にも効く
   const isUnselectableBy=(card,ownerPid,selectorPid)=>
     selectorPid!==ownerPid && isUnselectableByOpponent(card,stateRef.current[ownerPid]);
@@ -899,60 +1004,46 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const st=stateRef.current[ownerPid];
     return card.keywords?.includes("escape")||computeGrantedKeywords(card,st.battle,st).includes("escape");
   };
-  // 破壊対象列を順に処理。エスケープ持ちは置換モーダル（§0: 必ず例外中止可）を挟む。
-  const processVictims=(victims,idx,onDone)=>{
+  // エスケープ: 墓地に置くかわりに、自分のシールドを1つ手札に加える（本体はバトルゾーンに残る）
+  const escapeShieldToHand=(card,ownerPid)=>{
+    const setSt=ownerPid==="p1"?setP1:setP2;
+    setSt(s=>{if(s.shields.length===0)return s;const sh=s.shields[0];return {...s,shields:s.shields.slice(1),hand:[...s.hand,{...sh,tapped:false,faceUp:false}]};});
+    addLog(`[ESCAPE] ${card.name} エスケープ：シールド1枚を手札へ（破壊を回避）`);
+  };
+  // 破壊対象列を順に処理。置換（エスケープ / G-NEO / replaceLeave）はモーダルを挟む
+  // （§0: 必ず例外処理で中止できる）。判定は効果による除去と共通の leaveReplacementFor。
+  // asked は、中止した置換を同じカードで聞き直さないための控え。
+  const processVictims=(victims,idx,onDone,asked=[])=>{
     if(idx>=victims.length){onDone&&onDone();return;}
     const v=victims[idx];
-    const ownerSt=stateRef.current[v.ownerPid];
-    const stillThere=ownerSt.battle.some(c=>c.uid===v.card.uid);
-    if(!stillThere){processVictims(victims,idx+1,onDone);return;}
-    if(hasEscapeNow(v.card,v.ownerPid)&&ownerSt.shields.length>0){
+    const stillThere=stateRef.current[v.ownerPid].battle.some(c=>c.uid===v.card.uid);
+    if(!stillThere){processVictims(victims,idx+1,onDone,asked);return;}
+    // バトルによる破壊なので、置換元の行き先は常に墓地
+    const rep=leaveReplacementFor(v.card,v.ownerPid,"grave",asked);
+    if(rep){
       setReplacementModal({
-        title:"エスケープ（置換効果）",
+        title:rep.title,
         card:v.card,
-        message:`${v.card.name} は破壊されます。\n墓地に置く代わりに、自分のシールドを1つ手札に加えてもよい（エスケープ）。`,
-        applyLabel:"エスケープ（シールド→手札）",
-        cancelLabel:"例外処理で中止（破壊）",
+        message:rep.message,
+        applyLabel:rep.applyLabel,
+        cancelLabel:rep.cancelLabel,
         onApply:()=>{
           setReplacementModal(null);
-          const setSt=v.ownerPid==="p1"?setP1:setP2;
-          setSt(s=>{if(s.shields.length===0)return s;const sh=s.shields[0];return {...s,shields:s.shields.slice(1),hand:[...s.hand,{...sh,tapped:false,faceUp:false}]};});
-          addLog(`[ESCAPE] ${v.card.name} エスケープ：シールド1枚を手札へ（破壊を回避）`);
-          processVictims(victims,idx+1,onDone);
+          if(rep.kind==="escape")            escapeShieldToHand(v.card,v.ownerPid);
+          else if(rep.kind==="gneo")         sacrificeGNeoBases(v.card,v.ownerPid,"grave");
+          else if(rep.kind==="replaceLeave") moveLeavingCard(v.card,v.ownerPid,rep.to);
+          processVictims(victims,idx+1,onDone,asked);
         },
         onCancel:()=>{
+          // 中止したら、そのカードの次の置換を聞く（無ければ通常どおり破壊される）
           setReplacementModal(null);
-          destroyNow(v.card,v.ownerPid,v.viaBattle);
-          processVictims(victims,idx+1,onDone);
-        },
-      });
-      return;
-    }
-    // 「自分のクリーチャーが離れる時、かわりに〜に置いてもよい」（八頭竜 ACE-Yamata 等）
-    const lr=findLeaveReplacement(ownerSt,v.card);
-    if(lr){
-      const zoneLabel=ZONE_LABELS[lr.rule.to==="mana"?"mana":lr.rule.to==="hand"?"hand":lr.rule.to==="shield"?"shield":"deck"]||"マナゾーン";
-      setReplacementModal({
-        title:`${lr.card.name}（置換効果）`,
-        card:v.card,
-        message:`${v.card.name} はバトルゾーンを離れます。\n墓地に置く代わりに、${zoneLabel}に置いてもよい。`,
-        applyLabel:`かわりに${zoneLabel}へ`,
-        cancelLabel:"例外処理で中止（通常どおり破壊）",
-        onApply:()=>{
-          setReplacementModal(null);
-          moveLeavingCard(v.card,v.ownerPid,lr.rule.to||"mana");
-          processVictims(victims,idx+1,onDone);
-        },
-        onCancel:()=>{
-          setReplacementModal(null);
-          destroyNow(v.card,v.ownerPid,v.viaBattle);
-          processVictims(victims,idx+1,onDone);
+          processVictims(victims,idx,onDone,[...asked,`${v.card.uid}#${rep.kind}`]);
         },
       });
       return;
     }
     destroyNow(v.card,v.ownerPid,v.viaBattle);
-    processVictims(victims,idx+1,onDone);
+    processVictims(victims,idx+1,onDone,asked);
   };
   // 置換で、破壊されるかわりに別ゾーンへ送る。破壊ではないので destroyed は誘発せず、
   // leave（バトルゾーンを離れた）だけ誘発する。下に敷かれたカードも一緒に離れる。
@@ -1249,6 +1340,32 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       {handPlayModal&&<HandPlayModal pid={handPlayModal.pid} plays={handPlayModal.plays} onPlay={handleHandPlay} onSkip={()=>{addLog(`[${handPlayLabel(handPlayModal.plays[0]?.kind)}] ${handPlayModal.pid}: 使わない`);setHandPlayModal(null);}}/>}
+      {leaveReplaceModal&&(()=>{const{victim,to,rep,selectedUids,extra}=leaveReplaceModal;
+        const next=applied=>{setLeaveReplaceModal(null);
+          if(applied){
+            if(rep.kind==="escape")           escapeShieldToHand(victim.card,victim.ownerPid);
+            else if(rep.kind==="gneo")        sacrificeGNeoBases(victim.card,victim.ownerPid,to);
+            else if(rep.kind==="replaceLeave")moveLeavingCard(victim.card,victim.ownerPid,rep.to);
+          }
+          // 置換したカードは通常どおりには離れないので、この後の実行から外す。
+          // 中止したものは聞き直さないよう leaveAsked に控えて advanceStep をやり直す
+          setTimeout(()=>advanceStep(selectedUids,{...extra,
+            leaveExempt:[...(extra.leaveExempt||[]),...(applied?[victim.card.uid]:[])],
+            leaveAsked:[...(extra.leaveAsked||[]),`${victim.card.uid}#${rep.kind}`]}),0);};
+        return <ReplacementModal modal={{title:rep.title,card:victim.card,message:rep.message,
+          applyLabel:rep.applyLabel,cancelLabel:rep.cancelLabel}}
+          onApply={()=>next(true)} onCancel={()=>next(false)}/>;})()}
+      {neoPutModal&&(()=>{const{put,candidates,selectedUids,extra}=neoPutModal;
+        const done=baseUids=>{setNeoPutModal(null);
+          setTimeout(()=>advanceStep(selectedUids,{...extra,
+            neoBases:{...(extra.neoBases||{}),[put.card.uid]:baseUids||[]}}),0);};
+        return <EvolutionSelectModal candidates={candidates} card={put.card}
+          spec={evolutionSpec(put.card)} ownerState={stateRef.current[put.ownerPid]}
+          onConfirm={done} onCancel={()=>done([])}/>;})()}
+      {handPlayEvoModal&&(()=>{const{pid,play,spec,candidates,srcEvent}=handPlayEvoModal;
+        const done=baseUids=>{setHandPlayEvoModal(null);continueHandPlay(pid,{...play,evolutionBaseUids:baseUids||[]},srcEvent);};
+        return <EvolutionSelectModal candidates={candidates} card={play.face||play.card} spec={spec}
+          ownerState={stateRef.current[pid]} onConfirm={done} onCancel={()=>done([])}/>;})()}
       {handPlayPayModal&&(()=>{const{pid,payCard,play,srcEvent}=handPlayPayModal;const st=stateRef.current[pid];return(
         <ManaPayModal card={payCard} mana={st.mana} ownerState={st}
           onConfirm={uids=>{setHandPlayPayModal(null);playFromHandDeclared(pid,play,srcEvent,uids);}}

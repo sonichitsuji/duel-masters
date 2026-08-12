@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, withJustDiver, spellDenyReason } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, withJustDiver, spellDenyReason, evolutionSpec, stackEvolutionBases } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -167,6 +167,7 @@ const SOURCE = {
   untap:          { zone: "bz",       target: "self" },
   tapToggle:      { zone: "bz",       target: "both" },
   graveToBz:      { zone: "grave",    target: "self" },
+  zonesToBz:      { zone: "grave",    target: "self" },   // 実際の候補は effect.zones から集める
   graveToHand:    { zone: "grave",    target: "self" },
   graveToDeck:    { zone: "grave",    target: "self" },
   graveToDeckBottom: { zone: "grave", target: "self" },
@@ -188,6 +189,59 @@ const SOURCE = {
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
   "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","winGame","shuffleDeck"]);
+
+// バトルゾーンを離れる効果と、その行き先。実行前に置換（G-NEO の除去耐性など）を挟むために使う。
+export const BZ_LEAVE_DEST = {
+  destroy: "grave", bzToHand: "hand", bzToMana: "mana", bzToShield: "shield",
+};
+// バトルゾーンにカードを出す効果と、その出どころのゾーン。NEO進化を選ばせるために使う。
+// playFromHand は zone を書き換えられるので、その時のゾーンを見る。
+export const BZ_ENTER_FROM = {
+  handToBz: "hand", manaToBz: "mana", graveToBz: "grave", zonesToBz: "zones", revealedToBz: "revealed",
+  playFromHand: "*",
+};
+
+// このステップでバトルゾーンを離れるカードを、実行前に列挙する。
+// all:true の全体除去でも個別選択でも同じ結果になるよう、executeEffect の判定と同じ式を使う。
+// 戻り値は [{ card, ownerPid }]。
+export function leavingBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
+  const type = effect?.type;
+  if (!BZ_LEAVE_DEST[type]) return [];
+  const stateOf = pidx => (pidx === "p1" ? p1 : p2);
+  const c2 = { ...ctx };
+  // destroy の self:true は「このクリーチャーを破壊する」＝能力の持ち主のものを見る
+  const pids = type === "destroy" && effect.self ? [ownerPid]
+    : effect.choosePlayer ? (ctx?.chosenPlayer ? [ctx.chosenPlayer] : [])
+    : targetPids(effect.target || SOURCE[type]?.target || "self", ownerPid);
+  const out = [];
+  for (const pidx of pids) {
+    const pool = stateOf(pidx)?.battle || [];
+    const cards = type === "destroy" && effect.self ? pool.filter(c => c.uid === ctx?.srcCardUid)
+      : effect.all ? pool.filter(c => matchFilter(c, effect.filter, c2))
+      : pool.filter(c => (selectedUids || []).includes(c.uid));
+    for (const card of cards) out.push({ card, ownerPid: pidx });
+  }
+  return out;
+}
+
+// このステップでバトルゾーンに出るカードを、実行前に列挙する。出すのは常に能力の持ち主。
+export function enteringBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
+  const type = effect?.type;
+  let from = BZ_ENTER_FROM[type];
+  if (!from) return [];
+  if (from === "*") from = effect.zone || "hand";
+  // graveToBz の owner:"destroyed" は「破壊されたクリーチャーの持ち主の墓地から」
+  const holder = type === "graveToBz" && effect.owner === "destroyed" ? ctx?.destroyedCreatureOwner : ownerPid;
+  if (!holder) return [];
+  const holderSt = holder === "p1" ? p1 : p2;
+  const pool = from === "revealed" ? (ctx?.revealed || [])
+    : from === "zones" ? (effect.zones || ["grave"]).flatMap(z => holderSt?.[ZONE_STATE_KEY[z] || z] || [])
+    : (holderSt?.[ZONE_STATE_KEY[from] || from] || []);
+  // 呪文として唱えるカードはバトルゾーンに出ないので除く（playFromHand はどちらもありうる）
+  return pool.filter(c => (selectedUids || []).includes(c.uid))
+    .filter(c => type !== "playFromHand" || playSide(effect, c) !== "spell")
+    .map(card => ({ card, ownerPid: holder }));
+}
 
 // ===========================
 // 候補算出（選択UI用）
@@ -216,7 +270,15 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   let cards = [];
   // 「プレイヤー1人の〜から」用に、候補がどちらのプレイヤーのものかを控えておく
   const owners = {};
-  if (zone === "revealed" || zone === "lastMoved") {
+  if (type === "zonesToBz") {
+    // 「自分の墓地またはマナゾーンから」。候補を複数のゾーンから集める
+    const ownerPid = selfState === p1 ? "p1" : "p2";
+    for (const z of (effect.zones || ["grave"])) {
+      const got = zoneCards(selfState, z, c2);
+      for (const c of got) owners[c.uid] = ownerPid;
+      cards.push(...got);
+    }
+  } else if (zone === "revealed" || zone === "lastMoved") {
     cards = zoneCards(null, zone, c2);
   } else {
     const ownerPid = selfState === p1 ? "p1" : "p2";
@@ -338,6 +400,26 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const markDestroyed = (card, pidx, viaBattle) => {
     ctx.destroyedThisStep = [...(ctx.destroyedThisStep || []), { card, ownerPid: pidx, viaBattle: !!viaBattle }];
   };
+  // 置換効果（G-NEO の除去耐性）で「離れない」ことが決まったカード。
+  // all:true の全体除去でも効くように、選択の有無に関わらずここで除く。
+  const leaveExempt = new Set(ctx.leaveExempt || []);
+  const notExempt = list => (leaveExempt.size ? list.filter(c => !leaveExempt.has(c.uid)) : list);
+  // 効果でバトルゾーンに出す時に選んだ NEO進化の進化元（{ カードのuid: 進化元のuid[] }）
+  const neoBases = ctx.neoBases || null;
+  // 出すカードに NEO進化の進化元を重ねる。重ねた進化元はそのゾーンから取り除かれるので、
+  // 呼び出し側は返ってきた state を使って続きを組み立てる。
+  const withNeoBases = (state, cards) => {
+    if (!neoBases) return { state, cards };
+    let st = state;
+    const out = cards.map(c => {
+      const uids = neoBases[c.uid];
+      if (!uids?.length) return c;
+      const r = stackEvolutionBases(st, evolutionSpec(c) || { zone: "bz" }, uids);
+      st = r.state;
+      return { ...c, evolutionBase: r.bases };
+    });
+    return { state: st, cards: out };
+  };
 
   switch (type) {
     // ---------- 変数ステップ ----------
@@ -443,7 +525,11 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         setSelf(s => {
           const b = { ...s };
           if (type === "revealedToHand")  b.hand   = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
-          if (type === "revealedToBz")    b.battle = [...s.battle, ...take.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
+          if (type === "revealedToBz") {
+            const r = withNeoBases(s, take);
+            Object.assign(b, r.state);
+            b.battle = [...r.state.battle, ...r.cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
+          }
           if (type === "revealedToMana")  b.mana   = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
           if (type === "revealedToGrave") b.grave  = [...s.grave, ...take];
           if (type === "revealedToDeckTop")    b.deck = [...take, ...s.deck];
@@ -468,9 +554,10 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       for (const { pidx, cards } of pickSelected("hand")) {
         const uids = cards.map(c => c.uid);
         const kw = effect.tempKeyword;
-        setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
-            grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }));
+        setOf(pidx)(s => { const r = withNeoBases({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)) }, cards);
+          return { ...r.state,
+            battle: [...r.state.battle, ...r.cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
+              grantedKeywords: kw ? [...(c.grantedKeywords || []), kw] : c.grantedKeywords }))] }; });
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を手札からバトルゾーンへ`);
         ctx.lastMoved = cards;
         ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
@@ -539,7 +626,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
             addLog(`${pid}: 城「${card.name}」を${zoneLabel}表向きシールド化`);
           } else {
-            setOf(pidx)(s => { const t = take(s); return { ...t, battle: [...t.battle, withJustDiver({ ...card, tapped: false, enteredThisTurn: true, summonedThisTurn: true })] }; });
+            setOf(pidx)(s => { const r = withNeoBases(take(s), [card]);
+              return { ...r.state, battle: [...r.state.battle, withJustDiver({ ...r.cards[0], tapped: false, enteredThisTurn: true, summonedThisTurn: true })] }; });
             addLog(`${pid}: 「${card.name}」を${zoneLabel}${freeLabel}召喚`);
             ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
             ctx.lastPutBz = [{ card, ownerPid: pidx }];
@@ -553,8 +641,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "manaToBz": {
       for (const { pidx, cards } of pickSelected("mana")) {
         const uids = cards.map(c => c.uid);
-        setOf(pidx)(s => ({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)),
-          battle: [...s.battle, ...cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))] }));
+        setOf(pidx)(s => { const r = withNeoBases({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)) }, cards);
+          return { ...r.state,
+            battle: [...r.state.battle, ...r.cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))] }; });
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} マナ→バトルゾーン`);
         ctx.lastMoved = cards;
         ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: pidx, method: "put" }))];
@@ -590,11 +679,11 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       // self:true =「このクリーチャーを破壊する」。target の既定(opponent)ではなく能力の持ち主を見る
       for (const pidx of (effect.self ? [ownerPid] : pids)) {
         const st = stateOf(pidx);
-        const targets = effect.self
+        const targets = notExempt(effect.self
           ? st.battle.filter(c => c.uid === ctx.srcCardUid)
           : effect.all
             ? st.battle.filter(c => matchFilter(c, effect.filter, ctx))
-            : st.battle.filter(c => selectedUids.includes(c.uid));
+            : st.battle.filter(c => selectedUids.includes(c.uid)));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
@@ -609,7 +698,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "bzToHand": {
       for (const pidx of pids) {
         const st = stateOf(pidx);
-        const targets = effect.all ? st.battle.filter(c => matchFilter(c, effect.filter, ctx)) : st.battle.filter(c => selectedUids.includes(c.uid));
+        const targets = notExempt(effect.all ? st.battle.filter(c => matchFilter(c, effect.filter, ctx)) : st.battle.filter(c => selectedUids.includes(c.uid)));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids);
@@ -620,7 +709,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     }
     case "bzToMana": {
       for (const pidx of pids) {
-        const targets = stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid));
+        const targets = notExempt(stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid)));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, mana: [...s.mana, ...extracted.map(c => ({ ...c, tapped: !!effect.tapped }))] }; });
@@ -630,7 +719,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     }
     case "bzToShield": {
       for (const pidx of pids) {
-        const targets = stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid));
+        const targets = notExempt(stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid)));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, shields: [...s.shields, ...extracted.map(c => ({ ...c, tapped: false, faceUp: false }))], shieldAddedThisTurn: true }; });
@@ -742,20 +831,35 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     }
 
     // ---------- 墓地・シールド ----------
-    case "graveToBz": {
-      const ownerOfGrave = effect.owner === "destroyed" ? ctx.destroyedCreatureOwner : ownerPid;
-      if (!ownerOfGrave) break;
-      const cards = stateOf(ownerOfGrave).grave.filter(c => selectedUids.includes(c.uid));
+    // graveToBz は墓地から、zonesToBz は zones で指定した複数のゾーン（「自分の墓地または
+    // マナゾーンから」）から出す。選ばれたカードは、それがあったゾーンからだけ取り除く。
+    case "graveToBz": case "zonesToBz": {
+      const zones = type === "zonesToBz" ? (effect.zones || ["grave"]) : ["grave"];
+      const owner = effect.owner === "destroyed" ? ctx.destroyedCreatureOwner : ownerPid;
+      if (!owner) break;
+      const st = stateOf(owner);
+      const picked = zones.map(z => ({ z, key: ZONE_STATE_KEY[z] || z }))
+        .map(({ z, key }) => ({ z, key, cards: (st[key] || []).filter(c => selectedUids.includes(c.uid)) }))
+        .filter(x => x.cards.length);
+      const cards = picked.flatMap(x => x.cards);
       if (!cards.length) break;
-      const uids = cards.map(c => c.uid);
-      setOf(ownerOfGrave)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)),
-        battle: [...s.battle, ...cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
-          ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
-          ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] }));
-      addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を墓地からバトルゾーンへ`);
+      setOf(owner)(s => {
+        let b = { ...s };
+        for (const { key, cards: cs } of picked) {
+          const uids = cs.map(c => c.uid);
+          b[key] = (b[key] || []).filter(c => !uids.includes(c.uid));
+        }
+        const r = withNeoBases(b, cards);
+        return { ...r.state,
+          battle: [...r.state.battle, ...r.cards.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect),
+            ...(effect.tempKeywords ? { tempBuff: { keywords: effect.tempKeywords, expires: "endOfTurn" } } : {}),
+            ...(effect.destroyAtEndOfTurn ? { endOfTurnEffect: { type: "destroySelf" } } : {}) }))] };
+      });
+      const fromLabel = picked.map(x => ZONE_LABELS[x.z] || x.z).join("／");
+      addLog(`${pid}: ${cards.map(c => c.name).join(", ")} を${fromLabel}からバトルゾーンへ`);
       ctx.lastMoved = cards;
-      ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: ownerOfGrave, method: "put" }))];
-      ctx.lastPutBz = cards.map(c => ({ card: c, ownerPid: ownerOfGrave }));
+      ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), ...cards.map(c => ({ card: c, ownerPid: owner, method: "put" }))];
+      ctx.lastPutBz = cards.map(c => ({ card: c, ownerPid: owner }));
       break;
     }
     // メテオバーン: このクリーチャーの下のカードを指定数、指定ゾーンへ動かす「コスト」。
@@ -899,5 +1003,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   // 既定: 自動実行のステップは「行った」、選択が要るステップは1枚以上選ばれていれば「行った」
   if (ctx.stepDone === undefined) ctx.stepDone = AUTO_TYPES.has(type) || selectedUids.length > 0
     || !!(effect.choosePlayer && ctx.chosenPlayer);
+  // このステップ限りの決定なので、次のステップへ持ち越さない
+  delete ctx.leaveExempt; delete ctx.gNeoAsked; delete ctx.neoBases;
   return ctx;
 }
