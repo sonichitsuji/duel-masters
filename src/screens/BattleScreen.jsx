@@ -14,6 +14,7 @@ import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
 import { ReplacementModal } from "../components/modals/ReplacementModal";
 import { HandPlayModal } from "../components/modals/HandPlayModal";
+import { HandPlayOrderModal } from "../components/modals/HandPlayOrderModal";
 import { ManaPayModal } from "../components/modals/ManaPayModal";
 import { AttackTriggerModal } from "../components/modals/AttackTriggerModal";
 import { EvolutionSelectModal } from "../components/modals/EvolutionSelectModal";
@@ -126,6 +127,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const [handPlayPayModal,setHandPlayPayModal]=useState(null);
   // 手札宣言プレイで進化元を選ぶ（NEO進化を含む）。支払いの前に決める
   const [handPlayEvoModal,setHandPlayEvoModal]=useState(null);
+  // 2枚以上まとめて宣言した時、どれから解決するかを選ぶ
+  const [handPlayOrderModal,setHandPlayOrderModal]=useState(null);
+  // 宣言した順に1枚ずつ解決するための待ち行列。1枚ぶんの解決が終わるたびに次を出す
+  const [handPlayQueue,setHandPlayQueue]=useState(null);
   // 効果でバトルゾーンを離れるカードに G-NEO の除去耐性があるか聞く。
   // 決めるまで効果の実行を止めるので、選択内容を預かってから advanceStep に渡す
   const [leaveReplaceModal,setLeaveReplaceModal]=useState(null);
@@ -150,6 +155,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const onTargetedRef=useRef();
   const enqueueEffectRef=useRef();
   const offerSpellAfterCastRef=useRef();
+  // 待ち行列から次の1枚を始めるための参照（リゾルバのアイドルから呼ぶ）
+  const beginHandPlayRef=useRef();
   // 誘発の解決後に攻撃を再開する時、その時点の攻撃クリーチャーを見るための参照
   const attackingUidRef=useRef(null);
   const proceedAttackRef=useRef();
@@ -197,9 +204,17 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||handPlayOrderModal||leaveReplaceModal||neoPutModal||revChangeModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
+    // 宣言した手札プレイを1枚ずつ。前の1枚の効果を解決しきってから次を出す
+    if(pendingEffects.length===0&&handPlayQueue?.plays.length){
+      const {pid,srcEvent,plays}=handPlayQueue;
+      const [next,...rest]=plays;
+      setHandPlayQueue(rest.length?{pid,srcEvent,plays:rest}:null);
+      setTimeout(()=>beginHandPlayRef.current(pid,next,srcEvent),0);
+      return;
+    }
     // 「攻撃する時」の誘発を解決しきったら、預かっていた攻撃先へ進む
     if(pendingEffects.length===0&&pendingAttack){
       const {intent}=pendingAttack;
@@ -223,7 +238,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       resolveEntry(group[0]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[resolverBusy,pendingEffects,pendingAttack]);
+  },[resolverBusy,pendingEffects,pendingAttack,handPlayQueue]);
 
   // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」「G-NEO の置換」など）。
   // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
@@ -607,16 +622,27 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(pid,card,"hand"),0);
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
-    // 2枚目以降も使える。S・トリガーは残りのカードを、誘発型は盤面を見て条件を取り直して再提示する
-    if(srcEvent.stCards) setTimeout(()=>offerSTriggers(srcEvent.stCards.filter(c=>c.uid!==card.uid),pid),0);
-    else setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);
+    // 残りは handPlayQueue が順に出す（この1枚の効果を解決しきってから次へ）
   };
-  // モーダルで「プレイする」を押した時。
-  // 進化元を選ぶカード（NEO進化を含む）は先に進化元を決めてから、コストの支払いへ進む
-  const handleHandPlay=(play)=>{
+  // モーダルで「プレイする」を押した時。宣言したぶんを解決順に並べてから1枚ずつ処理する。
+  // 2枚以上なら順番を聞く（先に解決したものの効果で盤面が変わるため）
+  const handleHandPlay=(picks)=>{
     const {pid,srcEvent}=handPlayModal;
     setHandPlayModal(null);
+    const plays=Array.isArray(picks)?picks:[picks];
+    if(!plays.length) return;
+    if(plays.length===1){ setHandPlayQueue({pid,srcEvent,plays}); return; }
+    setHandPlayOrderModal({pid,srcEvent,plays});
+  };
+  // 1枚ぶんを実際に始める。
+  // 進化元を選ぶカード（NEO進化を含む）は先に進化元を決めてから、コストの支払いへ進む
+  const beginHandPlay=(pid,play,srcEvent)=>{
     const spec=evolutionSpec(play.face||play.card);
+    // 前の1枚の効果で手札から動いていることがあるので、実行の直前に確かめる
+    if(!stateRef.current[pid].hand.some(c=>c.uid===play.card.uid)){
+      addLog(`[${handPlayLabel(play.kind)}] 「${play.card.name}」は手札にないので実行できない`);
+      return;
+    }
     if(spec&&!play.evolutionBaseUids){
       const st=stateRef.current[pid];
       const candidates=evolutionCandidates(play.card,st);
@@ -627,6 +653,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }
     continueHandPlay(pid,play,srcEvent);
   };
+  beginHandPlayRef.current=beginHandPlay;
   const continueHandPlay=(pid,play,srcEvent)=>{
     if(!play.cost){ playFromHandDeclared(pid,play,srcEvent,null); return; }
     // 代替コストと同じ手口: コストと文明を差し替えた仮カードを支払いUIに渡す
@@ -1375,6 +1402,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         return <EvolutionSelectModal candidates={candidates} card={put.card}
           spec={evolutionSpec(put.card)} ownerState={stateRef.current[put.ownerPid]}
           onConfirm={done} onCancel={()=>done([])}/>;})()}
+      {handPlayOrderModal&&(()=>{const{pid,plays,srcEvent}=handPlayOrderModal;
+        return <HandPlayOrderModal pid={pid} plays={plays}
+          onConfirm={order=>{setHandPlayOrderModal(null);
+            const ordered=order.map(uid=>plays.find(p=>p.card.uid===uid)).filter(Boolean);
+            addLog(`[${handPlayLabel(plays[0].kind)}] ${pid}: ${ordered.map(p=>(p.face||p.card).name).join(" → ")} の順で解決`);
+            setHandPlayQueue({pid,srcEvent,plays:ordered});}}
+          onCancel={()=>{setHandPlayOrderModal(null);addLog(`[${handPlayLabel(plays[0].kind)}] ${pid}: 宣言を取りやめ`);}}/>;})()}
       {handPlayEvoModal&&(()=>{const{pid,play,spec,candidates,srcEvent}=handPlayEvoModal;
         const done=baseUids=>{setHandPlayEvoModal(null);continueHandPlay(pid,{...play,evolutionBaseUids:baseUids||[]},srcEvent);};
         return <EvolutionSelectModal candidates={candidates} card={play.face||play.card} spec={spec}
@@ -1382,7 +1416,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {handPlayPayModal&&(()=>{const{pid,payCard,play,srcEvent}=handPlayPayModal;const st=stateRef.current[pid];return(
         <ManaPayModal card={payCard} mana={st.mana} ownerState={st}
           onConfirm={uids=>{setHandPlayPayModal(null);playFromHandDeclared(pid,play,srcEvent,uids);}}
-          onCancel={()=>{setHandPlayPayModal(null);addLog(`[${handPlayLabel(play.kind)}] ${pid}: 支払いを取りやめ`);setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);}}/>
+          onCancel={()=>{setHandPlayPayModal(null);addLog(`[${handPlayLabel(play.kind)}] ${pid}: 支払いを取りやめ`);}}/>
       );})()}
       {revChangeModal&&(()=>{const{attacker,intent}=revChangeModal;const st=stateRef.current[active];
         const done=(handCard)=>{setRevChangeModal(null);
