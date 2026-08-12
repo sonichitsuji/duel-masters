@@ -322,23 +322,41 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     enqueueEffect({ kind, effect, ownerPid, srcCard, subjectCard, sourceName:sourceName||srcCard?.name });
   };
 
-  // シールドゾーンから手札に加わったカードの「S・トリガー」を解決する。
-  // ブレイク（finalizeBreak）と、効果による shieldToHand の両方から呼ぶ。
-  // ツインパクトは呪文面が S・トリガーを持つことがあるので、唱える面を解決してから絞る。
+  // シールドゾーンから手札に加わったカードの「S・トリガー」を提示する。
+  // S・トリガーは「手札に加える時、コストを支払わずに"すぐ実行"してもよい」能力なので、
+  // 鬼エンド／D・D・D と同じ手札宣言プレイの枠組みに乗せる（HandPlayModal → playFromHandDeclared）。
+  //   → クリーチャーはバトルゾーンへ出て cip が誘発し、呪文は唱えた後に墓地へ行く。使わないことも選べる
+  // 呼ばれた時点でカードはすでに手札にある（finalizeBreak / shieldToHand が先に手札へ加える）。
   // G・ストライクの除外はブレイク時の話なので、呼び出し側で済ませてから渡すこと。
-  const fireShieldTriggers=(cards,ownerPid,{delay=0}={})=>{
+  const offerSTriggers=(cards,ownerPid)=>{
+    if(!cards?.length) return;
     const oPid=ownerPid==="p1"?"p2":"p1";
-    const setSelf=ownerPid==="p1"?setP1:setP2;
-    const setOther=ownerPid==="p1"?setP2:setP1;
-    cards.map(c=>({card:c,side:sTriggerSide(c)})).filter(x=>x.side).forEach(({side})=>{
+    const st=stateRef.current[ownerPid];
+    const plays=[];
+    for(const c of cards){
+      // 革命2 の判定はここ（＝手札に加わった後のシールド枚数）で行う
+      const face=sTriggerSide(c,st);
+      if(!face) continue;
       // 呪文を唱えられない状態なら、呪文の S・トリガーは使えない（ラフルル・ラブ等）。
       // sTriggerSide が呪文面を返した場合は side:"spell" が付いている（クリーチャーのSTは対象外）
-      const deny=spellDenyReason(side,stateRef.current[ownerPid],stateRef.current[oPid]);
-      if(deny){addLog(`ST 「${side.name}」は${deny}`);return;}
-      addLog(`ST 「${side.name}」`);
-      showCutIn({title:"S-TRIGGER!",cardName:side.name,civ:Array.isArray(side.civ)?side.civ[0]:side.civ});
-      if(side.autoEffect) setTimeout(()=>triggerEffect(side.autoEffect,ownerPid,stateRef.current[ownerPid],setSelf,stateRef.current[oPid],setOther,side.name,{...side}),delay);
+      const deny=spellDenyReason(face,st,stateRef.current[oPid]);
+      if(deny){addLog(`ST 「${face.name}」は${deny}`);continue;}
+      // 手札に残っていないカードは実行できない（別の効果で動いた場合）
+      if(!st.hand.some(h=>h.uid===c.uid)) continue;
+      plays.push({ card:c, face:face===c?undefined:face, kind:"sTrigger", cost:null });
+    }
+    if(!plays.length) return;
+    enqueueEffectRef.current({
+      kind:"handPlay", effect:{ label:"S・トリガー" }, ownerPid,
+      sourceName:"S・トリガー", priority:2,
+      plays, srcEvent:{ stCards:cards },
     });
+  };
+  // 旧名。ブレイク（finalizeBreak）と効果による shieldToHand の両方から呼ぶ。
+  // ブレイク演出のあとに提示したいので delay を受ける
+  const fireShieldTriggers=(cards,ownerPid,{delay=0}={})=>{
+    if(!cards?.length) return;
+    setTimeout(()=>offerSTriggers(cards,ownerPid),delay);
   };
 
   // 汎用トリガー・ディスパッチャ
@@ -448,15 +466,19 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       });
     });
   };
-  // 実際に手札からプレイする。コストは支払い済みの前提（払う場合は先に ManaPayModal を通す）
-  const playFromHandDeclared=(pid,card,kind,srcEvent,paidManaUids)=>{
+  // 実際に手札からプレイする。コストは支払い済みの前提（払う場合は先に ManaPayModal を通す）。
+  // play は { card, kind, cost?, face? }。ツインパクトを呪文面で実行する時だけ face が付き、
+  // 「何を実行するか」は face、「どのカードを手札から動かすか」は card で見る。
+  const playFromHandDeclared=(pid,play,srcEvent,paidManaUids)=>{
+    const {card,kind}=play;
+    const face=play.face||card;
     const setSelf=pid==="p1"?setP1:setP2;
-    const isCreature=isCreatureSide(card);
-    const civ=Array.isArray(card.civ)?card.civ[0]:card.civ;
+    const isCreature=isCreatureSide(face);
+    const civ=Array.isArray(face.civ)?face.civ[0]:face.civ;
     const label=handPlayLabel(kind);
     const paid=paidManaUids?.length>0;
-    addLog(`[${label}] ${pid}: 「${card.name}」を${paid?"コストを支払って":"コストを支払わずに"}${isCreature?"召喚":"唱える"}`);
-    showCutIn({title:`${label}！`,cardName:card.name,civ});
+    addLog(`[${label}] ${pid}: 「${face.name}」を${paid?"コストを支払って":"コストを支払わずに"}${isCreature?"召喚":"唱える"}`);
+    showCutIn({title:`${label}！`,cardName:face.name,civ});
     const payMana=st=>paid?tapManaByUids(st.mana,paidManaUids):st.mana;
     if(isCreature){
       const put=withJustDiver({...card,tapped:false,enteredThisTurn:true,summonedThisTurn:!hasKeyword(card,"speedAttacker")});
@@ -465,24 +487,25 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(card.autoEffect) enqueueEffect({kind:"trigger",effect:card.autoEffect,ownerPid:pid,srcCard:{...card,srcCardUid:put.uid},sourceName:card.name});
       setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:pid,subjectCard:put,method:"summon"}),0);
     }else{
-      // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ
-      const isCharger=card.keywords?.includes("charger");
+      // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ（動かすのは元のカード）
+      const isCharger=face.keywords?.includes("charger");
       setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),
         ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
-      if(card.autoEffect) enqueueEffect({kind:"spell",effect:card.autoEffect,ownerPid:pid,srcCard:card,sourceName:card.name});
+      if(face.autoEffect) enqueueEffect({kind:"spell",effect:face.autoEffect,ownerPid:pid,srcCard:face,sourceName:face.name});
       if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(pid,card,"hand"),0);
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
-    // 同じ誘発に対して2枚目以降も使える。盤面が変わっているので条件は取り直す
-    setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);
+    // 2枚目以降も使える。S・トリガーは残りのカードを、誘発型は盤面を見て条件を取り直して再提示する
+    if(srcEvent.stCards) setTimeout(()=>offerSTriggers(srcEvent.stCards.filter(c=>c.uid!==card.uid),pid),0);
+    else setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);
   };
   // モーダルで「プレイする」を押した時。コストが要るなら支払いへ、要らなければ即プレイ
   const handleHandPlay=(play)=>{
     const {pid,srcEvent}=handPlayModal;
     setHandPlayModal(null);
-    if(!play.cost){ playFromHandDeclared(pid,play.card,play.kind,srcEvent,null); return; }
+    if(!play.cost){ playFromHandDeclared(pid,play,srcEvent,null); return; }
     // 代替コストと同じ手口: コストと文明を差し替えた仮カードを支払いUIに渡す
-    setHandPlayPayModal({ pid, srcEvent, kind:play.kind, card:play.card,
+    setHandPlayPayModal({ pid, srcEvent, play,
       payCard:{...play.card, cost:play.cost.cost, civ:play.cost.civs||play.card.civ} });
   };
 
@@ -1174,10 +1197,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       {handPlayModal&&<HandPlayModal pid={handPlayModal.pid} plays={handPlayModal.plays} onPlay={handleHandPlay} onSkip={()=>{addLog(`[${handPlayLabel(handPlayModal.plays[0]?.kind)}] ${handPlayModal.pid}: 使わない`);setHandPlayModal(null);}}/>}
-      {handPlayPayModal&&(()=>{const{pid,payCard,card,kind,srcEvent}=handPlayPayModal;const st=stateRef.current[pid];return(
+      {handPlayPayModal&&(()=>{const{pid,payCard,play,srcEvent}=handPlayPayModal;const st=stateRef.current[pid];return(
         <ManaPayModal card={payCard} mana={st.mana} ownerState={st}
-          onConfirm={uids=>{setHandPlayPayModal(null);playFromHandDeclared(pid,card,kind,srcEvent,uids);}}
-          onCancel={()=>{setHandPlayPayModal(null);addLog(`[${handPlayLabel(kind)}] ${pid}: 支払いを取りやめ`);setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);}}/>
+          onConfirm={uids=>{setHandPlayPayModal(null);playFromHandDeclared(pid,play,srcEvent,uids);}}
+          onCancel={()=>{setHandPlayPayModal(null);addLog(`[${handPlayLabel(play.kind)}] ${pid}: 支払いを取りやめ`);setTimeout(()=>offerHandPlays(srcEvent.event,srcEvent.ev),0);}}/>
       );})()}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}

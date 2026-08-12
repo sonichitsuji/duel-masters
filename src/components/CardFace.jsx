@@ -1,5 +1,5 @@
 import { CIV } from "../constants";
-import { getCardCivs, makeCardBg, ssxKeywords, cardDisplayName } from "../gameLogic";
+import { getCardCivs, makeCardBg, ssxKeywords, cardDisplayName, displayPower } from "../gameLogic";
 
 // ===========================
 // CARD COMPONENTS
@@ -16,7 +16,6 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
   // フィールドは「バトルゾーンに」横向きで置かれる。タップではないので回転だけさせる。
   // 手札や一覧では普通の向きで見せたいので、バトルゾーンの描画だけ inBattle を渡す。
   const sideways=inBattle&&card.type==="field";
-  const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
   const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
   return(
@@ -29,7 +28,7 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
       {/* Race */}
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${effPower}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="field"?"フィールド":card.type==="castle"?"城":"SPELL"}</div>
+      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${displayPower(card)}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="field"?"フィールド":card.type==="castle"?"城":"SPELL"}</div>
       {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {ownKw.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}

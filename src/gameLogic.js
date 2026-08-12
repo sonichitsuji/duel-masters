@@ -220,13 +220,24 @@ export function extractFromBattle(battle, uid) {
   return extractManyFromBattle(battle, [uid]);
 }
 
-// S・トリガーとして唱えられる面を返す（無ければ null）。
+// S・トリガーとして実行できる面を返す（無ければ null）。
 // ツインパクトは呪文面だけが「S・トリガー」を持つことがあるので、その場合は呪文面を返す。
-export function sTriggerSide(card) {
+// ownerState を渡すと「革命2：〜このカードに『S・トリガー』を与える」（grantSelfSTrigger）も見る。
+// シールドの枚数を見る条件なので、判定は「手札に加わった後」の状態で行うこと。
+export function sTriggerSide(card, ownerState) {
   if (!card) return null;
-  if (hasKeyword(card, "sTrigger")) return card;
+  if (hasKeyword(card, "sTrigger") || selfSTriggerGranted(card, ownerState)) return card;
   if (card.spellSide?.keywords?.includes("sTrigger")) return { ...card, ...card.spellSide, uid: card.uid, side: "spell" };
   return null;
+}
+
+// 革命n:「自分のシールドゾーンから手札に加えるこのカードに『S・トリガー』を与える」。
+// 通常の grantKeywords はバトルゾーン＋表向きシールドしか見ないので、そこには乗せられない。
+//   grantSelfSTrigger: { condition: { type:"shieldCount", who:"self", max:2 } }
+export function selfSTriggerGranted(card, ownerState) {
+  const rule = effectiveCard(card)?.grantSelfSTrigger;
+  if (!rule || !ownerState) return false;
+  return checkGrantCondition(rule.condition, ownerState, card);
 }
 
 // 「エレメント」= クリーチャー(進化・ツインパクトのクリーチャー面を含む)またはタマシード
@@ -542,7 +553,9 @@ export function manaHasAll(state, filters){
 //   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
 //   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
 export const HAND_PLAY_KINDS = ["oniEnd", "ddd"];
-const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D" };
+// sTrigger は誘発で手札を探す能力ではないが、「手札のカードをコストを支払わずにプレイしてよいか
+// 聞く」点が同じなので、同じ枠組み（HandPlayModal / playFromHandDeclared）に乗せている。
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", sTrigger: "S・トリガー" };
 export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
 
 // 誘発の on / target がこのイベントに合うか（両方の能力で共通）
@@ -620,6 +633,16 @@ export function checkGrantCondition(cond, ownerState, card, otherState){
   return true;
 }
 
+// 表示用のパワー。所有者の盤面が要る継続能力（condPower / grantPowerBoost）までは見ない、
+// 「カード自身から分かるぶん」だけの値。カードUIはどこもこの形で出していたので1箇所にまとめた。
+// powerPlus:true のカードは「5000+」のように末尾に + を付ける（数値そのものは変えない）。
+export function displayPower(card) {
+  if (!card) return "";
+  const ec = effectiveCard(card);
+  const base = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
+  return `${base + (card.tempBuff?.power || 0)}${ec.powerPlus ? "+" : ""}`;
+}
+
 export function getEffectivePower(card, ownerState, allOwnBattle, opts = {}) {
   const ec = effectiveCard(card);
   let power = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
@@ -669,6 +692,8 @@ export function computeGrantedKeywords(card, battleZone, ownerState) {
       if (rule.filter?.raceContains && !evalCard.race?.includes(rule.filter.raceContains)) continue;
       if (rule.filter?.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) continue;
       if (rule.filter?.notSelf && granter.uid === card.uid) continue;
+      // self:「このクリーチャーに〜を与える」。同名の2体目に配らないよう uid で見る
+      if (rule.filter?.self && granter.uid !== card.uid) continue;
       if (rule.filter?.nameContains && !card.name?.includes(rule.filter.nameContains)) continue;
       if (rule.filter?.elementOnly && !isElement(card)) continue;
       if (!granted.includes(rule.keyword)) granted.push(rule.keyword);

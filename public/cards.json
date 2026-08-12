@@ -4237,5 +4237,110 @@
       }
     },
     "id": 118
+  },
+  {
+    "name": "切札勝太＆カツキング -熱血の物語-",
+    "race": "アウトレイジ・ドラゴン/ヒューマノイド",
+    "cost": 5,
+    "power": 5000,
+    "powerPlus": true,
+    "type": "creature",
+    "civ": [
+      "water",
+      "fire",
+      "nature"
+    ],
+    "keywords": [
+      "machFighter"
+    ],
+    "effect": "マッハファイター（このクリーチャーは、出たターンでもタップされているクリーチャーを攻撃できる）\nこのクリーチャーが出た時、自分の山札の上から5枚を見る。その中から1枚を表向きにして手札に加え、残りを好きな順序で山札の下に置く。こうして表向きにしたカードが火または自然なら、クリーチャーを1体選び、持ち主の手札に戻してもよい。\n革命2：自分のシールドが2つ以下なら、自分のシールドゾーンから手札に加えるこのクリーチャーに「S・トリガー」を与える。\n革命0：自分のシールドが1つもなければ、このクリーチャーのパワーを+10000し、「スピードアタッカー」と「T・ブレイカー」を与える。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "自分の山札の上から5枚を見る",
+          "type": "reveal",
+          "amount": 5
+        },
+        {
+          "label": "その中から1枚を表向きにして手札に加える",
+          "type": "revealedToHand",
+          "amount": 1
+        },
+        {
+          "label": "こうして表向きにしたカードが火または自然か数える",
+          "type": "count",
+          "zone": "lastMoved",
+          "filter": {
+            "civ": [
+              "fire",
+              "nature"
+            ]
+          },
+          "as": "hotCard"
+        },
+        {
+          "label": "残りを好きな順序で山札の下に置く",
+          "type": "revealedToDeckBottom",
+          "order": "choose"
+        },
+        {
+          "label": "火または自然なら、クリーチャーを1体選び、持ち主の手札に戻してもよい",
+          "type": "bzToHand",
+          "target": "both",
+          "amount": 1,
+          "optional": true,
+          "filter": {
+            "creatureOnly": true
+          },
+          "onlyIf": {
+            "count": "hotCard",
+            "min": 1
+          }
+        }
+      ]
+    },
+    "grantSelfSTrigger": {
+      "condition": {
+        "type": "shieldCount",
+        "who": "self",
+        "max": 2
+      }
+    },
+    "condPower": [
+      {
+        "condition": {
+          "type": "shieldCount",
+          "who": "self",
+          "max": 0
+        },
+        "amount": 10000
+      }
+    ],
+    "grantKeywords": [
+      {
+        "keyword": "speedAttacker",
+        "condition": {
+          "type": "shieldCount",
+          "who": "self",
+          "max": 0
+        },
+        "filter": {
+          "self": true
+        }
+      },
+      {
+        "keyword": "tBreaker",
+        "condition": {
+          "type": "shieldCount",
+          "who": "self",
+          "max": 0
+        },
+        "filter": {
+          "self": true
+        }
+      }
+    ],
+    "id": 119
   }
 ]
