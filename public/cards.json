@@ -4408,5 +4408,56 @@
       }
     ],
     "id": 120
+  },
+  {
+    "name": "♪立ち上がる 悪魔に天使 堕ちるかな",
+    "race": "マジック・ソング",
+    "cost": 4,
+    "type": "spell",
+    "civ": "water",
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー（このカードを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\nカードを1枚引き、数字を1つ選ぶ。次の自分のターンのはじめまで、その数字と同じコストの相手のエレメントの能力を無視し、相手はその数字と同じコストの呪文を唱えられない。",
+    "autoEffect": {
+      "trigger": "cast",
+      "effects": [
+        {
+          "label": "カードを1枚引く",
+          "type": "drawCards",
+          "amount": 1
+        },
+        {
+          "label": "数字を1つ選ぶ",
+          "type": "chooseNumber",
+          "as": "n",
+          "min": 0,
+          "max": 12
+        },
+        {
+          "label": "その数字と同じコストの相手のエレメントの能力を、次の自分のターンのはじめまで無視する",
+          "type": "ignoreAbilities",
+          "target": "opponent",
+          "all": true,
+          "filter": {
+            "element": true,
+            "cost": {
+              "var": "n"
+            }
+          }
+        },
+        {
+          "label": "次の自分のターンのはじめまで、相手はその数字と同じコストの呪文を唱えられない",
+          "type": "denySpell",
+          "target": "opponent",
+          "filter": {
+            "cost": {
+              "var": "n"
+            }
+          }
+        }
+      ]
+    },
+    "id": 121
   }
 ]

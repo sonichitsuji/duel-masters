@@ -1,5 +1,5 @@
 import { CIV } from "../constants";
-import { getCardCivs, makeCardBg, ssxKeywords, cardDisplayName, displayPower, evolutionSpec, isEvolutionNow } from "../gameLogic";
+import { getCardCivs, makeCardBg, ssxKeywords, cardDisplayName, displayPower, evolutionSpec, isEvolutionNow, effectiveCard } from "../gameLogic";
 
 // ===========================
 // CARD COMPONENTS
@@ -9,15 +9,17 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
   const c=CIV[civs[0]]||CIV.fire;
   const w=small?52:74;const h=small?72:106;
   // 超魂X(SSX)はそのカードの通常能力。下のカードの超魂Xもここに合流する
-  const ownKw=[...(card.keywords||[]), ...ssxKeywords(card),
+  // 能力を無視されている間はバッジも消えるよう、effectiveCard 越しに読む
+  const ec=effectiveCard(card);
+  const ownKw=[...(ec.keywords||[]), ...ssxKeywords(card),
     // ツインパクトの呪文面が持つS・トリガーはシールドゾーンで機能するのでバッジに出す
     ...((card.spellSide?.keywords||[]).filter(k=>k==="sTrigger"))];
   const hyper=card.hyperMode;
   // フィールドは「バトルゾーンに」横向きで置かれる。タップではないので回転だけさせる。
   // 手札や一覧では普通の向きで見せたいので、バトルゾーンの描画だけ inBattle を渡す。
   const sideways=inBattle&&card.type==="field";
-  const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
-  const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
+  const hyperTBreaker=hyper&&ec.hyperKeywords?.includes("tBreaker");
+  const hyperWBreaker=hyper&&ec.hyperKeywords?.includes("wBreaker");
   return(
     <div onClick={onClick} title={cardDisplayName(card)} style={{width:w,height:h,borderRadius:7,flexShrink:0,border:`2px solid ${selected?"#ffe066":hyper?"#ffcc00":c.color}`,background:makeCardBg(civs),cursor:"pointer",position:"relative",transform:(card.tapped||sideways)?"rotate(90deg)":selected?"translateY(-8px) scale(1.07)":"none",opacity:dimmed?0.4:1,boxShadow:selected?`0 0 18px #ffe066`:hyper?`0 0 16px #ffcc00cc,0 0 32px #ff880066,inset 0 0 12px #ffcc0033`:`0 0 8px ${c.glow}33`,transition:"all 0.15s",display:"flex",flexDirection:"column",padding:"3px 4px",userSelect:"none"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:1}}>
@@ -48,10 +50,10 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
         {ownKw.includes("gStrike")&&<span style={{fontSize:7,color:"#f8f"}}>GS</span>}
         {ownKw.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
         {/* 鬼エンド。手札から使う能力なので、手札でも見えるようバッジに出す */}
-        {card.oniEnd&&<span style={{fontSize:7,fontWeight:900,color:"#ff4466",textShadow:"0 0 4px #ff4466"}}>鬼</span>}
+        {ec.oniEnd&&<span style={{fontSize:7,fontWeight:900,color:"#ff4466",textShadow:"0 0 4px #ff4466"}}>鬼</span>}
         {/* NEO進化は「重ねてもよい」＝出す時に選ぶ能力なので、手札でも分かるように出す */}
         {evolutionSpec(card)?.neo&&<span style={{fontSize:6,fontWeight:900,color:"#7fe",textShadow:"0 0 4px #0cc",letterSpacing:0}}>{evolutionSpec(card).neo==="g"?"GNEO":"NEO"}</span>}
-        {card.ssx&&<span style={{fontSize:6,fontWeight:900,color:"#c9f",textShadow:"0 0 4px #a0f"}}>SSX</span>}
+        {ec.ssx&&<span style={{fontSize:6,fontWeight:900,color:"#c9f",textShadow:"0 0 4px #a0f"}}>SSX</span>}
       </div>
       {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>HYPER</div>}
       {card.summonedThisTurn&&!isEvolutionNow(card)&&!ownKw.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}

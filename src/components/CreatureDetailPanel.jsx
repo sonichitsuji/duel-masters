@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, ssxKeywords, isCreatureSide, cardDisplayName, displayPower, isSummoningSick } from "../gameLogic";
+import { getCardCivs, ssxKeywords, isCreatureSide, cardDisplayName, displayPower, isSummoningSick, effectiveCard } from "../gameLogic";
 import { CardEffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -14,7 +14,9 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   const c2=civs[1]?CIV[civs[1]]:null;
   // 攻撃できるのはクリーチャーだけ（ツインパクトのクリーチャー面を含む。タマシード／フィールドは不可）
   const isCreature=isCreatureSide(card);
-  const ownKw=[...(card.keywords||[]), ...ssxKeywords(card)];
+  // 能力を無視されている間はバッジも消えるよう、effectiveCard 越しに読む
+  const ec=effectiveCard(card);
+  const ownKw=[...(ec.keywords||[]), ...ssxKeywords(card)];
   // 召喚酔いの判定は isSummoningSick に集約してある。スピードアタッカーとマッハファイターで
   // 酔わないこと（§7.15）に加え、進化かどうか（NEO は進化元が0枚になると酔いが復活する）も見る
   const sick=isSummoningSick(card,ownerState,battleZone);
@@ -22,8 +24,8 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":sick?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
   const hyper=card.hyperMode;
-  const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
-  const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
+  const hyperTBreaker=hyper&&ec.hyperKeywords?.includes("tBreaker");
+  const hyperWBreaker=hyper&&ec.hyperKeywords?.includes("wBreaker");
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
@@ -100,7 +102,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
 
         {/* Buttons */}
         <div style={{display:"flex",gap:8,padding:"8px 12px 12px"}}>
-          {isActive&&drewThisTurn&&card.hyperUnlock&&!card.hyperMode&&onHyperUnlock&&(
+          {isActive&&drewThisTurn&&effectiveCard(card).hyperUnlock&&!card.hyperMode&&onHyperUnlock&&(
             <button onClick={()=>{onHyperUnlock(card.uid);onClose();}} style={{padding:"10px 12px",borderRadius:6,fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#ffcc0055,#ffcc0022)",border:"1px solid #ffcc00",color:"#ffcc00",cursor:"pointer",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>ハイパー化</button>
           )}
           {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>{canAtk?"ATTACK":`攻撃不可 (${reason})`}</button>}

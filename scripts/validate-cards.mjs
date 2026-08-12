@@ -24,7 +24,7 @@ const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatu
   "selfCreatureDestroyed","opponentCreatureDestroyed","creatureEnter"]);
 const EFFECT_TYPES = new Set([
   // 変数ステップ
-  "count","pick",
+  "count","pick","chooseNumber",
   // ドロー/山札
   "drawCards","reveal","search","topToGrave","topToMana","topToShield",
   // 公開カードの行き先
@@ -34,7 +34,7 @@ const EFFECT_TYPES = new Set([
   // マナから
   "manaToBz","manaToHand","manaToGrave",
   // バトルゾーンから
-  "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
+  "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle","ignoreAbilities",
   // 墓地・シールド
   "graveToBz","zonesToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
   // 呪文封じ
@@ -101,7 +101,7 @@ const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand
 // 効果ステップに書けるキー。綴り違い（takeall / oneplayer など）を弾くために使う。
 // 出典: src/engine/effects.js の effect.X 参照。新しいキーを実装したらここにも足すこと。
 const EFFECT_KEYS = new Set([
-  "type","label","target","zone","zones","filter","amount","count","maxSelect",
+  "type","label","target","zone","zones","filter","amount","count","maxSelect","min","max",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
   "asCost","canUseTrigger","choosePlayer","side","until",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
@@ -179,6 +179,15 @@ function checkOne(e, where) {
   if (e.type === "meteorBurn") {
     if (e.to && !METEOR_BURN_TO.has(e.to)) errors.push(`${where}: meteorBurn の to は ${[...METEOR_BURN_TO].join("/")}`);
     if (e.count != null && typeof e.count !== "number") errors.push(`${where}: meteorBurn の count は数値`);
+  }
+  // 「数字を1つ選ぶ」。選んだ数は as で変数に入れて、以降のステップから {var} で参照する
+  if ((e.min != null || e.max != null) && e.type !== "chooseNumber") {
+    errors.push(`${where}: min/max は type:"chooseNumber" でのみ使えます`);
+  }
+  if (e.type === "chooseNumber") {
+    if (!e.as) errors.push(`${where}: chooseNumber は as（選んだ数を入れる変数名）が必要`);
+    for (const k of ["min", "max"]) if (e[k] != null && typeof e[k] !== "number") errors.push(`${where}: chooseNumber の ${k} は数値`);
+    if (e.min != null && e.max != null && e.min > e.max) errors.push(`${where}: chooseNumber の min が max より大きい`);
   }
   // 「自分の墓地またはマナゾーンから出す」。1ゾーンだけなら graveToBz / manaToBz で書く
   if (e.zones != null && e.type !== "zonesToBz") errors.push(`${where}: zones は type:"zonesToBz" でのみ使えます`);

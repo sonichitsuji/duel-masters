@@ -11,14 +11,16 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
   const [selected, setSelected] = useState([]);
   // 「プレイヤーを1人選ぶ」。uid ではないので selected には混ぜず、別の state で持つ
   const [chosenPlayer, setChosenPlayer] = useState(null);
-  useEffect(() => { setSelected([]); setChosenPlayer(null); }, [activeSteps?.stepIdx]);
+  // 「数字を1つ選ぶ」。uid ではないので selected には混ぜず、別の state で持つ
+  const [chosenNumber, setChosenNumber] = useState(null);
+  useEffect(() => { setSelected([]); setChosenPlayer(null); setChosenNumber(null); }, [activeSteps?.stepIdx]);
   if (!activeSteps) return null;
 
   const { steps, stepIdx, ownerPid, srcCard, context } = activeSteps;
   const step = steps[stepIdx];
   const selfState  = ownerPid === "p1" ? p1 : p2;
   const otherState = ownerPid === "p1" ? p2 : p1;
-  const { candidates, isAuto, maxSelect: dynMaxSelect, ordered, optional: dynOptional, owners, choosePlayer } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
+  const { candidates, isAuto, maxSelect: dynMaxSelect, ordered, optional: dynOptional, owners, choosePlayer, chooseNumber } = getEffectCandidates(step, selfState, otherState, context, p1, p2, srcCard);
   // 「好きな枚数」(any) は0枚も選べるので、JSON に optional が無くても任意扱いにする
   const isOptional = step.optional || dynOptional;
 
@@ -35,7 +37,8 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
   };
 
   // ordered（好きな順序で置く）は、選んだ順がそのまま並び順になるので全部選び終えるまで確定できない
-  const canConfirm = choosePlayer ? !!chosenPlayer
+  const canConfirm = chooseNumber ? chosenNumber != null
+    : choosePlayer ? !!chosenPlayer
     : isAuto || (ordered ? selected.length === maxSel : (isOptional || selected.length > 0));
 
   // 「プレイヤーを1人選ぶ」＋ all は、カードを1枚ずつ選ぶ効果ではない。
@@ -56,6 +59,26 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
             {step.label}
           </div>
         </div>
+
+        {/* 数字を1つ選ぶ（カードではなく数字を選ばせる） */}
+        {chooseNumber && (
+          <div>
+            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>数字を1つ選択：</div>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+              {Array.from({ length: chooseNumber.max - chooseNumber.min + 1 }, (_, i) => chooseNumber.min + i).map(n => {
+                const on = chosenNumber === n;
+                return (
+                  <button key={n} onClick={() => setChosenNumber(on ? null : n)}
+                    style={{ width:38, padding:"10px 0", borderRadius:8, cursor:"pointer", fontSize:15, fontWeight:900,
+                      background: on ? `${c.color}33` : "#111",
+                      border:`1px solid ${on ? c.color : "#333"}`, color: on ? c.textColor : "#888" }}>
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* プレイヤーを1人選ぶ（カードではなくプレイヤーを選ばせる） */}
         {choosePlayer && (
@@ -123,7 +146,8 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
         {/* Buttons */}
         <div style={{ display:"flex", gap:8 }}>
           <button
-            onClick={() => canConfirm && onAdvance(selected, chosenPlayer ? { chosenPlayer } : undefined)}
+            onClick={() => canConfirm && onAdvance(selected,
+              chosenNumber != null ? { chosenNumber } : chosenPlayer ? { chosenPlayer } : undefined)}
             disabled={!canConfirm}
             style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
             {isAuto ? "確認" : "実行"}

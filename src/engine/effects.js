@@ -25,6 +25,20 @@ export function resolveAmount(ctx, val, fallback = 1) {
   return fallback;
 }
 
+// filter の中の数値項目を「いまの値」に固める。
+// プレイヤー状態に保存されて後から matchCardFilter（ctx を持たない）で評価される
+// filter に {var} 参照が入っている場合、保存する時点で数値にしておく必要がある。
+const FILTER_NUMBER_KEYS = ["cost", "maxCost", "minCost", "maxPower", "minPower"];
+export function freezeFilter(filter, ctx) {
+  if (!filter) return filter;
+  let out = null;
+  for (const k of FILTER_NUMBER_KEYS) {
+    const v = filter[k];
+    if (v != null && typeof v !== "number") (out ||= { ...filter })[k] = resolveAmount(ctx, v, 0);
+  }
+  return out || filter;
+}
+
 // ---- ステップ単位の条件（onlyIf）----
 // { count:"変数名", min, max } を満たさなければ、そのステップ「だけ」を飛ばす。
 // ifPrevious（＝直前を実行したか）や shouldStopChain（＝以降すべて中止）とは別物。
@@ -189,6 +203,8 @@ const SOURCE = {
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
   "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","winGame","shuffleDeck"]);
+// 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
+const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
 
 // バトルゾーンを離れる効果と、その行き先。実行前に置換（G-NEO の除去耐性など）を挟むために使う。
 export const BZ_LEAVE_DEST = {
@@ -249,6 +265,11 @@ export function enteringBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
 export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, srcCard) {
   const type = effect.type;
   const c2 = { ...ctx, srcName: srcCard?.name };
+  // 「数字を1つ選ぶ」。カードは選ばないので候補は空だが、数字を決めるまで確定できない
+  if (NUMBER_CHOICE_TYPES.has(type)) {
+    return { candidates: [], isAuto: false,
+      chooseNumber: { min: effect.min ?? 0, max: effect.max ?? 12 } };
+  }
   if (AUTO_TYPES.has(type)) {
     if (type === "revealedToDeckBottom") {
       const pool = ctx?.revealed || [];
@@ -423,6 +444,15 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
   switch (type) {
     // ---------- 変数ステップ ----------
+    // 「数字を1つ選ぶ」。選んだ数は変数に入れて、以降のステップから {var} で参照する
+    case "chooseNumber": {
+      const n = ctx.chosenNumber;
+      if (typeof n !== "number") { ctx.stepDone = false; break; }
+      ctx.vars[effect.as || "number"] = n;
+      addLog(`${pid}: ${effect.label || "数字を選ぶ"} → ${n}`);
+      ctx.stepDone = true;
+      break;
+    }
     case "count": {
       const zone = effect.zone || "bz";
       let n = 0;
@@ -760,9 +790,29 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     // 「次の、相手のターンの終わりまで、相手は呪文を唱えられない」（例: ラフルル・ラブ）
     // 期限の管理は BattleScreen の handleEndTurn 側（対象プレイヤーのターンが終わると切れる）。
     case "denySpell": {
-      const rule = { until: effect.until || "endOfNextTurn", filter: effect.filter, label: effect.label };
+      // filter は状態に保存され、あとで matchCardFilter（ctx 無し）で評価されるので、
+      // {var} 参照はここで数値に固めておく（「選んだ数字と同じコストの呪文」用）
+      const rule = { until: effect.until || "endOfNextTurn", filter: freezeFilter(effect.filter, ctx), label: effect.label };
       for (const pidx of pids) setOf(pidx)(s => ({ ...s, spellDeny: [...(s.spellDeny || []), rule] }));
-      addLog(`${pid}: 次の相手のターンの終わりまで、${tgt === "self" ? "自分" : "相手"}は呪文を唱えられない`);
+      addLog(`${pid}: 次の相手のターンの終わりまで、${tgt === "self" ? "自分" : "相手"}は${rule.filter?.cost != null ? `コスト${rule.filter.cost}の` : ""}呪文を唱えられない`);
+      break;
+    }
+    // 「そのエレメントの能力を無視する」。バトルゾーンのカードに印を付けるだけで、
+    // 能力の読み出し（effectiveCard）がその印を見て能力を落とす。
+    // 期限は denySpell と同じ規則で、印を付けられた側のターンが終わると切れる
+    // （＝この効果を使った側の「次の自分のターンのはじめ」）。
+    case "ignoreAbilities": {
+      for (const pidx of pids) {
+        const st = stateOf(pidx);
+        const targets = effect.all ? st.battle.filter(c => matchFilter(c, effect.filter, ctx))
+                                   : st.battle.filter(c => selectedUids.includes(c.uid));
+        if (!targets.length) continue;
+        const uids = targets.map(c => c.uid);
+        setOf(pidx)(s => ({ ...s, battle: s.battle.map(c => uids.includes(c.uid) ? { ...c, ignoreAbilities: true } : c) }));
+        addLog(`${pid}: ${targets.map(c => c.name).join(", ")} の能力を無視する`);
+      }
+      // 対象がいなくても「行った」扱い（この後に出たカードには掛からないのが正しい）
+      ctx.stepDone = true;
       break;
     }
     // そのターン限り、指定ゾーンからの召喚を許可する（例: 蛇手の親分ゴエモンキー！）

@@ -159,6 +159,8 @@ export function matchCardFilter(card, filter) {
   if (filter.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (filter.creatureOnly && !isCreatureSide(card)) return false;
   if (filter.type && !anyOf(filter.type, t => matchesType(card, t))) return false;
+  // cost はちょうどその値（「選んだ数字と同じコストの呪文」等）。matchFilter と同じ語彙
+  if (filter.cost != null && card.cost !== filter.cost) return false;
   if (filter.maxCost != null && !(card.cost <= filter.maxCost)) return false;
   if (filter.minCost != null && !(card.cost >= filter.minCost)) return false;
   if (filter.maxPower != null && !((card.power || 0) <= filter.maxPower)) return false;
@@ -280,9 +282,28 @@ export function isElement(card){ return card.type === "creature" || card.type ==
 // ssx でマージしない「カードの同一性」に関わるフィールド
 const IDENTITY_KEYS = new Set(["id","uid","name","cost","power","civ","type","race","effect","ssx","evolutionBase"]);
 
-// 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」
+// 「能力を無視する」で消えるフィールド。
+// 名前・コスト・パワー・文明・種族・種別は能力ではないので残り、能力だけが消える。
+// ssx（下のカードから伝播する能力）と tempBuff（他のカードから与えられた能力）も、
+// 「そのエレメントが持つ能力」なので一緒に消える。
+// evolutionBase は能力ではなくカードの構成なので残す（進化クリーチャーであることは変わらない）。
+const ABILITY_FIELDS = ["keywords","autoEffect","triggers","activated","ssx","tempBuff",
+  "summonFrom","freeCast","replaceLose","replaceLeave","spellAfterCast","staticDeny",
+  "costReduce","condPower","grantKeywords","grantPowerBoost","grantPowerBoostGrave",
+  "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
+  "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
+  "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect"];
+
+// 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」。
+// 能力の読み出しはほぼすべてこの関数を通るので、「能力を無視されている」間は
+// 能力フィールドを落とした形を返すだけで、engine 全体に一度に効く。
 export function effectiveCard(card){
   if(!card) return card;
+  if(card.ignoreAbilities){
+    const out={...card};
+    for(const k of ABILITY_FIELDS) delete out[k];
+    return out;
+  }
   const layers=[card.ssx, ...((card.evolutionBase||[]).map(u=>u.ssx))].filter(Boolean);
   if(layers.length===0) return card;
   const out={...card};
@@ -300,7 +321,7 @@ export function effectiveCard(card){
 
 // 表示用: 超魂X由来のキーワード（自身のssx + 下のカードのssx）
 export function ssxKeywords(card){
-  if(!card) return [];
+  if(!card||card.ignoreAbilities) return [];
   const out=[...(card.ssx?.keywords || [])];
   for(const under of card.evolutionBase || []) out.push(...(under.ssx?.keywords || []));
   return out;
@@ -323,7 +344,8 @@ export function hasPlayTrigger(card){
 // 他カードからの継続付与は computeGrantedKeywords を併用すること。
 export function hasKeyword(card, kw){
   const ec=effectiveCard(card);
-  return !!ec?.keywords?.includes(kw) || !!card?.tempBuff?.keywords?.includes(kw);
+  // tempBuff も effectiveCard 越しに読む（能力を無視されている間は与えられた能力も消える）
+  return !!ec?.keywords?.includes(kw) || !!ec?.tempBuff?.keywords?.includes(kw);
 }
 // このクリーチャーに含まれるカードの枚数（自身 + 下に敷かれたカード）
 export function stackCount(card){ return 1 + (card?.evolutionBase?.length || 0); }
@@ -331,7 +353,7 @@ export function stackCount(card){ return 1 + (card?.evolutionBase?.length || 0);
 // ブレイク枚数: T/W・ブレイカー、パワード・ブレイカー（パワー6000ごとに1つ）を考慮
 export function getBreakCount(card, effPower, extraKeywords = []) {
   const ec = effectiveCard(card);
-  const kw = [...(ec.keywords || []), ...(card.tempBuff?.keywords || []), ...extraKeywords,
+  const kw = [...(ec.keywords || []), ...(ec.tempBuff?.keywords || []), ...extraKeywords,
               ...((card.hyperMode && ec.hyperKeywords) || [])];
   let n = 1;
   // ワールド・ブレイカー: シールドをすべてブレイクする（何枚でも足りるよう Infinity を返す）
@@ -483,7 +505,7 @@ export function isGNeoEvolution(card) {
 export function isSummoningSick(card, ownerState, battleZone) {
   if (!card?.summonedThisTurn) return false;
   if (isEvolutionNow(card)) return false;
-  const kws = [...(card.keywords || []), ...ssxKeywords(card),
+  const kws = [...(effectiveCard(card).keywords || []), ...ssxKeywords(card),
     ...computeGrantedKeywords(card, battleZone || ownerState?.battle || [], ownerState)];
   return !kws.includes("speedAttacker") && !kws.includes("machFighter");
 }
@@ -723,13 +745,13 @@ export function displayPower(card) {
   if (!card) return "";
   const ec = effectiveCard(card);
   const base = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
-  return `${base + (card.tempBuff?.power || 0)}${ec.powerPlus ? "+" : ""}`;
+  return `${base + (ec.tempBuff?.power || 0)}${ec.powerPlus ? "+" : ""}`;
 }
 
 export function getEffectivePower(card, ownerState, allOwnBattle, opts = {}) {
   const ec = effectiveCard(card);
   let power = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
-  power += card.tempBuff?.power || 0;
+  power += ec.tempBuff?.power || 0;
   // パワーアタッカー+N（攻撃中のみ）
   if (opts.attacking && ec.powerAttacker) power += ec.powerAttacker;
   if (ec.selfPowerBoostGrave) {
@@ -761,8 +783,8 @@ export function getEffectivePower(card, ownerState, allOwnBattle, opts = {}) {
 // ownerState を渡すと condition(civicCount等) と表向きシールドの付与源も評価できる。
 // 後方互換: battleZone のみでも動作（その場合 condition は battle だけで評価、表向きシールド源は無し）。
 export function computeGrantedKeywords(card, battleZone, ownerState) {
-  const granted = [...(card.tempBuff?.keywords || []), ...ssxKeywords(card)];
   const evalCard = effectiveCard(card);
+  const granted = [...(evalCard.tempBuff?.keywords || []), ...ssxKeywords(card)];
   const zone = battleZone || ownerState?.battle;
   if (!zone) return granted;
   const evalState = ownerState || { battle: zone, shields: [] };
