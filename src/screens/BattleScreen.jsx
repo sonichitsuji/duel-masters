@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -275,9 +275,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if (updatedCtx.castSpell) {
         const { card: castCard, ownerPid: castOwnerPid, fromZone: castFrom } = updatedCtx.castSpell;
         delete updatedCtx.castSpell;
-        if (castCard.autoEffect) {
+        const castMain = spellMainEffect(castCard);
+        if (castMain) {
           // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
-          setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castCard.autoEffect, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
+          setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castMain, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
         }
         setTimeout(() => offerSpellAfterCastRef.current(castOwnerPid, castCard, castFrom || "hand"), 0);
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard,fromZone:castFrom||"hand"}), 0);
@@ -292,15 +293,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if (updatedCtx.creatureEnteredBz && updatedCtx.creatureEnteredBz.length) {
         const list = updatedCtx.creatureEnteredBz;
         delete updatedCtx.creatureEnteredBz;
+        // 「出た時」は出し方を問わず誘発する。cip も triggers:[{on:"creaturePutBz"}] なので
+        // ここは fireTrigger に任せるだけでよい（自分自身のぶんも他カードの反応もまとめて拾う）
         list.forEach(e => {
-          // 「出た時」は出し方を問わず誘発する。autoEffect{trigger:"play"} で書かれた cip も発火させる
-          // （手札からのプレイは handlePlayCard が別途呼ぶので、ここと二重にはならない）
-          if (e.card.autoEffect?.trigger === "play") {
-            setTimeout(() => enqueueEffectRef.current({
-              kind: "trigger", effect: e.card.autoEffect, ownerPid: e.ownerPid,
-              srcCard: { ...e.card, srcCardUid: e.card.uid }, sourceName: e.card.name,
-            }), 0);
-          }
           if (isCreatureSide(e.card)) {
             setTimeout(() => fireTriggerRef.current("creaturePutBz", { sourcePid: e.ownerPid, subjectCard: e.card, method: e.method }), 0);
           }
@@ -611,14 +606,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           battle:[...st.battle,{...put,evolutionBase:bases}]};
       });
       maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
-      if(card.autoEffect) enqueueEffect({kind:"trigger",effect:card.autoEffect,ownerPid:pid,srcCard:{...card,srcCardUid:put.uid},sourceName:card.name});
+      // cip は triggers なので fireTrigger が拾う
       setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:pid,subjectCard:put,method:"summon"}),0);
     }else{
       // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ（動かすのは元のカード）
       const isCharger=face.keywords?.includes("charger");
       setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),
         ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
-      if(face.autoEffect) enqueueEffect({kind:"spell",effect:face.autoEffect,ownerPid:pid,srcCard:face,sourceName:face.name});
+      const main=spellMainEffect(face);
+      if(main) enqueueEffect({kind:"spell",effect:main,ownerPid:pid,srcCard:face,sourceName:face.name});
       if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(pid,card,"hand"),0);
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
@@ -812,7 +808,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setActiveState(s=>({...s,hand:newHand,mana:newMana,shields:newShields,shieldAddedThisTurn:true}));
       addLog(`${active}: 城「${card.name}」を表向きでシールド化`);
       showCutIn({title:"城！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
-      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,mana:newMana,shields:newShields},setActiveState,otherState,setOtherState,card.name,{...card});
+      // 城はシールドゾーンに置かれるので creaturePutBz の経路を通らない。自分自身の「出た時」だけ積む
+      selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,mana:newMana,shields:newShields},setActiveState,otherState,setOtherState,card.name,{...card}));
       setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:active}),0);
     }else if(!isSpell){
       // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
@@ -844,9 +841,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       addLog(`${active}: ${card.name}${isCreature?`(${effectiveSide.power||card.power}) ${fromLabel}召喚！`:`（${typeLabel}）を出した`}`);
       showCutIn({title:isCreature?"召喚！":`${typeLabel}！`,cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
-      if(card.autoEffect) triggerEffect(card.autoEffect,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid});
-      // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）
+      // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）。
+      // 自分自身の cip も triggers なので、クリーチャーならこれ1本で足りる
       if(isCreature) setTimeout(()=>fireTrigger("creaturePutBz",{sourcePid:active,subjectCard:newCreature,method:"summon"}),0);
+      // タマシード／フィールドは「クリーチャーが出た時」ではないので上の経路を通らない。
+      // 自分自身の「出た時」だけを直接積む
+      else selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid}));
     }else{
       const isCharger=effectiveSide.keywords?.includes("charger");
       if(isCharger){
@@ -857,7 +857,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const spellName=effectiveSide?.name||card.name;
       addLog(`${active}: 呪文「${spellName}」${isCharger?"(チャージャー→マナへ)":""}`);
       showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
-      const spellEffect=effectiveSide?.autoEffect||card.autoEffect;
+      const spellEffect=spellMainEffect(effectiveSide)||spellMainEffect(card);
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
       // 唱えた後の行き先の置換（チャージャーはマナへ行くので対象外）
       if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(active,card,"hand"),0);
@@ -881,7 +881,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }));
     addLog(`[REV] 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
     maybeFlagCantAttack([handCard.uid],setActiveState,otherState.battle);
-    if(handCard.autoEffect) triggerEffect(handCard.autoEffect,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,{...handCard,uid:handCard.uid});
+    // 入れ替わって出たクリーチャーの「出た時」。これまで autoEffect しか撃っておらず、
+    // triggers:[{on:"creaturePutBz"}] で書かれた cip が誘発していなかった
+    const revPut=newBattle.find(c=>c.uid===handCard.uid);
+    setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:active,subjectCard:revPut,method:"summon"}),0);
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     else if(handCard.finalRevolution&&!usedFinalRevThisTurn){
       setUsedFinalRevThisTurn(true);

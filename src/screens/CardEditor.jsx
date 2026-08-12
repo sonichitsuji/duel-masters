@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ALL_KEYWORDS, KEYWORD_LABELS, CIV, CIVS } from "../constants";
-import { mkCardId, inferAutoEffect } from "../gameLogic";
+import { mkCardId } from "../gameLogic";
 
 // ===========================
 // CARD EDITOR (add/edit single card)
@@ -8,14 +8,15 @@ import { mkCardId, inferAutoEffect } from "../gameLogic";
 export function CardEditor({card, onSave, onCancel}){
   const isNew=!card;
   const [form,setForm]=useState(card?{...card}:{
-    name:"",cost:1,power:1000,type:"creature",civ:"fire",keywords:[],effect:"",autoEffect:null
+    name:"",cost:1,power:1000,type:"creature",civ:"fire",keywords:[],effect:""
   });
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const toggleKw=kw=>set("keywords",form.keywords.includes(kw)?form.keywords.filter(x=>x!==kw):[...form.keywords,kw]);
   const handleSave=()=>{
     if(!form.name.trim()){alert("カード名を入力してください");return;}
-    const inferred=inferAutoEffect(form.keywords,form.effect);
-    onSave({...form,id:card?.id||mkCardId(),autoEffect:form.autoEffect??inferred,cost:Number(form.cost),power:Number(form.power)});
+    // 効果は triggers（cip は on:"creaturePutBz" / 呪文の本体は on:"cast"）で書く。
+    // ここでは編集できないので、既存の値をそのまま持ち越すだけにしてある
+    onSave({...form,id:card?.id||mkCardId(),cost:Number(form.cost),power:Number(form.power)});
   };
   return(
     <div className="fullscreen-panel" style={{background:"rgba(0,0,0,0.92)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -57,7 +58,8 @@ export function CardEditor({card, onSave, onCancel}){
             <textarea value={form.effect} onChange={e=>set("effect",e.target.value)} rows={3} style={{display:"block",width:"100%",marginTop:4,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:5,padding:"7px 10px",fontSize:12,resize:"vertical"}}/>
           </label>
           <div style={{fontSize:10,color:"#555",padding:"6px 8px",background:"#080818",borderRadius:5,border:"1px solid #1a1a2a"}}>
-            💡 効果テキストからautoEffectを自動推論します。複雑な効果は例外処理で対応してください。
+            💡 ここで編集できるのは名前・コスト・文明・種別・キーワードまでです。効果の中身（triggers）は
+            cards.json 側で書きます。書けない挙動は例外処理で対応してください。
           </div>
         </div>
         <div style={{display:"flex",gap:8,marginTop:16}}>

@@ -16,7 +16,7 @@ const root = path.join(__dirname, "..");
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
 const CIVS = new Set(["light","water","darkness","fire","nature"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"]);
-const TRIGGER_ONS = new Set(["creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
+const TRIGGER_ONS = new Set(["cast","creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
 const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
@@ -269,6 +269,12 @@ function checkTrigger(tr, where) {
     if (tr.on !== "castSpell") errors.push(`${where}(${tr.on}): fromZone は on:"castSpell" でのみ使えます`);
     else if (!PLAY_FROM_ZONES.has(tr.fromZone)) errors.push(`${where}(${tr.on}): fromZone は ${[...PLAY_FROM_ZONES].join("/")}`);
   }
+  // on:"cast" は「この呪文を唱えた時の効果」＝呪文の本体。誘発型能力ではないので
+  // target や condition で絞るものではない（唱えたら必ず起きる）
+  if (tr.on === "cast") {
+    if (tr.target) errors.push(`${where}(cast): on:"cast" は呪文の本体なので target は書けません`);
+    if (tr.oncePerTurn || tr.oncePerGame) errors.push(`${where}(cast): on:"cast" に oncePerTurn / oncePerGame は書けません`);
+  }
   checkCondition(tr.condition, `${where}(${tr.on})`, true);
   checkEffect(tr, `${where}(${tr.on})`);
 }
@@ -433,7 +439,7 @@ function checkAbilityFields(obj, where) {
 // カード直下に書けるキー。ABILITY_KEYS（ssx にも書ける能力）に、カード固有のものを足したもの。
 // ここに無いキーはエラーにして、綴り違いが静かに無視されるのを防ぐ。
 const CARD_KEYS = new Set([...ABILITY_KEYS,
-  "id","name","race","cost","power","type","civ","effect","autoEffect",
+  "id","name","race","cost","power","type","civ","effect",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
   "alternateCost","oniEnd","ddd","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
@@ -461,6 +467,12 @@ for (const c of cards) {
   if (c.type === "field" && c.power != null) warnings.push(`${tag}: フィールドにパワーはありません`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
   for (const cv of civs) if (!["light","water","darkness","fire","nature"].includes(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
+
+  // on:"cast"（呪文の本体）はカードが呪文の時だけ。ツインパクトは呪文面（spellSide）に書く
+  for (const tr of c.triggers || []) {
+    if (tr.on !== "cast") continue;
+    if (c.type !== "spell") errors.push(`${tag}: on:"cast" は type:"spell" のカードにだけ書けます（ツインパクトは spellSide へ）`);
+  }
 
   // カード直下の能力フィールド（keywords / triggers / activated / condPower / costReduce ...）
   checkAbilityFields(c, tag);
@@ -496,8 +508,16 @@ for (const c of cards) {
       if (Object.keys(c.ssx).length === 0) warnings.push(`${tag}.ssx: 中身が空です`);
     }
   }
-  checkEffect(c.autoEffect, `${tag}.autoEffect`);
-  checkEffect(c.spellSide?.autoEffect, `${tag}.spellSide`);
+  // 旧記法。triggers の on:"creaturePutBz"（cip）/ on:"cast"（呪文の本体）へ移行済み
+  if ("autoEffect" in c) errors.push(`${tag}: autoEffect は廃止されました（cip は triggers:[{on:"creaturePutBz"}]、呪文は triggers:[{on:"cast"}] へ）`);
+  if (c.spellSide) {
+    if ("autoEffect" in c.spellSide) errors.push(`${tag}.spellSide: autoEffect は廃止されました（triggers:[{on:"cast"}] へ）`);
+    for (const tr of c.spellSide.triggers || []) {
+      checkTrigger(tr, `${tag}.spellSide`);
+      // 呪文面は「唱えた時の効果」しか持てない（クリーチャー面の能力は card 直下に書く）
+      if (tr.on !== "cast") errors.push(`${tag}.spellSide: 呪文面に書けるのは on:"cast" だけです（"${tr.on}" は card 直下へ）`);
+    }
+  }
   checkEffect(c.finalRevolution, `${tag}.finalRevolution`);
 }
 
