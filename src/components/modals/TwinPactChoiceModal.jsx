@@ -1,5 +1,5 @@
 import { CIV } from "../../constants";
-import { getCardCivs } from "../../gameLogic";
+import { getCardCivs, displayPower } from "../../gameLogic";
 import { EffectText } from "../EffectText";
 
 // ===========================
@@ -16,7 +16,7 @@ export function TwinPactChoiceModal({ card, onSelectCreature, onSelectSpell, onC
         <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
           <button onClick={onSelectCreature} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(255,180,0,0.1)", border:"1px solid #ffbb0055", cursor:"pointer", textAlign:"left" }}>
             <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>クリーチャーとして召喚</div>
-            <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.cost} / パワー {card.power} / {card.race}</div>
+            <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.cost} / パワー {displayPower(card)} / {card.race}</div>
           </button>
           <button onClick={onSelectSpell} style={{ padding:"14px 16px", borderRadius:8, background:"rgba(100,180,255,0.1)", border:"1px solid #44aaff55", cursor:"pointer", textAlign:"left" }}>
             <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>呪文として唱える</div>

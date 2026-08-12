@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, computeGrantedKeywords, ssxKeywords, isCreatureSide, cardDisplayName } from "../gameLogic";
+import { getCardCivs, computeGrantedKeywords, ssxKeywords, isCreatureSide, cardDisplayName, displayPower } from "../gameLogic";
 import { CardEffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -24,7 +24,6 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":sick?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
   const hyper=card.hyperMode;
-  const effPower=((hyper&&card.hyperPower!=null)?card.hyperPower:(card.power||0))+(card.tempBuff?.power||0);
   const hyperTBreaker=hyper&&card.hyperKeywords?.includes("tBreaker");
   const hyperWBreaker=hyper&&card.hyperKeywords?.includes("wBreaker");
 
@@ -63,7 +62,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
         {card.type==="creature"&&(
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 14px 10px"}}>
             <div style={{display:"flex",alignItems:"baseline",gap:4}}>
-              <span style={{fontSize:28,fontWeight:900,color:"#fff",textShadow:`0 0 10px ${c.glow}`,fontFamily:"'Cinzel',serif"}}>{effPower}</span>
+              <span style={{fontSize:28,fontWeight:900,color:"#fff",textShadow:`0 0 10px ${c.glow}`,fontFamily:"'Cinzel',serif"}}>{displayPower(card)}</span>
               <span style={{fontSize:12,color:c.textColor,fontWeight:600}}>POWER</span>
             </div>
             <div style={{display:"flex",gap:4}}>

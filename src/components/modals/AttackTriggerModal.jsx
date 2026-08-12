@@ -1,5 +1,5 @@
 import { CIV } from "../../constants";
-import { getCardCivs, getEffectivePower } from "../../gameLogic";
+import { getCardCivs, getEffectivePower, displayPower } from "../../gameLogic";
 import { CardFace } from "../CardFace";
 
 // ===========================
@@ -46,7 +46,7 @@ export function AttackTriggerModal({ attacker, hand, battle, ownerState, onRevCh
                 <div>
                   <div style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{c.name}</div>
                   <div style={{ fontSize:10, color:cv?.textColor }}>{c.race}</div>
-                  <div style={{ fontSize:10, color:"#888" }}>コスト:{c.cost} / パワー:{c.power}</div>
+                  <div style={{ fontSize:10, color:"#888" }}>コスト:{c.cost} / パワー:{displayPower(c)}</div>
                 </div>
               </button>
             );

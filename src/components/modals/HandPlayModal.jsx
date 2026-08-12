@@ -11,8 +11,10 @@ import { cardDisplayName, isCreatureSide, handPlayLabel } from "../../gameLogic"
 export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
   const [selected, setSelected] = useState(plays.length === 1 ? plays[0].card.uid : null);
   const picked = plays.find(p => p.card.uid === selected);
+  // ツインパクトを呪文面で実行する時は face が付く。表示も判定もその面で行う
+  const faceOf = p => p?.face || p?.card;
   // 呪文は「唱える」、クリーチャーは「召喚する」。未選択のうちはどちらとも言えないので中立の語にする
-  const verb = !picked ? "プレイする" : isCreatureSide(picked.card) ? "召喚する" : "唱える";
+  const verb = !picked ? "プレイする" : isCreatureSide(faceOf(picked)) ? "召喚する" : "唱える";
   const costLabel = cost => `[${(cost.civs || []).map(cv => CIV[cv]?.label || cv).join("/")}(${cost.cost})]`;
   const kinds = [...new Set(plays.map(p => p.kind))].map(handPlayLabel).join(" / ");
 
@@ -30,14 +32,16 @@ export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
           <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
             {plays.map(p => (
               <div key={p.card.uid} onClick={() => setSelected(selected === p.card.uid ? null : p.card.uid)} style={{ cursor:"pointer" }}>
-                <CardFace card={p.card} small selected={selected === p.card.uid} />
+                <CardFace card={faceOf(p)} small selected={selected === p.card.uid} />
               </div>
             ))}
           </div>
           {picked && (
             <div style={{ marginTop:8, fontSize:11, color:"#ccc", background:"rgba(0,0,0,0.4)", borderRadius:6, padding:"6px 8px", border:"1px solid #ff446633" }}>
-              <b style={{ color:"#fff" }}>{cardDisplayName(picked.card)}</b>
-              <span style={{ color:"#777", marginLeft:6 }}>{CARD_TYPE_LABELS[picked.card.type] || picked.card.type}</span>
+              <b style={{ color:"#fff" }}>{cardDisplayName(faceOf(picked))}</b>
+              <span style={{ color:"#777", marginLeft:6 }}>
+                {faceOf(picked).side === "spell" ? CARD_TYPE_LABELS.spell : (CARD_TYPE_LABELS[faceOf(picked).type] || faceOf(picked).type)}
+              </span>
               <span style={{ color:"#ff8899", marginLeft:6 }}>{handPlayLabel(picked.kind)}</span>
               <div style={{ color:"#aaa", marginTop:2 }}>
                 {picked.cost ? `支払うコスト ${costLabel(picked.cost)}` : "コストを支払いません"}

@@ -983,18 +983,84 @@
 | 手札からプレイ | PLAY ボタンが押せなくなり、理由が出る |
 | `playFromHand`（効果） | 唱える候補から外れる |
 | 鬼エンド / D・D・D | 提示されない |
-| S・トリガー | 呪文（呪文面）の S・トリガーは誘発しない。クリーチャーの S・トリガーは通る |
+| S・トリガー | 呪文（呪文面）の S・トリガーは提示されない。クリーチャーの S・トリガーは通る |
 | ツインパクト | **クリーチャー面は普通にプレイできます**（呪文面だけが止まります） |
 
 > 期限は「縛られている側のターンが終わる時」に切れます。相手のターン中にこの効果を使った場合は
 > **そのターンの終わりまで**になります（このゲームでは「次の」を厳密に数え直しません）。
+
+## 7.24. S・トリガー（`sTrigger`）の解決
+
+> S・トリガー（このカードを自分のシールドゾーンから手札に加える時、
+> **コストを支払わずにすぐ実行してもよい**）
+
+`keywords` に `sTrigger` と書くだけです。ブレイクでも効果（`shieldToHand`）でも同じように働きます。
+
+**「実行」なので、鬼エンド／D・D・D（→ §7.18 / §7.21）と同じ枠組みを通ります。**
+
+- 確認モーダルが出て、**使うかどうかを選べます**（「〜してもよい」なので必ず見送れる）
+- **クリーチャーはバトルゾーンに出て**「出た時」が誘発します（召喚酔いしますが、
+  相手のターンに出るので次の自分のターンには攻撃できます）
+- **呪文は唱えた後に墓地へ**行きます（チャージャーならマナゾーンへ）。
+  `spellAfterCast`（→ §7.22）も普通に効きます
+- **ツインパクトは呪文面だけが S・トリガーを持てます。** その場合は呪文として唱えます
+- G・ストライク持ちは S・トリガーの対象から外れます（排他）
+- 呪文を唱えられない状態（→ §7.23）なら、呪文の S・トリガーは提示されません。
+  **クリーチャーの S・トリガーは通ります**
+- 複数枚まとめてブレイクされた場合は、1枚実行するたびに残りを再提示します
+
+## 7.25. 革命n（`grantSelfSTrigger`）と「5000+」（`powerPlus`）
+
+### 革命2：シールドゾーンから手札に加えるこのカードに「S・トリガー」を与える
+
+```jsonc
+"grantSelfSTrigger": { "condition": { "type": "shieldCount", "who": "self", "max": 2 } }
+```
+
+通常の `grantKeywords` は**バトルゾーン＋表向きシールドしか見ない**ので、
+シールドゾーンから手札に加わるカード自身には届きません。そのための専用フィールドです。
+
+- 書けるのは `condition` だけ。条件の語彙は §7.19（`shieldCount` など）と同じ
+- **判定は「手札に加わった後」のシールド枚数**で行います。
+  シールドが3枚ある時にそのカードがブレイクされると残り2枚になるので、革命2 は成立します
+- 与えるのは S・トリガーだけです。他のキーワードを条件付きで与えるなら `grantKeywords`（→ §8）
+
+### 革命0：パワーを+10000し、「スピードアタッカー」と「T・ブレイカー」を与える
+
+**新しい機構は要りません。** §7.19 の `shieldCount` を条件に、既存の
+`condPower` ＋ `grantKeywords` で書きます。
+
+```jsonc
+"condPower": [
+  { "condition": { "type": "shieldCount", "who": "self", "max": 0 }, "amount": 10000 }
+],
+"grantKeywords": [
+  { "keyword": "speedAttacker", "condition": { …同じ… }, "filter": { "self": true } },
+  { "keyword": "tBreaker",      "condition": { …同じ… }, "filter": { "self": true } }
+]
+```
+
+> **`filter.self` を使ってください。** `grantKeywords` は他のカードにも配る機構なので、
+> 「**この**クリーチャーに与える」と書いてあるものは `self:true` で自分だけに限定します
+> （`nameContains` で代用すると、同名の2体目にも配ってしまいます）。
+
+### 「5000+」のパワー表記
+
+```jsonc
+"power": 5000,
+"powerPlus": true
+```
+
+`power` は数値のままで、**表示にだけ `+` が付きます**。パワーの計算には一切影響しません
+（革命0 が成立していれば `15000+` と出ます）。
 
 ## 8. 常在・付与・ハイパー等のフィールド
 
 - `activated`: 起動型能力 → **§7.6**
 - `summonFrom`: 墓地・マナからの召喚許可 → **§7.7**
 - `replaceLose`: `[{from,to,label}]` — 敗北の置換 → **§7.10**
-- `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `notSelf,raceContains,multiColor,nameContains,elementOnly`）
+- `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `self,notSelf,raceContains,multiColor,nameContains,elementOnly`）
+  - **`self:true`** =「**この**クリーチャーに与える」（自分だけ。同名の2体目には配らない）→ **§7.25**
 - `grantPowerBoost` / `grantPowerBoostGrave` / `selfPowerBoostGrave` / `condPower:[{condition,amount}]`
 - `powerAttacker`: `N` — パワーアタッカー+N（**攻撃中のみ**パワー+N）
 - `poweredBreaker`: `true` — パワード・ブレイカー（パワー6000ごとに1つブレイク、最低1）。
@@ -1038,6 +1104,8 @@
 - `ddd`: D・D・D（手札から、指定のコストを支払ってプレイする） → **§7.21**
 - `spellAfterCast`: 唱えた後の行き先の置換 → **§7.22**
 - `staticDeny`: 相手のプレイを止める常在型（`cantCastSpell` 等） → **§7.23**
+- `grantSelfSTrigger`: 革命n（自分に S・トリガーを与える） → **§7.25**
+- `powerPlus`: 「5000+」の表示（数値は変えない） → **§7.25**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
   > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく
   > 相手の効果の対象に選ばれた時にも**誘発します。ブレイクするのは**選んだ側**のシールドです。

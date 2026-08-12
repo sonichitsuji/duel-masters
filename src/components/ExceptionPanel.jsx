@@ -6,6 +6,10 @@ import { CardFace, CardBack } from "./CardFace";
 // ===========================
 // EXCEPTION PANEL
 // ===========================
+// ZONES の名前とプレイヤー状態のキーはシールドだけ食い違う（shield / shields）。
+// 変換しないとシールドゾーンが見えず、「移動先: シールド」を選ぶとカードが消えてしまう。
+const stateKey=z=>(z==="shield"?"shields":z);
+
 export function ExceptionPanel({pid,state,setState,otherState,setOtherState,addLog}){
   const [open,setOpen]=useState(false);
   const [selCards,setSelCards]=useState([]);
@@ -21,14 +25,15 @@ export function ExceptionPanel({pid,state,setState,otherState,setOtherState,addL
     if(selCards.length===0)return;
     let ns=JSON.parse(JSON.stringify(state));let no=JSON.parse(JSON.stringify(otherState));
     const byZone={};selCards.forEach(({zone,uid})=>{(byZone[zone]=byZone[zone]||[]).push(uid);});
-    const moved=[];Object.entries(byZone).forEach(([zone,uids])=>{moved.push(...ns[zone].filter(c=>uids.includes(c.uid)));ns[zone]=ns[zone].filter(c=>!uids.includes(c.uid));});
-    if(targetPid==="self"){if(targetZone==="deck")ns.deck=shuffle([...ns.deck,...moved]);else ns[targetZone]=[...(ns[targetZone]||[]),...moved];}
-    else{if(targetZone==="deck")no.deck=shuffle([...no.deck,...moved]);else no[targetZone]=[...(no[targetZone]||[]),...moved];}
+    const moved=[];Object.entries(byZone).forEach(([zone,uids])=>{const k=stateKey(zone);moved.push(...(ns[k]||[]).filter(c=>uids.includes(c.uid)));ns[k]=(ns[k]||[]).filter(c=>!uids.includes(c.uid));});
+    const tk=stateKey(targetZone);
+    if(targetPid==="self"){if(targetZone==="deck")ns.deck=shuffle([...ns.deck,...moved]);else ns[tk]=[...(ns[tk]||[]),...moved];}
+    else{if(targetZone==="deck")no.deck=shuffle([...no.deck,...moved]);else no[tk]=[...(no[tk]||[]),...moved];}
     addLog(`[${label}例外] ${moved.map(c=>c.name).join(",")} → ${targetPid==="self"?"自":"相手"}の${ZONE_LABELS[targetZone]}`);
     setState(ns);setOtherState(no);clearSel();
   };
-  const moveZone=fromZone=>{const cards=state[fromZone]||[];if(cards.length===0)return;setState(s=>{const ns={...s,[fromZone]:[]};if(targetPid==="self")return targetZone==="deck"?{...ns,deck:shuffle([...ns.deck,...cards])}:{...ns,[targetZone]:[...(ns[targetZone]||[]),...cards]};return ns;});if(targetPid==="other")setOtherState(s=>targetZone==="deck"?{...s,deck:shuffle([...s.deck,...cards])}:{...s,[targetZone]:[...(s[targetZone]||[]),...cards]});addLog(`[${label}例外] ${ZONE_LABELS[fromZone]}全→${targetPid==="self"?"自":"相手"}の${ZONE_LABELS[targetZone]}`);};
-  const doTap=tap=>{let ns=JSON.parse(JSON.stringify(state));selCards.forEach(({zone,uid})=>{const idx=ns[zone]?.findIndex(c=>c.uid===uid);if(idx>=0)ns[zone][idx].tapped=tap;});setState(ns);addLog(`[${label}例外] ${tap?"タップ":"アンタップ"}`);clearSel();};
+  const moveZone=fromZone=>{const fk=stateKey(fromZone),tk=stateKey(targetZone);const cards=state[fk]||[];if(cards.length===0)return;setState(s=>{const ns={...s,[fk]:[]};if(targetPid==="self")return targetZone==="deck"?{...ns,deck:shuffle([...ns.deck,...cards])}:{...ns,[tk]:[...(ns[tk]||[]),...cards]};return ns;});if(targetPid==="other")setOtherState(s=>targetZone==="deck"?{...s,deck:shuffle([...s.deck,...cards])}:{...s,[tk]:[...(s[tk]||[]),...cards]});addLog(`[${label}例外] ${ZONE_LABELS[fromZone]}全→${targetPid==="self"?"自":"相手"}の${ZONE_LABELS[targetZone]}`);};
+  const doTap=tap=>{let ns=JSON.parse(JSON.stringify(state));selCards.forEach(({zone,uid})=>{const k=stateKey(zone);const idx=ns[k]?.findIndex(c=>c.uid===uid);if(idx>=0)ns[k][idx].tapped=tap;});setState(ns);addLog(`[${label}例外] ${tap?"タップ":"アンタップ"}`);clearSel();};
   const tapAllBattle=tap=>{setState(s=>({...s,battle:s.battle.map(c=>({...c,tapped:tap}))}));addLog(`[${label}例外] BZ全${tap?"タップ":"アンタップ"}`);};
   const doPower=()=>{let ns=JSON.parse(JSON.stringify(state));let ch=0;selCards.filter(x=>x.zone==="battle").forEach(({uid})=>{const idx=ns.battle.findIndex(c=>c.uid===uid);if(idx>=0){ns.battle[idx].power=Math.max(0,(ns.battle[idx].power||0)+powerDelta);ch++;}});setState(ns);if(ch)addLog(`[${label}例外] パワー${powerDelta>0?"+":""}${powerDelta} (${ch}体)`);};
   const doDrawN=()=>{const n=Math.min(drawN,state.deck.length);if(n===0)return;setState(s=>({...s,hand:[...s.hand,...s.deck.slice(0,n)],deck:s.deck.slice(n)}));addLog(`[${label}例外] ${n}枚ドロー`);};
@@ -45,16 +50,16 @@ export function ExceptionPanel({pid,state,setState,otherState,setOtherState,addL
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
         {ZONES.map(z=>(
           <div key={z} style={{background:"rgba(255,255,255,0.02)",borderRadius:8,padding:"8px 10px",border:"1px solid #141428"}}>
-            <div style={{color:"#555",fontSize:10,marginBottom:5,fontWeight:700}}>{ZONE_LABELS[z]} ({(state[z]||[]).length}枚)</div>
+            <div style={{color:"#555",fontSize:10,marginBottom:5,fontWeight:700}}>{ZONE_LABELS[z]} ({(state[stateKey(z)]||[]).length}枚)</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-              {(state[z]||[]).map(c=>z==="deck"?<CardBack key={c.uid} small onClick={()=>toggleSel(z,c.uid)} label={isSel(z,c.uid)?"✓":""}/>:<CardFace key={c.uid} card={c} small selected={isSel(z,c.uid)} onClick={()=>toggleSel(z,c.uid)}/>)}
-              {(state[z]||[]).length===0&&<span style={{color:"#1e1e2e",fontSize:10}}>空</span>}
+              {(state[stateKey(z)]||[]).map(c=>z==="deck"?<CardBack key={c.uid} small onClick={()=>toggleSel(z,c.uid)} label={isSel(z,c.uid)?"✓":""}/>:<CardFace key={c.uid} card={c} small selected={isSel(z,c.uid)} onClick={()=>toggleSel(z,c.uid)}/>)}
+              {(state[stateKey(z)]||[]).length===0&&<span style={{color:"#1e1e2e",fontSize:10}}>空</span>}
             </div>
           </div>
         ))}
       </div>
       <div style={{background:"rgba(255,224,102,0.06)",border:"1px solid #ffe06622",borderRadius:6,padding:"6px 10px",marginBottom:10,minHeight:28}}>
-        <span style={{color:"#ffe066",fontSize:10,fontWeight:600}}>選択中 {selCards.length}枚: {selCards.map(x=>(state[x.zone]||[]).find(c=>c.uid===x.uid)?.name).filter(Boolean).join(", ")||"なし"}</span>
+        <span style={{color:"#ffe066",fontSize:10,fontWeight:600}}>選択中 {selCards.length}枚: {selCards.map(x=>(state[stateKey(x.zone)]||[]).find(c=>c.uid===x.uid)?.name).filter(Boolean).join(", ")||"なし"}</span>
         {selCards.length>0&&<button onClick={clearSel} style={{marginLeft:8,fontSize:9,color:"#555",background:"none",border:"none",cursor:"pointer"}}>クリア</button>}
       </div>
       <div style={{marginBottom:10}}>

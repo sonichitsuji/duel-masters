@@ -289,6 +289,8 @@ function checkAbilityFields(obj, where) {
   }
   if (obj.powerAttacker != null && typeof obj.powerAttacker !== "number") errors.push(`${where}: powerAttacker は数値`);
   if (obj.poweredBreaker != null && typeof obj.poweredBreaker !== "boolean") errors.push(`${where}: poweredBreaker は真偽値`);
+  // powerPlus:「5000+」の表示。power は数値のままで、表示にだけ + を足す
+  if (obj.powerPlus != null && typeof obj.powerPlus !== "boolean") errors.push(`${where}: powerPlus は真偽値`);
   for (const cp of obj.condPower || []) {
     if (typeof cp.amount !== "number") errors.push(`${where}.condPower: amount(数値) が必要です`);
     checkCondition(cp.condition, `${where}.condPower`);
@@ -319,6 +321,19 @@ function checkAbilityFields(obj, where) {
         if (!Array.isArray(oe.manaHas)) errors.push(`${where}.oniEnd.manaHas: 配列である必要があります`);
         else oe.manaHas.forEach((f, i) => checkFilterKeys(f, `${where}.oniEnd.manaHas[${i}]`));
       }
+    }
+  }
+  // grantSelfSTrigger: 革命n「シールドゾーンから手札に加えるこのカードに『S・トリガー』を与える」
+  if (obj.grantSelfSTrigger != null) {
+    const g = obj.grantSelfSTrigger;
+    if (typeof g !== "object" || Array.isArray(g)) errors.push(`${where}.grantSelfSTrigger: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(g)) {
+        if (k !== "condition") errors.push(`${where}.grantSelfSTrigger: 未知のキー "${k}"（condition のみ）`);
+      }
+      if (g.condition == null) errors.push(`${where}.grantSelfSTrigger: condition が必要です`);
+      // 自分のシールドしか見ないので、継続能力と同じ制限（who:"self" のみ）で検査する
+      checkCondition(g.condition, `${where}.grantSelfSTrigger`);
     }
   }
   // revolutionChangeCond: 革命チェンジの条件（PlayerBoard の判定に合わせる。raceContains ではなく race/races）
@@ -402,7 +417,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","autoEffect",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","ddd","staticDeny","reactivePassive","spellAfterCast",
+  "alternateCost","oniEnd","ddd","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換
