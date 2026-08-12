@@ -240,6 +240,27 @@ export function selfSTriggerGranted(card, ownerState) {
   return checkGrantCondition(rule.condition, ownerState, card);
 }
 
+// 革命チェンジ:「自分の指定のクリーチャーが攻撃する時、そのクリーチャーと
+// 手札にあるこのクリーチャーを入れ替えてもよい」。入れ替えられる手札のカードを返す。
+//   revolutionChangeCond: { civs?, race?/races?, minCost?, minPower?, multiColor?, nameContains? }
+export function revolutionChangeCandidates(attacker, ownerState) {
+  if (!attacker || !ownerState) return [];
+  const attackerCivs = getCardCivs(attacker);
+  const attackerPower = getEffectivePower(attacker, ownerState, ownerState.battle);
+  return (ownerState.hand || []).filter(c => {
+    if (!hasKeyword(c, "revolutionChange") || !c.revolutionChangeCond) return false;
+    const cond = c.revolutionChangeCond;
+    if (cond.civs?.length && !cond.civs.some(cv => attackerCivs.includes(cv))) return false;
+    if (cond.races ? !cond.races.some(r => attacker.race?.includes(r))
+                   : cond.race && !attacker.race?.includes(cond.race)) return false;
+    if (cond.minCost && !(attacker.cost >= cond.minCost)) return false;
+    if (cond.minPower && !(attackerPower >= cond.minPower)) return false;
+    if (cond.nameContains && !attacker.name?.includes(cond.nameContains)) return false;
+    if (cond.multiColor && !(Array.isArray(attacker.civ) && attacker.civ.length >= 2)) return false;
+    return true;
+  });
+}
+
 // 「エレメント」= クリーチャー(進化・ツインパクトのクリーチャー面を含む)またはタマシード
 export function isElement(card){ return card.type === "creature" || card.type === "evo_creature" || card.type === "tamaseed" || card.type === "field" || (card.type === "twinpact" && card.side !== "spell"); }
 

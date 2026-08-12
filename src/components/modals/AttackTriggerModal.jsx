@@ -1,26 +1,14 @@
 import { CIV } from "../../constants";
-import { getCardCivs, getEffectivePower, displayPower } from "../../gameLogic";
+import { getCardCivs, displayPower, revolutionChangeCandidates } from "../../gameLogic";
 import { CardFace } from "../CardFace";
 
 // ===========================
 // ATTACK TRIGGER MODAL
 // 攻撃宣言時: 革命チェンジ・手札誘発・アタックトリガーを処理
 // ===========================
-export function AttackTriggerModal({ attacker, hand, battle, ownerState, onRevChange, onSkip }) {
-  const attackerEffPower = getEffectivePower(attacker, ownerState, battle);
-  // 革命チェンジ可能なカードを手札から探す
-  const revChangeable = hand.filter(c => {
-    if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
-    const cond = c.revolutionChangeCond;
-    const attackerCivs = getCardCivs(attacker);
-    const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
-    const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => attacker.race?.includes(r)) : attacker.race?.includes(cond.race);
-    const costMatch = !cond.minCost || attacker.cost >= cond.minCost;
-    const powerMatch = !cond.minPower || attackerEffPower >= cond.minPower;
-    const nameMatch = !cond.nameContains || attacker.name?.includes(cond.nameContains);
-    const multiColorMatch = !cond.multiColor || (Array.isArray(attacker.civ) && attacker.civ.length >= 2);
-    return civMatch && raceMatch && costMatch && powerMatch && nameMatch && multiColorMatch;
-  });
+export function AttackTriggerModal({ attacker, ownerState, onRevChange, onSkip }) {
+  // 判定は gameLogic に集約してある（BattleScreen 側の提示判断と食い違わないように）
+  const revChangeable = revolutionChangeCandidates(attacker, ownerState);
 
   if (revChangeable.length === 0) return null;
 
