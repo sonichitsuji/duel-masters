@@ -37,6 +37,8 @@ const EFFECT_TYPES = new Set([
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
   "graveToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
+  // 呪文封じ
+  "denySpell",
   // 山札操作
   "shuffleDeck",
   // 進化元を動かすコスト / 特殊勝利
@@ -83,13 +85,22 @@ const CONDITION_WHO = ["self","opponent","any"];
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
 const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
+// playFromHand で唱えられる（＝出せる）元のゾーン
+const PLAY_FROM_ZONES = new Set(["hand","grave"]);
+// spellAfterCast: 唱えた後、墓地のかわりに置く場所と、その対象になる「唱えたゾーン」
+const SPELL_AFTER_CAST_TO = new Set(["deckBottom","deckTop","hand","mana","shield"]);
+const SPELL_AFTER_CAST_FROM = new Set(["hand","grave","any"]);
+// denySpell の期限
+const DENY_SPELL_UNTIL = new Set(["endOfNextTurn"]);
+// staticDeny の種類
+const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand","cantCastSpell"]);
 
 // 効果ステップに書けるキー。綴り違い（takeall / oneplayer など）を弾くために使う。
 // 出典: src/engine/effects.js の effect.X 参照。新しいキーを実装したらここにも足すこと。
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","filter","amount","count","maxSelect",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
-  "asCost","canUseTrigger","choosePlayer",
+  "asCost","canUseTrigger","choosePlayer","side","until",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -150,6 +161,17 @@ function checkOne(e, where) {
   if (e.selfFrom != null) {
     if (e.type !== "battle") errors.push(`${where}: selfFrom は type:"battle" でのみ使えます`);
     else if (e.selfFrom !== "lastPut") errors.push(`${where}: selfFrom は "lastPut" のみ`);
+  }
+  if (e.side != null) {
+    if (e.type !== "playFromHand") errors.push(`${where}: side は type:"playFromHand" でのみ使えます（ツインパクトのどちらの面で唱えるか）`);
+    else if (!["creature","spell"].includes(e.side)) errors.push(`${where}: side は "creature" か "spell"`);
+  }
+  if (e.type === "playFromHand" && e.zone != null && !PLAY_FROM_ZONES.has(e.zone)) {
+    errors.push(`${where}: playFromHand の zone は ${[...PLAY_FROM_ZONES].join("/")}`);
+  }
+  if (e.until != null && e.type !== "denySpell") errors.push(`${where}: until は type:"denySpell" でのみ使えます`);
+  if (e.type === "denySpell" && e.until != null && !DENY_SPELL_UNTIL.has(e.until)) {
+    errors.push(`${where}: denySpell の until は ${[...DENY_SPELL_UNTIL].join("/")}`);
   }
   if (e.type === "meteorBurn") {
     if (e.to && !METEOR_BURN_TO.has(e.to)) errors.push(`${where}: meteorBurn の to は ${[...METEOR_BURN_TO].join("/")}`);
@@ -225,6 +247,10 @@ function checkTrigger(tr, where) {
     if (tr.on !== "draw") errors.push(`${where}(${tr.on}): lastCard は on:"draw" でのみ使えます`);
   }
   if (tr.oncePerGame != null && typeof tr.oncePerGame !== "boolean") errors.push(`${where}(${tr.on}): oncePerGame は真偽値`);
+  if (tr.fromZone != null) {
+    if (tr.on !== "castSpell") errors.push(`${where}(${tr.on}): fromZone は on:"castSpell" でのみ使えます`);
+    else if (!PLAY_FROM_ZONES.has(tr.fromZone)) errors.push(`${where}(${tr.on}): fromZone は ${[...PLAY_FROM_ZONES].join("/")}`);
+  }
   checkCondition(tr.condition, `${where}(${tr.on})`, true);
   checkEffect(tr, `${where}(${tr.on})`);
 }
@@ -295,6 +321,39 @@ function checkAbilityFields(obj, where) {
       }
     }
   }
+  // revolutionChangeCond: 革命チェンジの条件（PlayerBoard の判定に合わせる。raceContains ではなく race/races）
+  if (obj.revolutionChangeCond != null) {
+    const rc = obj.revolutionChangeCond;
+    if (typeof rc !== "object" || Array.isArray(rc)) errors.push(`${where}.revolutionChangeCond: オブジェクトで書いてください`);
+    else for (const k of Object.keys(rc)) {
+      if (!["civs", "race", "races", "minCost", "minPower", "multiColor", "nameContains"].includes(k)) {
+        errors.push(`${where}.revolutionChangeCond: 未知のキー "${k}"（種族は race / races）`);
+      }
+    }
+  }
+  // spellAfterCast: 唱えた後の行き先の置換（「墓地のかわりに山札の下に置く」）
+  const sacs = obj.spellAfterCast == null ? [] : (Array.isArray(obj.spellAfterCast) ? obj.spellAfterCast : [obj.spellAfterCast]);
+  for (const r of sacs) {
+    if (typeof r !== "object" || r == null) { errors.push(`${where}.spellAfterCast: オブジェクトで書いてください`); continue; }
+    for (const k of Object.keys(r)) {
+      if (!["from", "to", "filter"].includes(k)) errors.push(`${where}.spellAfterCast: 未知のキー "${k}"（綴り違い？）`);
+    }
+    if (r.from != null && !SPELL_AFTER_CAST_FROM.has(r.from)) errors.push(`${where}.spellAfterCast: from は ${[...SPELL_AFTER_CAST_FROM].join("/")}`);
+    if (!SPELL_AFTER_CAST_TO.has(r.to || "deckBottom")) errors.push(`${where}.spellAfterCast: to は ${[...SPELL_AFTER_CAST_TO].join("/")}`);
+    checkFilterKeys(r.filter, `${where}.spellAfterCast`);
+  }
+  // staticDeny: 相手のプレイを止める常在型能力
+  if (obj.staticDeny != null) {
+    const d = obj.staticDeny;
+    if (typeof d !== "object" || Array.isArray(d)) errors.push(`${where}.staticDeny: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(d)) {
+        if (!["type", "filter", "label"].includes(k)) errors.push(`${where}.staticDeny: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (!STATIC_DENY_TYPES.has(d.type)) errors.push(`${where}.staticDeny: 未知の type "${d.type}"（${[...STATIC_DENY_TYPES].join("/")}）`);
+      checkFilterKeys(d.filter, `${where}.staticDeny`);
+    }
+  }
   // ddd: D・D・D（手札から、指定のコストを支払ってプレイする）
   if (obj.ddd != null) {
     const d = obj.ddd;
@@ -343,7 +402,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","autoEffect",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","ddd","staticDeny","reactivePassive",
+  "alternateCost","oniEnd","ddd","staticDeny","reactivePassive","spellAfterCast",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換

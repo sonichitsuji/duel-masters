@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable, spellDenyReason } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { CardEffectText } from "./EffectText";
@@ -33,7 +33,10 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   // 「進化元1体につきコスト-1」のように、重ねる枚数でコストが変わるカードがある。
   // 進化元を選ぶ前の判定では最大枚数（＝最も軽くなるケース）で見積もり、実際の枚数は支払い画面で確定させる。
   const costOptsFor=(card,bases)=>({ evolutionBaseCount: bases!=null?bases.length:maxEvolutionBases(card,state) });
-  const civCheck=selectedCard?(()=>{
+  // 呪文を唱えられない（ラフルル・ラブ等）。ツインパクトはクリーチャー面が残るので弾かない
+  const spellDeny=selectedCard&&selectedCard.type==="spell"
+    ?spellDenyReason({...selectedCard,side:"spell"},state,otherState):null;
+  const civCheck=selectedCard?(spellDeny?{ok:false,reason:spellDeny}:(()=>{
     const o=costOptsFor(selectedCard);
     return selectedCard.type==="twinpact"
       ?(canPayCost(state.mana,{ ...selectedCard, side: "creature" },state,o).ok
@@ -42,16 +45,16 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       :(altCostAvailable&&canPayCost(state.mana,{...selectedCard,cost:selectedCard.alternateCost.cost,civ:selectedCard.alternateCost.civs},state,o).ok)
         ?{ok:true}
         :canPayCost(state.mana,selectedCard,state,o);
-  })():null;
+  })()):null;
   // G-Zero check
-  const gZeroOk=selectedCard?.gZero&&state.battle.some(c=>
+  const gZeroOk=!spellDeny&&selectedCard?.gZero&&state.battle.some(c=>
     (!selectedCard.gZero.nameContains||c.name?.includes(selectedCard.gZero.nameContains))&&
     (!selectedCard.gZero.raceContains||c.race?.includes(selectedCard.gZero.raceContains))
   );
   // コストを支払わずにプレイできるか（アカシック3の「呪文をコストを支払わずに唱えてもよい」等）。
   // ツインパクトは呪文面が対象になることがあるので、両面で判定する。
   const freeCastPerms=collectFreeCastPermissions(state,isActive);
-  const freeCastPerm=selectedCard?(
+  const freeCastPerm=selectedCard&&!spellDeny?(
     freeCastPermissionFor(selectedCard.type==="twinpact"?{ ...selectedCard, side:"creature" }:selectedCard,freeCastPerms)
     ||(selectedCard.type==="twinpact"
       ?freeCastPermissionFor({ ...selectedCard, ...selectedCard.spellSide, uid:selectedCard.uid, side:"spell" },freeCastPerms)

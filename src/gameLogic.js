@@ -225,7 +225,7 @@ export function extractFromBattle(battle, uid) {
 export function sTriggerSide(card) {
   if (!card) return null;
   if (hasKeyword(card, "sTrigger")) return card;
-  if (card.spellSide?.keywords?.includes("sTrigger")) return { ...card, ...card.spellSide, uid: card.uid };
+  if (card.spellSide?.keywords?.includes("sTrigger")) return { ...card, ...card.spellSide, uid: card.uid, side: "spell" };
   return null;
 }
 
@@ -325,6 +325,50 @@ export function findLeaveReplacement(ownerState, card) {
     const rules = effectiveCard(c).replaceLeave;
     if (!rules) continue;
     for (const rule of (Array.isArray(rules) ? rules : [rules])) {
+      if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
+      return { card: c, rule };
+    }
+  }
+  return null;
+}
+
+// 「自分の墓地から呪文を唱えた後、墓地のかわりに山札の下に置く」の置換元を探す。
+// replaceLeave と同じ流儀（バトルゾーン＋表向きシールドで有効／必ず例外処理で中止できる形で提示）。
+//   spellAfterCast: [{ from:"grave"|"hand"|"any", to:"deckBottom"|…, filter? }]
+//   from = その呪文を唱えたゾーン（既定 "any"）、to = 墓地のかわりの行き先
+export const SPELL_AFTER_CAST_TO = ["deckBottom", "deckTop", "hand", "mana", "shield"];
+
+// ===========================
+// 呪文を唱えられない（ラフルル・ラブ等）
+// ===========================
+// 2通りある。どちらも「唱えようとする側」から見て理由を1つ返す（唱えられるなら null）。
+//   - 期限付き: プレイヤー状態の spellDeny（効果 denySpell が積み、ターン終了時に切れる）
+//   - 常在型  : 相手のバトルゾーン／表向きシールドの staticDeny:{ type:"cantCastSpell", filter? }
+// ツインパクトは面が確定して初めて呪文になるので、判定は side:"spell" か type:"spell" の時だけ。
+export function spellDenyReason(card, ownerState, otherState) {
+  if (!card) return null;
+  if (!(card.side === "spell" || card.type === "spell")) return null;
+  for (const d of ownerState?.spellDeny || []) {
+    if (d.filter && !matchCardFilter(card, d.filter)) continue;
+    return d.label || "相手の効果により呪文を唱えられない";
+  }
+  const sources = [...(otherState?.battle || []), ...((otherState?.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    const d = effectiveCard(c).staticDeny;
+    if (d?.type !== "cantCastSpell") continue;
+    if (d.filter && !matchCardFilter(card, d.filter)) continue;
+    return d.label || `「${c.name}」により呪文を唱えられない`;
+  }
+  return null;
+}
+export function findSpellAfterCast(ownerState, card, fromZone = "hand") {
+  if (!ownerState || !card) return null;
+  const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    const rules = effectiveCard(c).spellAfterCast;
+    if (!rules) continue;
+    for (const rule of (Array.isArray(rules) ? rules : [rules])) {
+      if (rule.from && rule.from !== "any" && rule.from !== fromZone) continue;
       if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
       return { card: c, rule };
     }
@@ -519,6 +563,8 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
     for(const kind of HAND_PLAY_KINDS){
       const spec = card[kind];
       if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid)) continue;
+      // 呪文を唱えられない状態なら呪文は提示しない（ラフルル・ラブ等）
+      if(spellDenyReason(card, state, otherState)) continue;
       if(kind === "oniEnd"){
         // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
         if(!oniEndActive(state, otherState)) continue;
