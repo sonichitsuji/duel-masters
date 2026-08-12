@@ -4108,5 +4108,134 @@
       ]
     },
     "id": 116
+  },
+  {
+    "name": "龍素記号wD サイクルペディア",
+    "race": "クリスタル・コマンド・ドラゴン/ダークロード",
+    "cost": 5,
+    "power": 5000,
+    "type": "creature",
+    "civ": [
+      "water",
+      "darkness"
+    ],
+    "keywords": [
+      "blocker",
+      "justDiver"
+    ],
+    "effect": "ブロッカー\nジャストダイバー（このクリーチャーが出た時、次の自分のターンのはじめまで、このクリーチャーは相手に選ばれず、攻撃されない）\nこのクリーチャーが出た時、コスト4以下の呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい。\n各ターンに1度、自分の手札から呪文を唱えた時、その呪文を自分の墓地からコストを支払わずに唱えてもよい。\n自分の墓地から呪文を唱えた後、墓地のかわりに山札の下に置く。",
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "コスト4以下の呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい",
+          "type": "playFromHand",
+          "zone": "grave",
+          "target": "self",
+          "free": true,
+          "optional": true,
+          "filter": {
+            "type": "spell",
+            "maxCost": 4
+          }
+        }
+      ]
+    },
+    "triggers": [
+      {
+        "on": "castSpell",
+        "target": "self",
+        "fromZone": "hand",
+        "oncePerTurn": true,
+        "optional": true,
+        "label": "その呪文を自分の墓地からコストを支払わずに唱えてもよい",
+        "effects": [
+          {
+            "label": "その呪文を自分の墓地からコストを支払わずに唱える",
+            "type": "playFromHand",
+            "zone": "grave",
+            "target": "self",
+            "side": "spell",
+            "subject": true,
+            "free": true,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "spellAfterCast": [
+      {
+        "from": "grave",
+        "to": "deckBottom"
+      }
+    ],
+    "id": 117
+  },
+  {
+    "name": "音卿の精霊龍 ラフルル・ラブ",
+    "race": "エンジェル・コマンド・ドラゴン/ドレミ団/革命軍",
+    "cost": 7,
+    "power": 7000,
+    "type": "twinpact",
+    "civ": [
+      "light",
+      "water"
+    ],
+    "keywords": [
+      "revolutionChange",
+      "wBreaker"
+    ],
+    "effect": "革命チェンジ：光または水のドラゴン（自分の指定のクリーチャーが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）\nW・ブレイカー（このクリーチャーはシールドを2つブレイクする）\nこのクリーチャーが出た時、次の、相手のターンの終わりまで、相手は呪文を唱えられない。",
+    "revolutionChangeCond": {
+      "civs": [
+        "light",
+        "water"
+      ],
+      "race": "ドラゴン"
+    },
+    "autoEffect": {
+      "trigger": "play",
+      "effects": [
+        {
+          "label": "次の、相手のターンの終わりまで、相手は呪文を唱えられない",
+          "type": "denySpell",
+          "target": "opponent",
+          "until": "endOfNextTurn"
+        }
+      ]
+    },
+    "spellSide": {
+      "name": "「未来から来る、だからミラクル」",
+      "cost": 6,
+      "civ": [
+        "light",
+        "water"
+      ],
+      "keywords": [],
+      "effect": "カードを3枚引く。その後、コスト5以下の呪文を1枚、自分の手札からコストを支払わずに唱えてもよい。",
+      "autoEffect": {
+        "trigger": "cast",
+        "effects": [
+          {
+            "label": "カードを3枚引く",
+            "type": "drawCards",
+            "amount": 3
+          },
+          {
+            "label": "コスト5以下の呪文を1枚、自分の手札からコストを支払わずに唱えてもよい",
+            "type": "playFromHand",
+            "zone": "hand",
+            "target": "self",
+            "free": true,
+            "optional": true,
+            "filter": {
+              "type": "spell",
+              "maxCost": 5
+            }
+          }
+        ]
+      }
+    },
+    "id": 118
   }
 ]
