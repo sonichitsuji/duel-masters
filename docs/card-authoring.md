@@ -23,23 +23,34 @@
 
 効果は **`effects` 配列**（上から順に解決）。`"type":"steps"` のような入れ子は不要。
 
-```jsonc
-// 出た時(creature/tamaseed) / 唱えた時(spell)
-"autoEffect": { "trigger":"play", "effects":[ {"type":"drawCards","amount":1} ] }
+**能力はすべて `triggers` に書きます。**`on` で契機を選び、`target` で誰のイベントかを指定します（§7）。
 
-// 誘発能力（effects を直接持つ）
+```jsonc
+// 出た時（cip）。target の既定が "this" なので、自分自身が出た時に誘発する
+"triggers":[ { "on":"creaturePutBz", "effects":[ {"type":"drawCards","amount":1} ] } ]
+
+// 呪文の本体（唱えたら必ず起きる効果）
+"triggers":[ { "on":"cast", "effects":[ {"type":"drawCards","amount":1} ] } ]
+
+// 誘発能力
 "triggers":[ { "on":"attack", "optional":true, "effects":[ … ] } ]
 
 // 唯一の特殊形：○回選んで実行
-"autoEffect": { "trigger":"cast", "type":"chooseTimes", "count":2,
-  "templates":[ { "label":"…", "effects":[ … ] } ] }
+"triggers":[ { "on":"cast", "type":"chooseTimes", "count":2,
+  "templates":[ { "label":"…", "effects":[ … ] } ] } ]
 ```
 
-> **`autoEffect` と `triggers` の違い**
-> `autoEffect` は**そのカード自身をプレイした時**の効果（`trigger` は `play` / `cast` の2つだけ）。
-> `triggers` は**汎用のイベント誘発**で、`on` で契機を選び `target` で誰のイベントかを指定します（§7）。
-> クリーチャーの「出た時」は `autoEffect{trigger:"play"}` でも
-> `triggers:[{on:"creaturePutBz"}]` でも書けます。**どちらも、効果でバトルゾーンに出された場合にも誘発します。**
+> **`on:"cast"` だけは誘発型能力ではありません。**
+> これは「この呪文を唱えた時の効果」＝**呪文の本体**で、唱えたら必ず起きます。そのため
+> `target` や `oncePerTurn` は書けず、解決も順序固定です（他の誘発と並べて「どれから解決するか」を
+> 聞くものではありません）。**他のカードが**呪文に反応するのは `on:"castSpell"` の方です。
+> ツインパクトの呪文面は `spellSide.triggers` に `on:"cast"` を1つだけ書きます。
+
+> **cip（出た時）は `on:"creaturePutBz"`。** `creaturePutBz` の既定 `target` は `"this"`
+> （自分自身に起きた出来事）なので、`target` を書かなければ「このクリーチャーが出た時」になります。
+> **召喚でも効果で出された場合でも誘発します。**
+> なお `autoEffect` は廃止されました（`trigger:"play"` → `on:"creaturePutBz"` /
+> `trigger:"cast"` → `on:"cast"`）。移行は `node scripts/migrate-autoeffect.mjs` で行いました。
 
 ### 共通パラメータ（effects の各要素）
 | パラメータ | 説明 |
@@ -430,7 +441,8 @@
 ### イベント一覧（`on`）
 | on | 契機 |
 |---|---|
-| `creaturePutBz` | クリーチャーがバトルゾーンに出た時（`method` 指定可） |
+| `cast` | **この呪文を唱えた時＝呪文の本体**。誘発型能力ではないので `target` などは書けない（→ §2） |
+| `creaturePutBz` | クリーチャーがバトルゾーンに出た時（`method` 指定可）。既定 `target:"this"` なので、そのまま書けば **cip（出た時）** になる |
 | `castSpell` | 呪文を唱えた時（`fromZone` 指定可＝どこから唱えたか） |
 | `attack` | クリーチャーが攻撃する時（`firstEachTurn` 指定可） |
 | `attackEnd` | **攻撃の終わり**（攻撃終了ステップ）。攻撃したクリーチャーが戦闘で破壊されていた場合、そのクリーチャー自身の能力は誘発しない |
@@ -609,9 +621,9 @@
 ### そのターン限りの許可 `grantSummonFrom`（例: 蛇手の親分ゴエモンキー！）
 
 ```jsonc
-"autoEffect": { "trigger":"play", "effects":[
+"triggers": [ { "on":"creaturePutBz", "effects":[
   { "label":"そのターン、自分のマナゾーンからクリーチャーを召喚してもよい",
-    "type":"grantSummonFrom", "zone":"mana", "filter":{"creatureOnly":true} } ]}
+    "type":"grantSummonFrom", "zone":"mana", "filter":{"creatureOnly":true} } ]} ]
 ```
 `maxPerTurn` / `timing` / `target` も指定できます。許可はターン終了時に消えます。
 
@@ -714,7 +726,7 @@
 
 - クリーチャーではないので**攻撃できず、攻撃されません**（タマシードと同じ）。パワーは持ちません
 - **エレメント**なので `filter` の `"element": true` や `"type": "element"` に一致します
-- 出た時（`autoEffect{trigger:"play"}`）や継続能力はクリーチャーと同じように書けます。
+- 出た時（`triggers:[{on:"creaturePutBz"}]`）や継続能力はクリーチャーと同じように書けます。
   「クリーチャーが出た時」の誘発は**しません**
 - マナや墓地から出す場合は `manaToBz` / `graveToBz` に `"filter": {"type": "field"}` を書きます
 
@@ -1186,7 +1198,7 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 消えるもの:
 
 - `keywords`（＋ `ssx` 由来と `tempBuff` 由来。**他から与えられた能力も無視されます**）
-- `autoEffect` / `triggers` / `activated`
+- `triggers` / `activated`
 - `replaceLeave` / `replaceLose` / `staticDeny` / `spellAfterCast` / `summonFrom` / `freeCast`
 - `costReduce` / `condPower` / `grantKeywords` / `powerAttacker` / `poweredBreaker`
   → **パワー修整も消えて素のパワーに戻り、他のカードへ配ることもしなくなります**
@@ -1262,7 +1274,7 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
   > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく
   > 相手の効果の対象に選ばれた時にも**誘発します。ブレイクするのは**選んだ側**のシールドです。
 - `zRush` `cantAttackPlayer` `faceUpLeaveTo:"grave"` `reactivePassive` `endOfTurnEffect` `staticDeny:{type:"cantPutCreature"}`
-- `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,autoEffect}`
+- `spellSide`（twinpact）: `{name,cost,civ,keywords,effect,triggers}`（呪文面に書けるのは `on:"cast"` だけ）
   - **呪文面が `sTrigger` を持つ場合**、シールドをブレイクされた時にその呪文面が唱えられます
     （カード表示の ST バッジにも出ます）。クリーチャー面の能力は `triggers` 側に書きます。
   - プレイ中は `side`（`"creature"`/`"spell"`）で面を区別できます → **§2 の filter**
@@ -1274,14 +1286,15 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 ```jsonc
 // 効果なしクリーチャー
 { "id":0,"name":"サンプル","type":"creature","civ":"fire","race":"ヒューマノイド",
-  "cost":3,"power":3000,"keywords":["speedAttacker"],"effect":"スピードアタッカー","autoEffect":null }
+  "cost":3,"power":3000,"keywords":["speedAttacker"],"effect":"スピードアタッカー" }
 
 // 出た時ドロー ＋ 攻撃時に条件ドロー
 { "id":0,"name":"サンプル2","type":"creature","civ":"light","race":"メカ",
   "cost":5,"power":5500,"keywords":["blocker"],
   "effect":"ブロッカー\nこのクリーチャーが出た時、カードを1枚引く。",
-  "autoEffect":{"trigger":"play","effects":[{"type":"drawCards","amount":1,"label":"1枚引く"}]},
-  "triggers":[{"on":"attack","optional":true,"effects":[
-    {"type":"count","zone":"bz","target":"self","filter":{"creatureOnly":true,"maxCost":4}},
-    {"type":"drawCards","amount":"count","optional":true} ]}] }
+  "triggers":[
+    {"on":"creaturePutBz","effects":[{"type":"drawCards","amount":1,"label":"1枚引く"}]},
+    {"on":"attack","optional":true,"effects":[
+      {"type":"count","zone":"bz","target":"self","filter":{"creatureOnly":true,"maxCost":4}},
+      {"type":"drawCards","amount":"count","optional":true} ]} ] }
 ```

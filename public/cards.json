@@ -10,8 +10,7 @@
     "keywords": [
       "wBreaker"
     ],
-    "effect": "W・ブレイカー\nこのクリーチャーがシールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く。（S・トリガーは使えない）",
-    "autoEffect": null
+    "effect": "W・ブレイカー\nこのクリーチャーがシールドをブレイクする時、相手はそのシールドを手札に加えるかわりに墓地に置く。（S・トリガーは使えない）"
   },
   {
     "id": 2,
@@ -23,15 +22,17 @@
     "civ": "water",
     "keywords": [],
     "effect": "このクリーチャーがバトルゾーンに出た時、自分の山札の上から5枚をすべてのプレイヤーに見せる。その中の光または闇のカードをすべて手札に加え、残りを墓地に置く。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "drawCards",
-          "amount": 5
-        }
-      ],
-      "trigger": "play"
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "drawCards",
+            "amount": 5
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 3,
@@ -45,8 +46,7 @@
       "blocker",
       "wBreaker"
     ],
-    "effect": "ブロッカー\nW・ブレイカー\n相手のクリーチャーが攻撃する時、可能であればこのクリーチャーを攻撃しなければならない。",
-    "autoEffect": null
+    "effect": "ブロッカー\nW・ブレイカー\n相手のクリーチャーが攻撃する時、可能であればこのクリーチャーを攻撃しなければならない。"
   },
   {
     "id": 5,
@@ -58,16 +58,18 @@
     "civ": "darkness",
     "keywords": [],
     "effect": "相手の手札をすべて見る。その中から2枚選び、捨てさせる。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "handToGrave",
-          "target": "opponent",
-          "amount": 2
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "handToGrave",
+            "target": "opponent",
+            "amount": 2
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 6,
@@ -80,8 +82,7 @@
     "keywords": [
       "speedAttacker"
     ],
-    "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）",
-    "autoEffect": null
+    "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）"
   },
   {
     "id": 7,
@@ -95,8 +96,7 @@
       "blocker",
       "cantAttack"
     ],
-    "effect": "ブロッカー（相手クリーチャーが攻撃する時、このクリーチャーは盾の前に立ちはだかることができる）\nこのクリーチャーは攻撃することができない。",
-    "autoEffect": null
+    "effect": "ブロッカー（相手クリーチャーが攻撃する時、このクリーチャーは盾の前に立ちはだかることができる）\nこのクリーチャーは攻撃することができない。"
   },
   {
     "id": 8,
@@ -110,16 +110,18 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーを1体選び、持ち主のマナゾーンに置く。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "bzToMana",
-          "target": "opponent",
-          "amount": 1
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "bzToMana",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 9,
@@ -131,15 +133,17 @@
     "civ": "water",
     "keywords": [],
     "effect": "このクリーチャーがバトルゾーンに出た時、カードを1枚引いてもよい。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "drawCards",
-          "amount": 1
-        }
-      ],
-      "trigger": "play"
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "drawCards",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 10,
@@ -153,16 +157,18 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーを1体破壊する。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "destroy",
-          "target": "opponent",
-          "amount": 1
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "destroy",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 11,
@@ -174,16 +180,18 @@
     "civ": "nature",
     "keywords": [],
     "effect": "自分のマナゾーンにあるカードを1枚、手札に戻す。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "manaToHand",
-          "target": "self",
-          "amount": 1
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 12,
@@ -197,8 +205,7 @@
       "speedAttacker",
       "wBreaker"
     ],
-    "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）\nW・ブレイカー",
-    "autoEffect": null
+    "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）\nW・ブレイカー"
   },
   {
     "id": 13,
@@ -210,17 +217,19 @@
     "civ": "nature",
     "keywords": [],
     "effect": "このクリーチャーがバトルゾーンに出た時、自分のマナゾーンにあるカードを1枚、手札に戻してもよい。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "manaToHand",
-          "target": "self",
-          "amount": 1,
-          "optional": true
-        }
-      ],
-      "trigger": "play"
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "manaToHand",
+            "target": "self",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 14,
@@ -233,8 +242,7 @@
     "keywords": [
       "blocker"
     ],
-    "effect": "ブロッカー（相手クリーチャーが攻撃する時、このクリーチャーは盾の前に立ちはだかることができる）",
-    "autoEffect": null
+    "effect": "ブロッカー（相手クリーチャーが攻撃する時、このクリーチャーは盾の前に立ちはだかることができる）"
   },
   {
     "id": 15,
@@ -246,20 +254,22 @@
     "civ": "water",
     "keywords": [],
     "effect": "ニンジャ・ストライク4（相手のクリーチャーが攻撃またはブロックした時、自分のマナゾーンにカードが4枚以上あれば、このシノビをコストを支払わずに召喚してよい。そのターンの終わりに、このシノビを自分の山札の一番下に置く）[例外処理]\nこのクリーチャーがバトルゾーンに出た時、バトルゾーンにあるコスト3以下の他のクリーチャーを1体選び、持ち主の手札に戻してもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "コスト3以下の他のクリーチャーを1体手札に戻してもよい",
-          "optional": true,
-          "type": "bzToHand",
-          "target": "both",
-          "filter": {
-            "maxCost": 3
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "コスト3以下の他のクリーチャーを1体手札に戻してもよい",
+            "optional": true,
+            "type": "bzToHand",
+            "target": "both",
+            "filter": {
+              "maxCost": 3
+            }
           }
-        }
-      ]
-    }
+        ]
+      }
+    ]
   },
   {
     "id": 16,
@@ -271,15 +281,17 @@
     "civ": "water",
     "keywords": [],
     "effect": "このクリーチャーがバトルゾーンに出た時、カードを1枚引いてもよい。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "drawCards",
-          "amount": 1
-        }
-      ],
-      "trigger": "play"
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "drawCards",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 17,
@@ -293,15 +305,17 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nカードを3枚引く。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "drawCards",
-          "amount": 3
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "drawCards",
+            "amount": 3
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 18,
@@ -313,16 +327,18 @@
     "civ": "water",
     "keywords": [],
     "effect": "自分の山札を見る。その中からカードを1枚選び、手札に加える。その後、山札をシャッフルする。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "search",
-          "destination": "hand",
-          "amount": 1
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "search",
+            "destination": "hand",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 19,
@@ -334,16 +350,18 @@
     "civ": "light",
     "keywords": [],
     "effect": "バトルゾーンにある相手のクリーチャーを1体選び、持ち主の手札に戻す。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "bzToHand",
-          "target": "opponent",
-          "amount": 1
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "bzToHand",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 20,
@@ -357,16 +375,18 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーを1体選び、持ち主の手札に戻す。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "bzToHand",
-          "target": "opponent",
-          "amount": 1
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "bzToHand",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 21,
@@ -380,19 +400,21 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nパワー3000以下の相手クリーチャーをすべて破壊する。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "destroy",
-          "target": "opponent",
-          "all": true,
-          "filter": {
-            "maxPower": 3000
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "destroy",
+            "target": "opponent",
+            "all": true,
+            "filter": {
+              "maxPower": 3000
+            }
           }
-        }
-      ],
-      "trigger": "cast"
-    }
+        ]
+      }
+    ]
   },
   {
     "id": 22,
@@ -406,15 +428,17 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\n自分の山札の上から1枚目をマナゾーンに置く。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "topToMana",
-          "amount": 1
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "topToMana",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 23,
@@ -428,16 +452,18 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある相手のクリーチャーをすべてタップする。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "tap",
-          "target": "opponent",
-          "all": true
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "tap",
+            "target": "opponent",
+            "all": true
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 24,
@@ -449,24 +475,26 @@
     "civ": "fire",
     "keywords": [],
     "effect": "自分の山札の上から3枚を墓地に置く。こうして墓地に置いたカードの中にクリーチャーが1体あれば、そのクリーチャーをバトルゾーンに出してもよい。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "山札の上から3枚を墓地に置く",
-          "type": "topToGrave",
-          "amount": 3
-        },
-        {
-          "label": "墓地に置いたカードの中にクリーチャーがいれば1体バトルゾーンに出してもよい",
-          "type": "graveToBz",
-          "filter": {
-            "type": "creature"
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "山札の上から3枚を墓地に置く",
+            "type": "topToGrave",
+            "amount": 3
           },
-          "optional": true
-        }
-      ]
-    }
+          {
+            "label": "墓地に置いたカードの中にクリーチャーがいれば1体バトルゾーンに出してもよい",
+            "type": "graveToBz",
+            "filter": {
+              "type": "creature"
+            },
+            "optional": true
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 25,
@@ -484,15 +512,17 @@
       "wBreaker"
     ],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\nスピードアタッカー\nW・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、自分のマナゾーンにあるカードをすべてアンタップする。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分のマナゾーンのカードをすべてアンタップ",
-          "type": "untapAllMana"
-        }
-      ]
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分のマナゾーンのカードをすべてアンタップ",
+            "type": "untapAllMana"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 26,
@@ -505,8 +535,7 @@
     "keywords": [
       "tBreaker"
     ],
-    "effect": "T・ブレイカー\n相手がクリーチャーを召喚するコストは2多くなる。[例外処理]",
-    "autoEffect": null
+    "effect": "T・ブレイカー\n相手がクリーチャーを召喚するコストは2多くなる。[例外処理]"
   },
   {
     "id": 27,
@@ -519,8 +548,7 @@
     "keywords": [
       "wBreaker"
     ],
-    "effect": "W・ブレイカー\n相手は闇のカードを使えない。[例外処理]",
-    "autoEffect": null
+    "effect": "W・ブレイカー\n相手は闇のカードを使えない。[例外処理]"
   },
   {
     "id": 28,
@@ -532,25 +560,27 @@
     "civ": "darkness",
     "keywords": [],
     "effect": "このクリーチャーがバトルゾーンに出た時、プレイヤーをひとり選ぶ。そのプレイヤーのクリーチャーを1体破壊してもよい。そうした場合、そのプレイヤーの墓地から、このクリーチャー以外の進化ではないクリーチャーを1体選び、バトルゾーンに出す。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "任意のプレイヤーのクリーチャーを1体破壊してもよい",
-          "optional": true,
-          "type": "destroy",
-          "target": "both"
-        },
-        {
-          "label": "破壊したクリーチャーのオーナーの墓地から進化でないクリーチャーを1体バトルゾーンに出す",
-          "type": "graveToBz",
-          "owner": "destroyed",
-          "filter": {
-            "type": "creature"
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "任意のプレイヤーのクリーチャーを1体破壊してもよい",
+            "optional": true,
+            "type": "destroy",
+            "target": "both"
+          },
+          {
+            "label": "破壊したクリーチャーのオーナーの墓地から進化でないクリーチャーを1体バトルゾーンに出す",
+            "type": "graveToBz",
+            "owner": "destroyed",
+            "filter": {
+              "type": "creature"
+            }
           }
-        }
-      ]
-    }
+        ]
+      }
+    ]
   },
   {
     "id": 29,
@@ -564,19 +594,21 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nブロッカーを2体まで、自分の手札からバトルゾーンに出す。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "ブロッカーを2体まで手札からバトルゾーンに出す",
-          "type": "handToBz",
-          "filter": {
-            "keyword": "blocker"
-          },
-          "amount": 2
-        }
-      ]
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "ブロッカーを2体まで手札からバトルゾーンに出す",
+            "type": "handToBz",
+            "filter": {
+              "keyword": "blocker"
+            },
+            "amount": 2
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 30,
@@ -590,24 +622,26 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nバトルゾーンにある自分のクリーチャーを1体マナゾーンに置き、自分のマナゾーンからクリーチャーを1体出してもよい。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分のバトルゾーンのクリーチャーを1体マナゾーンに置く",
-          "type": "bzToMana",
-          "target": "self"
-        },
-        {
-          "label": "自分のマナゾーンからクリーチャーを1体バトルゾーンに出してもよい",
-          "optional": true,
-          "type": "manaToBz",
-          "filter": {
-            "type": "creature"
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分のバトルゾーンのクリーチャーを1体マナゾーンに置く",
+            "type": "bzToMana",
+            "target": "self"
+          },
+          {
+            "label": "自分のマナゾーンからクリーチャーを1体バトルゾーンに出してもよい",
+            "optional": true,
+            "type": "manaToBz",
+            "filter": {
+              "type": "creature"
+            }
           }
-        }
-      ]
-    }
+        ]
+      }
+    ]
   },
   {
     "id": 31,
@@ -621,7 +655,6 @@
       "wBreaker"
     ],
     "effect": "W・ブレイカー\n攻撃中、このクリーチャーのパワーは自分の墓地にある火のカード1枚につき+1000される。",
-    "autoEffect": null,
     "selfPowerBoostGrave": {
       "civFilter": "fire",
       "perCard": 1000
@@ -642,8 +675,7 @@
       "speedAttacker",
       "wBreaker"
     ],
-    "effect": "スピードアタッカー\nW・ブレイカー\nこのクリーチャーをバトルゾーンに出した時、このターンの後、もう一度自分のターンを行う。そのターンの終わりに、このクリーチャーを破壊する。[例外処理]",
-    "autoEffect": null
+    "effect": "スピードアタッカー\nW・ブレイカー\nこのクリーチャーをバトルゾーンに出した時、このターンの後、もう一度自分のターンを行う。そのターンの終わりに、このクリーチャーを破壊する。[例外処理]"
   },
   {
     "id": 33,
@@ -656,8 +688,7 @@
     "keywords": [
       "blocker"
     ],
-    "effect": "ブロッカー\n自分のクリーチャーが召喚してバトルゾーンに出た時、そのクリーチャーのパワーは+2000される。[例外処理]",
-    "autoEffect": null
+    "effect": "ブロッカー\n自分のクリーチャーが召喚してバトルゾーンに出た時、そのクリーチャーのパワーは+2000される。[例外処理]"
   },
   {
     "id": 34,
@@ -671,16 +702,18 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（このクリーチャーをシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してよい）\nこのクリーチャーがバトルゾーンに出た時、相手のクリーチャーを1体、持ち主の手札に戻してもよい。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "bzToHand",
-          "target": "opponent",
-          "amount": 1
-        }
-      ],
-      "trigger": "play"
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "bzToHand",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 35,
@@ -694,20 +727,22 @@
       "wBreaker"
     ],
     "effect": "進化―自分のデーモン・コマンド1体の上に置く。[例外処理]\nW・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、闇以外のクリーチャーをすべて破壊する。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "闇以外のクリーチャーをすべて破壊する",
-          "type": "destroy",
-          "target": "both",
-          "all": true,
-          "filter": {
-            "civNot": "darkness"
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "闇以外のクリーチャーをすべて破壊する",
+            "type": "destroy",
+            "target": "both",
+            "all": true,
+            "filter": {
+              "civNot": "darkness"
+            }
           }
-        }
-      ]
-    }
+        ]
+      }
+    ]
   },
   {
     "id": 36,
@@ -725,7 +760,6 @@
       "wBreaker"
     ],
     "effect": "革命チェンジ−火または自然のドラゴン（自分の火または自然のドラゴンが攻撃する時、そのクリーチャーと手札にあるこのクリーチャーを入れ替えてもよい）\nW・ブレイカー",
-    "autoEffect": null,
     "revolutionChangeCond": {
       "civs": [
         "fire",
@@ -750,7 +784,6 @@
       "tBreaker"
     ],
     "effect": "革命チェンジ―火または自然のコスト5以上のドラゴン\n自分の多色クリーチャーすべてに「スピードアタッカー」を与える。\nT・ブレイカー\nファイナル革命―このクリーチャーが「革命チェンジ」によってバトルゾーンに出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、コストが合計6以下になるよう、進化ではない多色クリーチャーを自分のマナゾーンまたは手札から選び、バトルゾーンに出す。",
-    "autoEffect": null,
     "grantKeywords": [
       {
         "keyword": "speedAttacker",
@@ -778,7 +811,6 @@
     "civ": "fire",
     "keywords": [],
     "effect": "バトルゾーンにある間、自分のドラゴンを召喚するコストは2少なくなる。ただし、コストは1以下にならない。",
-    "autoEffect": null,
     "costReduce": {
       "amount": 2,
       "filter": {
@@ -799,16 +831,18 @@
       "wBreaker"
     ],
     "effect": "W・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、自分の山札を見る。その中から名前に「ルピア」とあるカードを1枚、バトルゾーンに出してもよい。その後、山札をシャッフルする。自分の墓地にあるファイアー・バード1体につきパワーアタッカー+1000を得る。[例外処理]",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "search",
-          "destination": "hand",
-          "amount": 1
-        }
-      ],
-      "trigger": "play"
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "search",
+            "destination": "hand",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 40,
@@ -821,8 +855,7 @@
     "keywords": [
       "wBreaker"
     ],
-    "effect": "G・ゼロ―自分のバトルゾーンにアーマード・ドラゴンが2体以上あれば、このクリーチャーをコストを支払わずに召喚してもよい。[例外処理]\nW・ブレイカー",
-    "autoEffect": null
+    "effect": "G・ゼロ―自分のバトルゾーンにアーマード・ドラゴンが2体以上あれば、このクリーチャーをコストを支払わずに召喚してもよい。[例外処理]\nW・ブレイカー"
   },
   {
     "id": 41,
@@ -836,16 +869,18 @@
       "wBreaker"
     ],
     "effect": "S・バック-火（自分のシールドゾーンから火のカードが手札に加わった時、そのカードを捨てることでコストを支払わずに召喚してもよい）[例外処理]\nこのクリーチャーをバトルゾーンに出した時、自分のシールドを1枚選び、墓地に置く。\nW・ブレイカー",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分のシールドを1枚選び墓地に置く",
-          "type": "shieldToGrave",
-          "target": "self"
-        }
-      ]
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分のシールドを1枚選び墓地に置く",
+            "type": "shieldToGrave",
+            "target": "self"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 42,
@@ -858,8 +893,7 @@
     "keywords": [
       "wBreaker"
     ],
-    "effect": "W・ブレイカー\nこのクリーチャーがバトルゾーンに出た時または攻撃する時、相手のマナゾーンから各文明のカードをそれぞれ1枚ずつ選びタップする。次の相手のターンのはじめに、それらのカードはアンタップしない。[例外処理]",
-    "autoEffect": null
+    "effect": "W・ブレイカー\nこのクリーチャーがバトルゾーンに出た時または攻撃する時、相手のマナゾーンから各文明のカードをそれぞれ1枚ずつ選びタップする。次の相手のターンのはじめに、それらのカードはアンタップしない。[例外処理]"
   },
   {
     "id": 43,
@@ -877,7 +911,6 @@
       "tBreaker"
     ],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\n革命チェンジ―光または水のコスト5以上のドラゴン\nT・ブレイカー\nこのクリーチャーがバトルゾーンに出た時、光のコスト5以下の呪文を1枚、コストを支払わずに自分の手札から唱えてもよい。そうしなければ、カードを1枚引く。[例外処理]\nファイナル革命―このクリーチャーが「革命チェンジ」によってバトルゾーンに出た時、そのターン中に他の「ファイナル革命」をまだ使っていなければ、次の相手のターンの終わりまで、相手はコスト7以下のクリーチャーを召喚できない。[例外処理]",
-    "autoEffect": null,
     "revolutionChangeCond": {
       "civs": [
         "light",
@@ -900,15 +933,17 @@
     ],
     "keywords": [],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーがバトルゾーンに出た時、カードを1枚引く。",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "drawCards",
-          "amount": 1
-        }
-      ],
-      "trigger": "play"
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "drawCards",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 45,
@@ -923,16 +958,18 @@
     ],
     "keywords": [],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーがバトルゾーンに出た時、またはバトルゾーンを離れた時、相手のクリーチャーを1体選びタップする。（バトルゾーンを離れた時の効果は[例外処理]）",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "相手のクリーチャーを1体タップする",
-          "type": "tap",
-          "target": "opponent"
-        }
-      ]
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーを1体タップする",
+            "type": "tap",
+            "target": "opponent"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 46,
@@ -949,7 +986,6 @@
       "revolutionChange"
     ],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\n革命チェンジ―光または水のクリーチャー\n相手が呪文を唱えるコストは2多くなる。[例外処理]",
-    "autoEffect": null,
     "revolutionChangeCond": {
       "civs": [
         "light",
@@ -970,29 +1006,31 @@
     ],
     "keywords": [],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーがバトルゾーンに出た時、自分の山札の上から3枚を見る。その中から呪文を1枚選び、相手に見せてから手札に加えてもよい。残りを好きな順序で山札の一番下に置く。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "山札の上から3枚を公開する",
-          "type": "reveal",
-          "amount": 3
-        },
-        {
-          "label": "公開したカードの中から呪文を1枚選んで手札に加えてもよい",
-          "optional": true,
-          "type": "revealedToHand",
-          "filter": {
-            "type": "spell"
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "山札の上から3枚を公開する",
+            "type": "reveal",
+            "amount": 3
           },
-          "amount": 1
-        },
-        {
-          "label": "残りのカードを好きな順序で山札の一番下に置く",
-          "type": "revealedToDeckBottom"
-        }
-      ]
-    }
+          {
+            "label": "公開したカードの中から呪文を1枚選んで手札に加えてもよい",
+            "optional": true,
+            "type": "revealedToHand",
+            "filter": {
+              "type": "spell"
+            },
+            "amount": 1
+          },
+          {
+            "label": "残りのカードを好きな順序で山札の一番下に置く",
+            "type": "revealedToDeckBottom"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 48,
@@ -1009,16 +1047,18 @@
       "sTrigger"
     ],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\nS・トリガー\n次のうちいずれか1つを選ぶ。\n・相手のクリーチャーをすべてタップする。\n・カードを1枚引く。その後、光または水のコスト5以下の呪文を1枚、コストを支払わずに唱えてもよい。[例外処理]",
-    "autoEffect": {
-      "effects": [
-        {
-          "type": "tap",
-          "target": "opponent",
-          "all": true
-        }
-      ],
-      "trigger": "cast"
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "type": "tap",
+            "target": "opponent",
+            "all": true
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 49,
@@ -1032,22 +1072,24 @@
       "sTrigger"
     ],
     "effect": "S・トリガー\n光のコスト7以下の進化でないドラゴンを1体、自分の手札からバトルゾーンに出す。そのクリーチャーは次の自分のターンのはじめまで「ブロッカー」を得る。（ブロッカー付与の持続は[例外処理]）",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "光のコスト7以下のドラゴンを1体手札からバトルゾーンに出す（ブロッカー付与）",
-          "type": "handToBz",
-          "filter": {
-            "civ": "light",
-            "maxCost": 7,
-            "raceContains": "ドラゴン"
-          },
-          "tempKeyword": "blocker",
-          "amount": 1
-        }
-      ]
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "光のコスト7以下のドラゴンを1体手札からバトルゾーンに出す（ブロッカー付与）",
+            "type": "handToBz",
+            "filter": {
+              "civ": "light",
+              "maxCost": 7,
+              "raceContains": "ドラゴン"
+            },
+            "tempKeyword": "blocker",
+            "amount": 1
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 51,
@@ -1064,36 +1106,38 @@
       "revolutionChange"
     ],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\n革命チェンジ―火または自然のクリーチャー\nこのクリーチャーが出た時、自分の山札の上から5枚を見る。その中から多色クリーチャーを1体選んで相手に見せ、山札の上に置いてもよい。残りを好きな順序で山札の下に置く。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "山札の上から5枚を見る",
-          "type": "reveal",
-          "amount": 5
-        },
-        {
-          "label": "多色クリーチャーを1体選んで山札の上に置いてもよい",
-          "optional": true,
-          "type": "revealedToDeckTop",
-          "filter": {
-            "type": "creature",
-            "multiColor": true
-          },
-          "amount": 1
-        },
-        {
-          "label": "残りのカードを好きな順序で山札の一番下に置く",
-          "type": "revealedToDeckBottom"
-        }
-      ]
-    },
     "revolutionChangeCond": {
       "civs": [
         "fire",
         "nature"
       ]
-    }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "山札の上から5枚を見る",
+            "type": "reveal",
+            "amount": 5
+          },
+          {
+            "label": "多色クリーチャーを1体選んで山札の上に置いてもよい",
+            "optional": true,
+            "type": "revealedToDeckTop",
+            "filter": {
+              "type": "creature",
+              "multiColor": true
+            },
+            "amount": 1
+          },
+          {
+            "label": "残りのカードを好きな順序で山札の一番下に置く",
+            "type": "revealedToDeckBottom"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 50,
@@ -1104,8 +1148,7 @@
     "type": "creature",
     "civ": "light",
     "keywords": [],
-    "effect": "このクリーチャーをバトルゾーンに出した時、コスト3以下のドラグハート1枚または光のコスト5以下のドラグハートを1枚、超次元ゾーンからバトルゾーンに出す。[例外処理]\nマナ武装5：自分のマナゾーンに光のカードが5枚以上あれば、バトルゾーンにある自分の光のクリーチャーはすべて「シールド・セイバー」を得る。[例外処理]",
-    "autoEffect": null
+    "effect": "このクリーチャーをバトルゾーンに出した時、コスト3以下のドラグハート1枚または光のコスト5以下のドラグハートを1枚、超次元ゾーンからバトルゾーンに出す。[例外処理]\nマナ武装5：自分のマナゾーンに光のカードが5枚以上あれば、バトルゾーンにある自分の光のクリーチャーはすべて「シールド・セイバー」を得る。[例外処理]"
   },
   {
     "id": 52,
@@ -1120,7 +1163,6 @@
     ],
     "keywords": [],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\n自分のドラゴン・クリーチャーの召喚コストを2少なくする。ただしコストは0以下にはならない。",
-    "autoEffect": null,
     "costReduce": {
       "amount": 2,
       "filter": {
@@ -1145,22 +1187,24 @@
       "speedAttacker"
     ],
     "effect": "革命チェンジ―アーマード\nスピードアタッカー\nこのクリーチャーが出た時、他のクリーチャーを2体まで選び、それぞれタップまたはアンタップする。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "他のクリーチャーを2体まで選びタップまたはアンタップする",
-          "optional": true,
-          "type": "tapToggle",
-          "target": "both"
-        }
-      ]
-    },
     "revolutionChangeCond": {
       "races": [
         "アーマード"
       ]
-    }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "他のクリーチャーを2体まで選びタップまたはアンタップする",
+            "optional": true,
+            "type": "tapToggle",
+            "target": "both"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 54,
@@ -1175,31 +1219,33 @@
     ],
     "keywords": [],
     "effect": "マナゾーンに置く時、このカードはタップして置く。\nこのクリーチャーが出た時、自分の山札の上から1枚をタップしてマナゾーンに置く。それがドラゴン・カードなら、自分の山札の上からもう1枚、タップしてマナゾーンに置く。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "山札の上から1枚をタップしてマナゾーンに置く",
-          "type": "topToMana",
-          "amount": 1,
-          "tapped": true
-        },
-        {
-          "type": "count",
-          "zone": "lastMoved",
-          "filter": {
-            "raceContains": "ドラゴン"
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "山札の上から1枚をタップしてマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1,
+            "tapped": true
           },
-          "label": "直前のカードがドラゴンか"
-        },
-        {
-          "type": "topToMana",
-          "amount": "count",
-          "label": "ドラゴンならもう1枚マナへ",
-          "tapped": true
-        }
-      ]
-    }
+          {
+            "type": "count",
+            "zone": "lastMoved",
+            "filter": {
+              "raceContains": "ドラゴン"
+            },
+            "label": "直前のカードがドラゴンか"
+          },
+          {
+            "type": "topToMana",
+            "amount": "count",
+            "label": "ドラゴンならもう1枚マナへ",
+            "tapped": true
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 55,
@@ -1217,7 +1263,6 @@
       "speedAttacker"
     ],
     "effect": "革命チェンジ―アーマード\nスピードアタッカー\n自分の他のクリーチャーすべてに「ブロッカー」を与える。\nメガ・ラスト・バースト [例外処理]",
-    "autoEffect": null,
     "grantKeywords": [
       {
         "keyword": "blocker",
@@ -1236,29 +1281,31 @@
       "cost": 2,
       "civ": "fire",
       "effect": "自分の山札の上から5枚を見る。その中からアーマードを1枚、相手に見せてから手札に加えてもよい。残りを好きな順序で山札の下に置く。",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "label": "山札の上から5枚を見る",
-            "type": "reveal",
-            "amount": 5
-          },
-          {
-            "label": "アーマードを1枚選んで手札に加えてもよい",
-            "optional": true,
-            "type": "revealedToHand",
-            "filter": {
-              "raceContains": "アーマード"
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "山札の上から5枚を見る",
+              "type": "reveal",
+              "amount": 5
             },
-            "amount": 1
-          },
-          {
-            "label": "残りを好きな順序で山札の下に置く",
-            "type": "revealedToDeckBottom"
-          }
-        ]
-      }
+            {
+              "label": "アーマードを1枚選んで手札に加えてもよい",
+              "optional": true,
+              "type": "revealedToHand",
+              "filter": {
+                "raceContains": "アーマード"
+              },
+              "amount": 1
+            },
+            {
+              "label": "残りを好きな順序で山札の下に置く",
+              "type": "revealedToDeckBottom"
+            }
+          ]
+        }
+      ]
     }
   },
   {
@@ -1277,7 +1324,6 @@
       "wBreaker"
     ],
     "effect": "革命チェンジ―ファイアー・バードまたはドラゴン\nW・ブレイカー\n自分のファイアー・バードすべてに「スピードアタッカー」を与える。\n自分のドラゴンすべてに「ブロッカー」を与える。",
-    "autoEffect": null,
     "grantKeywords": [
       {
         "keyword": "speedAttacker",
@@ -1316,7 +1362,6 @@
       "wBreaker"
     ],
     "effect": "革命チェンジ―コスト5以上のアーマード\nスピードアタッカー\nW・ブレイカー\n各ターンに1度、クリーチャーが出た時、自分の山札の上から1枚目をシールド化してもよい。[例外処理]\nこのクリーチャーが破壊された時、名前に《ボルシャック》とあるコスト7以下のクリーチャーを1体、自分の手札から出してもよい。[例外処理]\n終極宣言 [例外処理]",
-    "autoEffect": null,
     "revolutionChangeCond": {
       "races": [
         "アーマード"
@@ -1336,7 +1381,6 @@
       "wBreaker"
     ],
     "effect": "W・ブレイカー\n攻撃中、このクリーチャーのパワーを、自分の墓地にある火のカード1枚につき+1000する。",
-    "autoEffect": null,
     "selfPowerBoostGrave": {
       "civFilter": "fire",
       "perCard": 1000
@@ -1349,28 +1393,30 @@
         "charger"
       ],
       "effect": "自分の山札の上から3枚を表向きにする。その中から、名前に《ボルシャック》とあるカードをすべて手札に加え、残りを好きな順序で山札の下に置く。\nチャージャー（この呪文を唱えた後、墓地のかわりにマナゾーンに置く）",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "label": "山札の上から3枚を表向きにする",
-            "type": "reveal",
-            "amount": 3
-          },
-          {
-            "label": "名前に《ボルシャック》とあるカードをすべて手札に加える",
-            "type": "revealedToHand",
-            "filter": {
-              "nameContains": "ボルシャック"
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "山札の上から3枚を表向きにする",
+              "type": "reveal",
+              "amount": 3
             },
-            "takeAll": true
-          },
-          {
-            "label": "残りを好きな順序で山札の下に置く",
-            "type": "revealedToDeckBottom"
-          }
-        ]
-      }
+            {
+              "label": "名前に《ボルシャック》とあるカードをすべて手札に加える",
+              "type": "revealedToHand",
+              "filter": {
+                "nameContains": "ボルシャック"
+              },
+              "takeAll": true
+            },
+            {
+              "label": "残りを好きな順序で山札の下に置く",
+              "type": "revealedToDeckBottom"
+            }
+          ]
+        }
+      ]
     }
   },
   {
@@ -1385,7 +1431,6 @@
       "gStrike"
     ],
     "effect": "G・ストライク\n各ターンに一度、名前に《ボルシャック》とある自分のクリーチャーの召喚コストを3少なくしてもよい。ただし、コストは1以下にならない。\n※「各ターンに一度」は [例外処理]",
-    "autoEffect": null,
     "costReduce": {
       "amount": 3,
       "filter": {
@@ -1410,17 +1455,6 @@
       "wBreaker"
     ],
     "effect": "革命チェンジ：コスト5以上のアーマード\nW・ブレイカー\nこのクリーチャーが出た時、相手のクリーチャーをすべてタップする。\n自分のクリーチャーすべてに「パワーアタッカー+3000」を与える。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "相手のクリーチャーをすべてタップする",
-          "type": "tap",
-          "target": "opponent",
-          "all": true
-        }
-      ]
-    },
     "grantPowerBoost": {
       "amount": 3000,
       "filter": {}
@@ -1430,7 +1464,20 @@
         "アーマード"
       ],
       "minCost": 5
-    }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーをすべてタップする",
+            "type": "tap",
+            "target": "opponent",
+            "all": true
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 61,
@@ -1444,7 +1491,6 @@
       "tBreaker"
     ],
     "effect": "G・ゼロ：自分の、名前に《ボルシャック》とあるドラゴンがあれば、このクリーチャーをコストを支払わずに召喚してもよい。\n進化：火のドラゴン・クリーチャー1体の上に置く。\nT・ブレイカー\n自分のクリーチャーすべてに、自分の墓地にある火のカード1枚につき「パワーアタッカー+1000」を与える。",
-    "autoEffect": null,
     "evolution": {
       "filter": {
         "civ": "fire",
@@ -1477,29 +1523,6 @@
       "tBreaker"
     ],
     "effect": "革命チェンジ：コスト7以上の名前に《ボルシャック》とある多色クリーチャー\nT・ブレイカー\nこのクリーチャーが出た時、自分の山札の上から4枚を見て、その中から《竜皇神 ボルシャック・バクテラス》ではないアーマードを好きな数出す。残りを好きな順序で山札の下に置く。\n自分の他のクリーチャーすべてに「ブロッカー」と「スピードアタッカー」を与える。\n各ターンの終わりに、自分の他のクリーチャーをすべてアンタップする。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "山札の上から4枚を見る",
-          "type": "reveal",
-          "amount": 4
-        },
-        {
-          "label": "その中のアーマードを好きな数出す",
-          "optional": true,
-          "type": "revealedToBz",
-          "filter": {
-            "raceContains": "アーマード",
-            "notNameSelf": true
-          }
-        },
-        {
-          "label": "残りを好きな順序で山札の下に置く",
-          "type": "revealedToDeckBottom"
-        }
-      ]
-    },
     "grantKeywords": [
       {
         "keyword": "blocker",
@@ -1521,7 +1544,32 @@
       "nameContains": "ボルシャック",
       "multiColor": true,
       "minCost": 7
-    }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "山札の上から4枚を見る",
+            "type": "reveal",
+            "amount": 4
+          },
+          {
+            "label": "その中のアーマードを好きな数出す",
+            "optional": true,
+            "type": "revealedToBz",
+            "filter": {
+              "raceContains": "アーマード",
+              "notNameSelf": true
+            }
+          },
+          {
+            "label": "残りを好きな順序で山札の下に置く",
+            "type": "revealedToDeckBottom"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 63,
@@ -1549,23 +1597,25 @@
       "type": "breakAttackerShields",
       "amount": 3
     },
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "相手のクリーチャーを1体選んでバトルする",
-          "optional": true,
-          "type": "battle",
-          "target": "opponent"
-        },
-        {
-          "label": "バトル勝利：相手のシールドを1つブレイクしてもよい",
-          "optional": true,
-          "type": "breakShield",
-          "target": "opponent"
-        }
-      ]
-    }
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーを1体選んでバトルする",
+            "optional": true,
+            "type": "battle",
+            "target": "opponent"
+          },
+          {
+            "label": "バトル勝利：相手のシールドを1つブレイクしてもよい",
+            "optional": true,
+            "type": "breakShield",
+            "target": "opponent"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 64,
@@ -1588,25 +1638,27 @@
         "water"
       ]
     },
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "光または水の、コスト3以下の呪文を1枚、コストを支払わずに唱えてもよい",
-          "optional": true,
-          "type": "playFromHand",
-          "free": true,
-          "filter": {
-            "maxCost": 3,
-            "type": "spell",
-            "civ": [
-              "light",
-              "water"
-            ]
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "光または水の、コスト3以下の呪文を1枚、コストを支払わずに唱えてもよい",
+            "optional": true,
+            "type": "playFromHand",
+            "free": true,
+            "filter": {
+              "maxCost": 3,
+              "type": "spell",
+              "civ": [
+                "light",
+                "water"
+              ]
+            }
           }
-        }
-      ]
-    }
+        ]
+      }
+    ]
   },
   {
     "id": 65,
@@ -1620,16 +1672,18 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（このカードを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\n自分のクリーチャーを1体アンタップする。次の自分のターンのはじめまで、そのクリーチャーのパワーを+4000し、「ブロッカー」を与える。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分のクリーチャーを1体アンタップする",
-          "type": "untap",
-          "target": "self"
-        }
-      ]
-    }
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分のクリーチャーを1体アンタップする",
+            "type": "untap",
+            "target": "self"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 66,
@@ -1679,8 +1733,7 @@
           "amount": "count"
         }
       ]
-    },
-    "autoEffect": null
+    }
   },
   {
     "id": 67,
@@ -1726,8 +1779,7 @@
           }
         }
       ]
-    },
-    "autoEffect": null
+    }
   },
   {
     "id": 68,
@@ -1741,20 +1793,22 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてもよい）\n自分の山札を見る。その中から呪文を1枚選び、相手に見せてもよい。その後、自分の山札をシャッフルし、その呪文を山札の一番上に置く。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "山札を見て呪文を1枚選び、山札の一番上に置く",
-          "optional": true,
-          "type": "search",
-          "destination": "deckTop",
-          "filter": {
-            "type": "spell"
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "山札を見て呪文を1枚選び、山札の一番上に置く",
+            "optional": true,
+            "type": "search",
+            "destination": "deckTop",
+            "filter": {
+              "type": "spell"
+            }
           }
-        }
-      ]
-    }
+        ]
+      }
+    ]
   },
   {
     "id": 69,
@@ -1766,47 +1820,49 @@
     "power": 0,
     "keywords": [],
     "effect": "次の中から2回選ぶ。（同じものを選んでもよい）\n▶コスト3以下のクリーチャーを1体、自分の手札から出す。\n▶このターン、自分のクリーチャー1体に「スピードアタッカー」を与える。\n▶自分のクリーチャーを1体選ぶ。このターン、そのクリーチャーの最初の攻撃の終わりに、そのクリーチャーをアンタップする。",
-    "autoEffect": {
-      "trigger": "cast",
-      "type": "chooseTimes",
-      "count": 2,
-      "templates": [
-        {
-          "label": "コスト3以下のクリーチャーを1体、自分の手札から出す。",
-          "effects": [
-            {
-              "type": "handToBz",
-              "filter": {
-                "maxCost": 3
+    "triggers": [
+      {
+        "on": "cast",
+        "type": "chooseTimes",
+        "count": 2,
+        "templates": [
+          {
+            "label": "コスト3以下のクリーチャーを1体、自分の手札から出す。",
+            "effects": [
+              {
+                "type": "handToBz",
+                "filter": {
+                  "maxCost": 3
+                }
               }
-            }
-          ]
-        },
-        {
-          "label": "このターン、自分のクリーチャー1体に「スピードアタッカー」を与える。",
-          "effects": [
-            {
-              "type": "grant",
-              "target": "self",
-              "keywords": [
-                "speedAttacker"
-              ],
-              "expires": "endOfTurn"
-            }
-          ]
-        },
-        {
-          "label": "自分のクリーチャーを1体選ぶ。このターン、最初の攻撃の終わりにアンタップする。",
-          "effects": [
-            {
-              "type": "grant",
-              "target": "self",
-              "untapAfterAttack": true
-            }
-          ]
-        }
-      ]
-    }
+            ]
+          },
+          {
+            "label": "このターン、自分のクリーチャー1体に「スピードアタッカー」を与える。",
+            "effects": [
+              {
+                "type": "grant",
+                "target": "self",
+                "keywords": [
+                  "speedAttacker"
+                ],
+                "expires": "endOfTurn"
+              }
+            ]
+          },
+          {
+            "label": "自分のクリーチャーを1体選ぶ。このターン、最初の攻撃の終わりにアンタップする。",
+            "effects": [
+              {
+                "type": "grant",
+                "target": "self",
+                "untapAfterAttack": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 70,
@@ -1820,26 +1876,27 @@
       "speedAttacker"
     ],
     "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）\nメガ・ラスト・バースト（このクリーチャーが離れて、手札、マナゾーン、または墓地に置かれた時、このカードの呪文側をコストを支払わずに唱えてもよい）[例外処理]",
-    "autoEffect": null,
     "spellSide": {
       "name": "♪音速で 本番中に チューニング",
       "cost": 3,
       "civ": "fire",
       "subtype": "マジック・ソング",
       "effect": "このターン、自分のクリーチャー1体に「スピードアタッカー」を与え、そのクリーチャーの最初の攻撃の終わりにそのクリーチャーをアンタップする。",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "type": "grant",
-            "target": "self",
-            "keywords": [
-              "speedAttacker"
-            ],
-            "untapAfterAttack": true
-          }
-        ]
-      }
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "type": "grant",
+              "target": "self",
+              "keywords": [
+                "speedAttacker"
+              ],
+              "untapAfterAttack": true
+            }
+          ]
+        }
+      ]
     }
   },
   {
@@ -1851,8 +1908,7 @@
     "cost": 1,
     "power": 1000,
     "keywords": [],
-    "effect": "",
-    "autoEffect": null
+    "effect": ""
   },
   {
     "id": 72,
@@ -1880,71 +1936,73 @@
         "amount": 6
       }
     },
-    "autoEffect": {
-      "trigger": "cast",
-      "type": "chooseTimes",
-      "count": 2,
-      "templates": [
-        {
-          "label": "自分の手札をすべて捨て、その枚数より1枚多くカードを引く。",
-          "effects": [
-            {
-              "type": "count",
-              "zone": "hand",
-              "target": "self",
-              "label": "手札の枚数を数える"
-            },
-            {
-              "type": "handToGrave",
-              "target": "self",
-              "all": true,
-              "label": "手札をすべて捨てる"
-            },
-            {
-              "type": "drawCards",
-              "amount": "count",
-              "label": "捨てた枚数を引く"
-            },
-            {
-              "type": "drawCards",
-              "amount": 1,
-              "label": "さらに1枚引く"
-            }
-          ]
-        },
-        {
-          "label": "相手のエレメントを1つ選び、持ち主の手札に戻す。その後、相手の手札を1枚見ないで選び、捨てさせる。",
-          "effects": [
-            {
-              "type": "bzToHand",
-              "target": "opponent"
-            },
-            {
-              "type": "handToGrave",
-              "target": "opponent",
-              "random": true,
-              "amount": 1
-            }
-          ]
-        },
-        {
-          "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す。スピードアタッカーを与え、このターンの終わりに破壊する。",
-          "effects": [
-            {
-              "type": "graveToBz",
-              "filter": {
-                "maxCost": 5,
-                "type": "creature"
+    "triggers": [
+      {
+        "on": "cast",
+        "type": "chooseTimes",
+        "count": 2,
+        "templates": [
+          {
+            "label": "自分の手札をすべて捨て、その枚数より1枚多くカードを引く。",
+            "effects": [
+              {
+                "type": "count",
+                "zone": "hand",
+                "target": "self",
+                "label": "手札の枚数を数える"
               },
-              "tempKeywords": [
-                "speedAttacker"
-              ],
-              "destroyAtEndOfTurn": true
-            }
-          ]
-        }
-      ]
-    }
+              {
+                "type": "handToGrave",
+                "target": "self",
+                "all": true,
+                "label": "手札をすべて捨てる"
+              },
+              {
+                "type": "drawCards",
+                "amount": "count",
+                "label": "捨てた枚数を引く"
+              },
+              {
+                "type": "drawCards",
+                "amount": 1,
+                "label": "さらに1枚引く"
+              }
+            ]
+          },
+          {
+            "label": "相手のエレメントを1つ選び、持ち主の手札に戻す。その後、相手の手札を1枚見ないで選び、捨てさせる。",
+            "effects": [
+              {
+                "type": "bzToHand",
+                "target": "opponent"
+              },
+              {
+                "type": "handToGrave",
+                "target": "opponent",
+                "random": true,
+                "amount": 1
+              }
+            ]
+          },
+          {
+            "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す。スピードアタッカーを与え、このターンの終わりに破壊する。",
+            "effects": [
+              {
+                "type": "graveToBz",
+                "filter": {
+                  "maxCost": 5,
+                  "type": "creature"
+                },
+                "tempKeywords": [
+                  "speedAttacker"
+                ],
+                "destroyAtEndOfTurn": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 73,
@@ -1959,7 +2017,6 @@
       "zRush"
     ],
     "effect": "ブロッカー\n相手のクリーチャーが出た時、自分はカードを1枚引いてもよい。\nZラッシュ（シールドが離れたら、次の自分のターンのはじめまで、このクリーチャーのハイパーモードを解放する）\n──ハイパーモード（パワー6000）──\nW・ブレイカー\nこのクリーチャーが攻撃する時、自分の手札の枚数以下のコストを持つ、クリーチャーではないカードを1枚、自分の手札からコストを支払わずに実行してもよい。",
-    "autoEffect": null,
     "zRush": true,
     "hyperPower": 6000,
     "hyperKeywords": [
@@ -2016,7 +2073,6 @@
     "power": 0,
     "keywords": [],
     "effect": "シビルカウント3：自分の光のクリーチャーまたは光のタマシードが合計3つ以上あれば、自分のクリーチャーすべてに「ブロッカー」を与える。\nシビルカウント3：自分の闇のクリーチャーまたは闇のタマシードが合計3つ以上あれば、自分のクリーチャーすべてに「スレイヤー」を与える。\n自分のクリーチャーがバトル中に破壊された時、そのターンの終わりに、そのクリーチャーを墓地から出す。",
-    "autoEffect": null,
     "grantKeywords": [
       {
         "keyword": "blocker",
@@ -2064,7 +2120,6 @@
     ],
     "cantAttackPlayer": true,
     "effect": "ブロッカー\nこのクリーチャーは、プレイヤーを攻撃できない。\n自分のクリーチャーが出た時、自分のシールドを1つ手札に戻してもよい。ただし、その「S・トリガー」は使えない。\nこのクリーチャーが破壊された時、自分の山札の上から1枚目をシールド化してもよい。",
-    "autoEffect": null,
     "triggers": [
       {
         "on": "creaturePutBz",
@@ -2111,19 +2166,19 @@
       "blocker"
     ],
     "effect": "S・トリガー\nブロッカー\nこのクリーチャーが出た時、相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-4000する。（パワー0以下のクリーチャーは破壊される）\nこのクリーチャーが離れた時、カードを1枚引いてもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "相手のクリーチャー1体のパワーを-4000（このターン）",
-          "type": "powerBuff",
-          "target": "opponent",
-          "amount": -4000,
-          "expires": "endOfTurn"
-        }
-      ]
-    },
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャー1体のパワーを-4000（このターン）",
+            "type": "powerBuff",
+            "target": "opponent",
+            "amount": -4000,
+            "expires": "endOfTurn"
+          }
+        ]
+      },
       {
         "on": "leave",
         "optional": true,
@@ -2159,22 +2214,22 @@
       "count": 1
     },
     "effect": "ブロッカー\nW・ブレイカー\nこのクリーチャーが出た時または攻撃する時、カードを1枚引く。その後、自分の手札を1枚、シールド化してもよい。\nハイパー化：自分の他のクリーチャーを1体タップする。\n──ハイパーモード（パワー8500）──\n各ターンの終わりに、このターン自分のシールドゾーンにカードが置かれていたら、「S・トリガー」を持つ呪文を1枚、自分の手札からコストを支払わずに唱えてもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "カードを1枚引く",
-          "type": "drawCards",
-          "amount": 1
-        },
-        {
-          "label": "自分の手札を1枚シールド化してもよい",
-          "optional": true,
-          "type": "handToShield"
-        }
-      ]
-    },
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "カードを1枚引く",
+            "type": "drawCards",
+            "amount": 1
+          },
+          {
+            "label": "自分の手札を1枚シールド化してもよい",
+            "optional": true,
+            "type": "handToShield"
+          }
+        ]
+      },
       {
         "on": "attack",
         "effects": [
@@ -2226,7 +2281,6 @@
     "keywords": [],
     "faceUpLeaveTo": "grave",
     "effect": "G城（G城は実行したら、表向きでシールド化される。このカードが表向きで自分のシールドゾーンを離れる時、かわりに墓地に置く）\n自分のターンに自分がカードを引いた時、相手は自身の手札を1枚選び、捨てる。\n各ターン、はじめて自分のクリーチャーが攻撃する時、カードを1枚引いてもよい。",
-    "autoEffect": null,
     "triggers": [
       {
         "on": "draw",
@@ -2267,27 +2321,27 @@
     "power": 4000,
     "keywords": [],
     "effect": "このクリーチャーが出た時、相手のエレメントを1つ選び、持ち主の手札に戻す。その後、相手の手札を1枚見ないで選び、捨てさせる。\n相手が自身の手札を1枚捨てた時、相手のクリーチャーを1体選び、タップする。次の相手のターンのはじめに、そのクリーチャーはアンタップしない。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "相手のエレメントを1つ持ち主の手札に戻す",
-          "type": "bzToHand",
-          "target": "opponent",
-          "filter": {
-            "element": true
-          }
-        },
-        {
-          "label": "相手の手札を1枚見ないで捨てさせる",
-          "type": "handToGrave",
-          "target": "opponent",
-          "random": true,
-          "amount": 1
-        }
-      ]
-    },
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のエレメントを1つ持ち主の手札に戻す",
+            "type": "bzToHand",
+            "target": "opponent",
+            "filter": {
+              "element": true
+            }
+          },
+          {
+            "label": "相手の手札を1枚見ないで捨てさせる",
+            "type": "handToGrave",
+            "target": "opponent",
+            "random": true,
+            "amount": 1
+          }
+        ]
+      },
       {
         "on": "discard",
         "target": "opponent",
@@ -2331,27 +2385,6 @@
       }
     ],
     "effect": "ブロッカー\nこのクリーチャーが出た時、自分の光のクリーチャーまたは光のタマシード1つにつき、カードを1枚引いてもよい。\n自分の光のクリーチャーと光のタマシードを使うコストを2少なくする。ただし、コストは0以下にはならない。\nシビルカウント5：自分の光のクリーチャーまたは光のタマシードが合計5つ以上あれば、このクリーチャーのパワーを+10000し、「T・ブレイカー」と「このクリーチャーが攻撃する時、相手のクリーチャーを1体選び、シールド化してもよい」を与える。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "type": "count",
-          "zone": "bz",
-          "target": "self",
-          "filter": {
-            "civ": "light",
-            "element": true
-          },
-          "label": "対象の数を数える"
-        },
-        {
-          "label": "光のクリーチャー/タマシード1つにつき1枚引いてもよい",
-          "optional": true,
-          "type": "drawCards",
-          "amount": "count"
-        }
-      ]
-    },
     "grantKeywords": [
       {
         "keyword": "tBreaker",
@@ -2366,6 +2399,27 @@
       }
     ],
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "type": "count",
+            "zone": "bz",
+            "target": "self",
+            "filter": {
+              "civ": "light",
+              "element": true
+            },
+            "label": "対象の数を数える"
+          },
+          {
+            "label": "光のクリーチャー/タマシード1つにつき1枚引いてもよい",
+            "optional": true,
+            "type": "drawCards",
+            "amount": "count"
+          }
+        ]
+      },
       {
         "on": "attack",
         "condition": {
@@ -2396,7 +2450,6 @@
       "escape"
     ],
     "effect": "エスケープ（このクリーチャーが破壊される時、墓地に置くかわりに自分のシールドを1つ手札に加えてもよい。ただし、その「S・トリガー」は使えない）\nこのクリーチャーが攻撃する時、自分のコスト4以下のクリーチャー1体につき、カードを1枚引いてもよい。\n自分のシールドが離れた時、光のコスト4以下のクリーチャーを1体、自分の手札から出してもよい。",
-    "autoEffect": null,
     "triggers": [
       {
         "on": "attack",
@@ -2453,17 +2506,17 @@
       "blocker"
     ],
     "effect": "ブロッカー\nこのクリーチャーが出た時、カードを2枚引く。\nカードが自分のシールドゾーンに置かれた時、このクリーチャーを自分の墓地から出してもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "カードを2枚引く",
-          "type": "drawCards",
-          "amount": 2
-        }
-      ]
-    },
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "カードを2枚引く",
+            "type": "drawCards",
+            "amount": 2
+          }
+        ]
+      },
       {
         "on": "shieldAdded",
         "optional": true,
@@ -2495,7 +2548,6 @@
       "tBreaker"
     ],
     "effect": "ブロッカー\nT・ブレイカー\n自分のクリーチャーすべてに「エスケープ」を与える。\n＜オシオキムーン＞：カードが自分のシールドゾーンを離れた時、相手のクリーチャーを1体選び、破壊する。",
-    "autoEffect": null,
     "grantKeywords": [
       {
         "keyword": "escape"
@@ -2525,18 +2577,6 @@
       "slayer"
     ],
     "effect": "スレイヤー\nこのクリーチャーが出た時、自分の山札の上から3枚を墓地に置いてもよい。\n超魂X（これがクリーチャーの下にあれば、そのクリーチャーにも以下の能力を与える）\n自分のターン中、クリーチャーを1体、自分の墓地から召喚してもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "optional": true,
-      "effects": [
-        {
-          "label": "自分の山札の上から3枚を墓地に置いてもよい",
-          "type": "topToGrave",
-          "amount": 3,
-          "optional": true
-        }
-      ]
-    },
     "ssx": {
       "summonFrom": [
         {
@@ -2550,7 +2590,21 @@
         }
       ]
     },
-    "id": 84
+    "id": 84,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "optional": true,
+        "effects": [
+          {
+            "label": "自分の山札の上から3枚を墓地に置いてもよい",
+            "type": "topToGrave",
+            "amount": 3,
+            "optional": true
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "蛇手の親分ゴエモンキー！",
@@ -2561,20 +2615,22 @@
     "power": 4000,
     "keywords": [],
     "effect": "W・ソウル\nこのクリーチャーをバトルゾーンに出した時、そのターン、自分のマナゾーンからクリーチャーを召喚してもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "そのターン、自分のマナゾーンからクリーチャーを召喚してもよい",
-          "type": "grantSummonFrom",
-          "zone": "mana",
-          "filter": {
-            "creatureOnly": true
+    "id": 85,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "そのターン、自分のマナゾーンからクリーチャーを召喚してもよい",
+            "type": "grantSummonFrom",
+            "zone": "mana",
+            "filter": {
+              "creatureOnly": true
+            }
           }
-        }
-      ]
-    },
-    "id": 85
+        ]
+      }
+    ]
   },
   {
     "name": "龍装鬼 オブザ08号",
@@ -2602,56 +2658,60 @@
       ],
       "min": 1
     },
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分の墓地のクリーチャーを数える",
-          "type": "count",
-          "zone": "grave",
-          "target": "self",
-          "filter": {
-            "creatureOnly": true
-          },
-          "as": "graveCreatures"
-        },
-        {
-          "label": "相手のクリーチャーを1体選び、自分の墓地のクリーチャー1体につきパワー−1000",
-          "type": "powerBuff",
-          "target": "opponent",
-          "count": 1,
-          "amount": "graveCreatures",
-          "perUnit": -1000,
-          "expires": "endOfTurn"
-        }
-      ]
-    },
     "spellSide": {
       "name": "終焉の開闢",
       "cost": 3,
       "civ": "darkness",
       "effect": "自分の山札の上から3枚を墓地に置く。その後、クリーチャーを1体、自分の墓地から手札に戻す。",
-      "autoEffect": {
-        "trigger": "cast",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分の山札の上から3枚を墓地に置く",
+              "type": "topToGrave",
+              "amount": 3
+            },
+            {
+              "label": "クリーチャーを1体、自分の墓地から手札に戻す",
+              "type": "graveToHand",
+              "target": "self",
+              "amount": 1,
+              "filter": {
+                "creatureOnly": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "id": 86,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
         "effects": [
           {
-            "label": "自分の山札の上から3枚を墓地に置く",
-            "type": "topToGrave",
-            "amount": 3
-          },
-          {
-            "label": "クリーチャーを1体、自分の墓地から手札に戻す",
-            "type": "graveToHand",
+            "label": "自分の墓地のクリーチャーを数える",
+            "type": "count",
+            "zone": "grave",
             "target": "self",
-            "amount": 1,
             "filter": {
               "creatureOnly": true
-            }
+            },
+            "as": "graveCreatures"
+          },
+          {
+            "label": "相手のクリーチャーを1体選び、自分の墓地のクリーチャー1体につきパワー−1000",
+            "type": "powerBuff",
+            "target": "opponent",
+            "count": 1,
+            "amount": "graveCreatures",
+            "perUnit": -1000,
+            "expires": "endOfTurn"
           }
         ]
       }
-    },
-    "id": 86
+    ]
   },
   {
     "name": "ドアノッカ＝ノアドッカ",
@@ -2664,38 +2724,43 @@
       "sTrigger"
     ],
     "effect": "S・トリガー\nこのクリーチャーが出た時、次の能力を2回行う。\n▶相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-4000する。（パワー0以下のクリーチャーは破壊される）",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "1回目: 相手のクリーチャーを1体選び、このターン、パワーを-4000",
-          "type": "powerBuff",
-          "target": "opponent",
-          "count": 1,
-          "amount": -4000,
-          "expires": "endOfTurn"
-        },
-        {
-          "label": "2回目: 相手のクリーチャーを1体選び、このターン、パワーを-4000",
-          "type": "powerBuff",
-          "target": "opponent",
-          "count": 1,
-          "amount": -4000,
-          "expires": "endOfTurn"
-        }
-      ]
-    },
     "spellSide": {
       "name": "「…開けるか？」",
       "cost": 2,
       "civ": "darkness",
       "race": "アビスへの誘い",
       "effect": "相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-4000する。",
-      "autoEffect": {
-        "trigger": "cast",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "相手のクリーチャーを1体選び、このターン、パワーを-4000",
+              "type": "powerBuff",
+              "target": "opponent",
+              "count": 1,
+              "amount": -4000,
+              "expires": "endOfTurn"
+            }
+          ]
+        }
+      ]
+    },
+    "id": 87,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
         "effects": [
           {
-            "label": "相手のクリーチャーを1体選び、このターン、パワーを-4000",
+            "label": "1回目: 相手のクリーチャーを1体選び、このターン、パワーを-4000",
+            "type": "powerBuff",
+            "target": "opponent",
+            "count": 1,
+            "amount": -4000,
+            "expires": "endOfTurn"
+          },
+          {
+            "label": "2回目: 相手のクリーチャーを1体選び、このターン、パワーを-4000",
             "type": "powerBuff",
             "target": "opponent",
             "count": 1,
@@ -2704,8 +2769,7 @@
           }
         ]
       }
-    },
-    "id": 87
+    ]
   },
   {
     "name": "逆転の影ガレック",
@@ -2718,51 +2782,53 @@
       "sTrigger"
     ],
     "effect": "S・トリガー\nこのクリーチャーが出た時、次の中から3回選ぶ。（同じものを選んでもよい）\n▶相手のクリーチャーを1体選ぶ。このターン、そのクリーチャーのパワーを-3000する。（パワーが0以下のクリーチャーは破壊される）\n▶自分の山札の上から3枚を墓地に置く。\n▶コスト3以下のクリーチャーを1体、自分の墓地から出す。",
-    "autoEffect": {
-      "trigger": "play",
-      "type": "chooseTimes",
-      "count": 3,
-      "templates": [
-        {
-          "label": "相手のクリーチャーを1体選び、このターン、そのパワーを-3000",
-          "effects": [
-            {
-              "label": "相手のクリーチャーを1体選び、パワーを-3000（このターン）",
-              "type": "powerBuff",
-              "target": "opponent",
-              "count": 1,
-              "amount": -3000,
-              "expires": "endOfTurn"
-            }
-          ]
-        },
-        {
-          "label": "自分の山札の上から3枚を墓地に置く",
-          "effects": [
-            {
-              "label": "自分の山札の上から3枚を墓地に置く",
-              "type": "topToGrave",
-              "amount": 3
-            }
-          ]
-        },
-        {
-          "label": "コスト3以下のクリーチャーを1体、自分の墓地から出す",
-          "effects": [
-            {
-              "label": "コスト3以下のクリーチャーを1体、自分の墓地から出す",
-              "type": "graveToBz",
-              "filter": {
-                "type": "creature",
-                "maxCost": 3
-              },
-              "amount": 1
-            }
-          ]
-        }
-      ]
-    },
-    "id": 88
+    "id": 88,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "type": "chooseTimes",
+        "count": 3,
+        "templates": [
+          {
+            "label": "相手のクリーチャーを1体選び、このターン、そのパワーを-3000",
+            "effects": [
+              {
+                "label": "相手のクリーチャーを1体選び、パワーを-3000（このターン）",
+                "type": "powerBuff",
+                "target": "opponent",
+                "count": 1,
+                "amount": -3000,
+                "expires": "endOfTurn"
+              }
+            ]
+          },
+          {
+            "label": "自分の山札の上から3枚を墓地に置く",
+            "effects": [
+              {
+                "label": "自分の山札の上から3枚を墓地に置く",
+                "type": "topToGrave",
+                "amount": 3
+              }
+            ]
+          },
+          {
+            "label": "コスト3以下のクリーチャーを1体、自分の墓地から出す",
+            "effects": [
+              {
+                "label": "コスト3以下のクリーチャーを1体、自分の墓地から出す",
+                "type": "graveToBz",
+                "filter": {
+                  "type": "creature",
+                  "maxCost": 3
+                },
+                "amount": 1
+              }
+            ]
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "コースター＝コーデキター",
@@ -2773,7 +2839,6 @@
     "power": 1000,
     "keywords": [],
     "effect": "超魂X（これがクリーチャーの下にあれば、そのクリーチャーにも以下の能力を与える）\nこのクリーチャーの攻撃の終わりに、このクリーチャーに含まれるカードと同じ枚数のカードを引く。その後、このクリーチャーを破壊する。",
-    "autoEffect": null,
     "ssx": {
       "triggers": [
         {
@@ -2813,27 +2878,29 @@
     ],
     "keywords": [],
     "effect": "自分の山札の上から三枚を見る。そのうちの一枚を自分の手札に加え、残りを墓地に置く。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分の山札の上から三枚を見る",
-          "type": "reveal",
-          "amount": 3
-        },
-        {
-          "label": "そのうちの一枚を自分の手札に加える",
-          "type": "revealedToHand",
-          "amount": 1
-        },
-        {
-          "label": "残りを墓地に置く",
-          "type": "revealedToGrave",
-          "takeAll": true
-        }
-      ]
-    },
-    "id": 90
+    "id": 90,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から三枚を見る",
+            "type": "reveal",
+            "amount": 3
+          },
+          {
+            "label": "そのうちの一枚を自分の手札に加える",
+            "type": "revealedToHand",
+            "amount": 1
+          },
+          {
+            "label": "残りを墓地に置く",
+            "type": "revealedToGrave",
+            "takeAll": true
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "氷牙レオポル・ディーネ公",
@@ -2844,7 +2911,6 @@
     "power": 2000,
     "keywords": [],
     "effect": "自分が呪文を唱えた時、カードを1枚引いてもよい。",
-    "autoEffect": null,
     "triggers": [
       {
         "on": "castSpell",
@@ -2868,29 +2934,31 @@
         "sTrigger"
       ],
       "effect": "S・トリガー（この呪文をシールドゾーンから手札に加える時、コストを支払わずにすぐ唱えてよい）\nカードを2枚まで引く。その後、自分の手札を1枚捨てる。",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "label": "カードを1枚引いてもよい（2枚まで・1枚目）",
-            "type": "drawCards",
-            "amount": 1,
-            "optional": true
-          },
-          {
-            "label": "カードを1枚引いてもよい（2枚まで・2枚目）",
-            "type": "drawCards",
-            "amount": 1,
-            "optional": true
-          },
-          {
-            "label": "自分の手札を1枚捨てる",
-            "type": "handToGrave",
-            "target": "self",
-            "amount": 1
-          }
-        ]
-      }
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "カードを1枚引いてもよい（2枚まで・1枚目）",
+              "type": "drawCards",
+              "amount": 1,
+              "optional": true
+            },
+            {
+              "label": "カードを1枚引いてもよい（2枚まで・2枚目）",
+              "type": "drawCards",
+              "amount": 1,
+              "optional": true
+            },
+            {
+              "label": "自分の手札を1枚捨てる",
+              "type": "handToGrave",
+              "target": "self",
+              "amount": 1
+            }
+          ]
+        }
+      ]
     },
     "id": 91
   },
@@ -2909,7 +2977,6 @@
       "zone": "grave",
       "count": 3
     },
-    "autoEffect": null,
     "triggers": [
       {
         "on": "attack",
@@ -2964,7 +3031,6 @@
       ],
       "min": 1
     },
-    "autoEffect": null,
     "triggers": [
       {
         "on": "attack",
@@ -3009,7 +3075,6 @@
     "keywords": [
       "tBreaker"
     ],
-    "autoEffect": null,
     "triggers": [
       {
         "on": "endOfTurn",
@@ -3036,23 +3101,23 @@
     "keywords": [
       "tBreaker"
     ],
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分の墓地にあるカードをすべて山札に加える",
-          "type": "graveToDeckBottom",
-          "target": "self",
-          "all": true
-        },
-        {
-          "label": "山札をシャッフルする",
-          "type": "shuffleDeck",
-          "target": "self"
-        }
-      ]
-    },
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の墓地にあるカードをすべて山札に加える",
+            "type": "graveToDeckBottom",
+            "target": "self",
+            "all": true
+          },
+          {
+            "label": "山札をシャッフルする",
+            "type": "shuffleDeck",
+            "target": "self"
+          }
+        ]
+      },
       {
         "on": "startOfTurn",
         "target": "opponent",
@@ -3110,7 +3175,6 @@
       ],
       "min": 1
     },
-    "autoEffect": null,
     "triggers": [
       {
         "on": "creaturePutBz",
@@ -3145,23 +3209,25 @@
         "sTrigger"
       ],
       "effect": "S・トリガー\n自分のクリーチャーを1体破壊する。その後、相手のクリーチャーを1体破壊する。",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "label": "自分のクリーチャーを1体破壊する",
-            "type": "destroy",
-            "target": "self",
-            "amount": 1
-          },
-          {
-            "label": "その後、相手のクリーチャーを1体破壊する",
-            "type": "destroy",
-            "target": "opponent",
-            "amount": 1
-          }
-        ]
-      }
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分のクリーチャーを1体破壊する",
+              "type": "destroy",
+              "target": "self",
+              "amount": 1
+            },
+            {
+              "label": "その後、相手のクリーチャーを1体破壊する",
+              "type": "destroy",
+              "target": "opponent",
+              "amount": 1
+            }
+          ]
+        }
+      ]
     },
     "id": 96
   },
@@ -3177,27 +3243,6 @@
       "slayer"
     ],
     "effect": "ブロッカー\nスレイヤー\nこのクリーチャーが出た時、自分の山札の上から3枚を墓地に置いてもよい。その後、シノビ・カードを1枚、自分の墓地から手札に戻してもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分の山札の上から3枚を墓地に置いてもよい",
-          "type": "topToGrave",
-          "amount": 3,
-          "optional": true
-        },
-        {
-          "label": "シノビ・カードを1枚、自分の墓地から手札に戻してもよい",
-          "type": "graveToHand",
-          "target": "self",
-          "amount": 1,
-          "filter": {
-            "raceContains": "シノビ"
-          },
-          "optional": true
-        }
-      ]
-    },
     "spellSide": {
       "name": "「ここは行かせません！」",
       "cost": 4,
@@ -3206,34 +3251,59 @@
         "sTrigger"
       ],
       "effect": "S・トリガー\n自分の山札の上から4枚を墓地に置く。その後、自分の墓地にあるカードの枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊する。",
-      "autoEffect": {
-        "trigger": "cast",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分の山札の上から4枚を墓地に置く",
+              "type": "topToGrave",
+              "amount": 4
+            },
+            {
+              "label": "その後、自分の墓地にあるカードの枚数を数える",
+              "type": "count",
+              "zone": "grave",
+              "target": "self",
+              "as": "graveCount"
+            },
+            {
+              "label": "墓地の枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊する",
+              "type": "destroy",
+              "target": "opponent",
+              "amount": 1,
+              "filter": {
+                "maxCost": "graveCount"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "id": 97,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
         "effects": [
           {
-            "label": "自分の山札の上から4枚を墓地に置く",
+            "label": "自分の山札の上から3枚を墓地に置いてもよい",
             "type": "topToGrave",
-            "amount": 4
+            "amount": 3,
+            "optional": true
           },
           {
-            "label": "その後、自分の墓地にあるカードの枚数を数える",
-            "type": "count",
-            "zone": "grave",
+            "label": "シノビ・カードを1枚、自分の墓地から手札に戻してもよい",
+            "type": "graveToHand",
             "target": "self",
-            "as": "graveCount"
-          },
-          {
-            "label": "墓地の枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊する",
-            "type": "destroy",
-            "target": "opponent",
             "amount": 1,
             "filter": {
-              "maxCost": "graveCount"
-            }
+              "raceContains": "シノビ"
+            },
+            "optional": true
           }
         ]
       }
-    },
-    "id": 97
+    ]
   },
   {
     "name": "シェル・アルカザール",
@@ -3246,24 +3316,26 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（このクリーチャーをシールドゾーンから手札に加える時、コストを支払わずにすぐ召喚してもよい）\nこのクリーチャーが出た時、コスト3以下のエレメントを1つ選び、持ち主のマナゾーンにタップして置いてもよい。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "コスト3以下のエレメントを1つ選び、持ち主のマナゾーンにタップして置いてもよい",
-          "type": "bzToMana",
-          "target": "both",
-          "amount": 1,
-          "optional": true,
-          "filter": {
-            "element": true,
-            "maxCost": 3
-          },
-          "tapped": true
-        }
-      ]
-    },
-    "id": 98
+    "id": 98,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "コスト3以下のエレメントを1つ選び、持ち主のマナゾーンにタップして置いてもよい",
+            "type": "bzToMana",
+            "target": "both",
+            "amount": 1,
+            "optional": true,
+            "filter": {
+              "element": true,
+              "maxCost": 3
+            },
+            "tapped": true
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "完全水中要塞 アカシック3",
@@ -3272,7 +3344,6 @@
     "race": "ヒストリック・フィールド",
     "cost": 10,
     "effect": "ヒストリック・フィールド\n自分は呪文をコストを支払わずに唱えてもよい。",
-    "autoEffect": null,
     "freeCast": [
       {
         "filter": {
@@ -3289,25 +3360,27 @@
     "civ": "darkness",
     "cost": 2,
     "effect": "好きな枚数のカードを、自分のマナゾーンから墓地に置く。その後、同じ枚数のカードを引く。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "好きな枚数のカードを、自分のマナゾーンから墓地に置く",
-          "type": "manaToGrave",
-          "target": "self",
-          "any": true,
-          "as": "捨てた枚数"
-        },
-        {
-          "label": "その後、同じ枚数のカードを引く",
-          "type": "drawCards",
-          "amount": "捨てた枚数"
-        }
-      ]
-    },
     "id": 100,
-    "keywords": []
+    "keywords": [],
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "好きな枚数のカードを、自分のマナゾーンから墓地に置く",
+            "type": "manaToGrave",
+            "target": "self",
+            "any": true,
+            "as": "捨てた枚数"
+          },
+          {
+            "label": "その後、同じ枚数のカードを引く",
+            "type": "drawCards",
+            "amount": "捨てた枚数"
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "森夢龍 フィオナ・フォレスト",
@@ -3320,21 +3393,6 @@
       "wBreaker"
     ],
     "effect": "W・ブレイカー\nこのクリーチャーが出た時、フィールドを1枚、自分のマナゾーンから出してもよい。\n相手が自分のクリーチャーを選ぶ時、自分の他のドリームメイトは選ばれない。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "フィールドを1枚、自分のマナゾーンから出してもよい",
-          "type": "manaToBz",
-          "target": "self",
-          "amount": 1,
-          "optional": true,
-          "filter": {
-            "type": "field"
-          }
-        }
-      ]
-    },
     "grantKeywords": [
       {
         "keyword": "unselectable",
@@ -3344,7 +3402,24 @@
         }
       }
     ],
-    "id": 101
+    "id": 101,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "フィールドを1枚、自分のマナゾーンから出してもよい",
+            "type": "manaToBz",
+            "target": "self",
+            "amount": 1,
+            "optional": true,
+            "filter": {
+              "type": "field"
+            }
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "黒豆だんしゃく",
@@ -3357,7 +3432,6 @@
       "tBreaker"
     ],
     "effect": "T・ブレイカー\n相手の、「このクリーチャーが出た時」で始まる能力を持つクリーチャーがバトルゾーンに出た時、そのクリーチャーを持ち主のマナゾーンに置く。",
-    "autoEffect": null,
     "triggers": [
       {
         "on": "creaturePutBz",
@@ -3381,23 +3455,25 @@
       "civ": "nature",
       "keywords": [],
       "effect": "自分の山札の上から1枚目をマナゾーンに置く。その後、カードを1枚、自分のマナゾーンから手札に戻してもよい。",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "label": "自分の山札の上から1枚目をマナゾーンに置く",
-            "type": "topToMana",
-            "amount": 1
-          },
-          {
-            "label": "その後、カードを1枚、自分のマナゾーンから手札に戻してもよい",
-            "type": "manaToHand",
-            "target": "self",
-            "amount": 1,
-            "optional": true
-          }
-        ]
-      }
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分の山札の上から1枚目をマナゾーンに置く",
+              "type": "topToMana",
+              "amount": 1
+            },
+            {
+              "label": "その後、カードを1枚、自分のマナゾーンから手札に戻してもよい",
+              "type": "manaToHand",
+              "target": "self",
+              "amount": 1,
+              "optional": true
+            }
+          ]
+        }
+      ]
     },
     "id": 102
   },
@@ -3413,7 +3489,6 @@
       "tBreaker"
     ],
     "effect": "マッハファイター（このクリーチャーは、出たターンの間、タップまたはアンタップしているクリーチャーを攻撃できる）\nT・ブレイカー\n自分のクリーチャーが離れる時、かわりにマナゾーンに置いてもよい。\nこのクリーチャーがバトルに勝った時、自分のマナゾーンにあるカードの枚数以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい。",
-    "autoEffect": null,
     "replaceLeave": [
       {
         "to": "mana",
@@ -3454,22 +3529,24 @@
       "civ": "nature",
       "keywords": [],
       "effect": "自分の山札を見る。その中から自然ではないカードを1枚、タップしてマナゾーンに置いてもよい。その後、山札をシャッフルする。",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "label": "山札から自然ではないカードを1枚、タップしてマナゾーンに置いてもよい（その後シャッフル）",
-            "type": "search",
-            "destination": "mana",
-            "amount": 1,
-            "tapped": true,
-            "optional": true,
-            "filter": {
-              "civNot": "nature"
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "山札から自然ではないカードを1枚、タップしてマナゾーンに置いてもよい（その後シャッフル）",
+              "type": "search",
+              "destination": "mana",
+              "amount": 1,
+              "tapped": true,
+              "optional": true,
+              "filter": {
+                "civNot": "nature"
+              }
             }
-          }
-        ]
-      }
+          ]
+        }
+      ]
     },
     "id": 103
   },
@@ -3487,52 +3564,56 @@
       "worldBreaker"
     ],
     "effect": "ワールド・ブレイカー\nこのクリーチャーが出た時、各プレイヤーは自身の手札をすべて、超次元ゾーンに置く。その後、各プレイヤーは自身のマナゾーンにあるクリーチャーをすべて、手札に戻す。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "各プレイヤーは自身の手札をすべて、超次元ゾーンに置く",
-          "type": "handToHyper",
-          "target": "both",
-          "all": true
-        },
-        {
-          "label": "その後、各プレイヤーは自身のマナゾーンにあるクリーチャーをすべて、手札に戻す",
-          "type": "manaToHand",
-          "target": "both",
-          "all": true,
-          "filter": {
-            "creatureOnly": true
-          }
-        }
-      ]
-    },
     "spellSide": {
       "name": "繁栄の鏡",
       "cost": 4,
       "civ": "nature",
       "keywords": [],
       "effect": "自分の山札の上から2枚をタップしてマナゾーンに置く。その後、カードを2枚まで、自分のマナゾーンから手札に戻す。",
-      "autoEffect": {
-        "trigger": "cast",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分の山札の上から2枚をタップしてマナゾーンに置く",
+              "type": "topToMana",
+              "amount": 2,
+              "tapped": true
+            },
+            {
+              "label": "その後、カードを2枚まで、自分のマナゾーンから手札に戻す",
+              "type": "manaToHand",
+              "target": "self",
+              "amount": 2,
+              "optional": true
+            }
+          ]
+        }
+      ]
+    },
+    "id": 104,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
         "effects": [
           {
-            "label": "自分の山札の上から2枚をタップしてマナゾーンに置く",
-            "type": "topToMana",
-            "amount": 2,
-            "tapped": true
+            "label": "各プレイヤーは自身の手札をすべて、超次元ゾーンに置く",
+            "type": "handToHyper",
+            "target": "both",
+            "all": true
           },
           {
-            "label": "その後、カードを2枚まで、自分のマナゾーンから手札に戻す",
+            "label": "その後、各プレイヤーは自身のマナゾーンにあるクリーチャーをすべて、手札に戻す",
             "type": "manaToHand",
-            "target": "self",
-            "amount": 2,
-            "optional": true
+            "target": "both",
+            "all": true,
+            "filter": {
+              "creatureOnly": true
+            }
           }
         ]
       }
-    },
-    "id": 104
+    ]
   },
   {
     "name": "闘争類拳嘩目 ステゴロ・カイザー",
@@ -3546,7 +3627,6 @@
       "wBreaker"
     ],
     "effect": "マッハファイター（このクリーチャーは、出たターンの間、タップまたはアンタップしているクリーチャーを攻撃できる）\nW・ブレイカー（このクリーチャーはシールドを2つブレイクする）\nこのクリーチャーが攻撃する時、自分の山札の上から1枚をマナゾーンに置く。その後、カードを1枚、自分のマナゾーンから手札に戻してもよい。",
-    "autoEffect": null,
     "triggers": [
       {
         "on": "attack",
@@ -3572,23 +3652,25 @@
       "civ": "nature",
       "keywords": [],
       "effect": "自分の山札の上から1枚をマナゾーンに置く。\nカードを1枚以上、プレイヤー1人の墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする。",
-      "autoEffect": {
-        "trigger": "cast",
-        "effects": [
-          {
-            "label": "自分の山札の上から1枚をマナゾーンに置く",
-            "type": "topToMana",
-            "amount": 1
-          },
-          {
-            "label": "カードを1枚以上、プレイヤー1人の墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする",
-            "type": "graveToDeck",
-            "target": "both",
-            "onePlayer": true,
-            "any": true
-          }
-        ]
-      }
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分の山札の上から1枚をマナゾーンに置く",
+              "type": "topToMana",
+              "amount": 1
+            },
+            {
+              "label": "カードを1枚以上、プレイヤー1人の墓地から選んでもよい。そのプレイヤーは、それらを自身の山札に加えてシャッフルする",
+              "type": "graveToDeck",
+              "target": "both",
+              "onePlayer": true,
+              "any": true
+            }
+          ]
+        }
+      ]
     },
     "id": 105
   },
@@ -3605,32 +3687,34 @@
     "power": 3000,
     "keywords": [],
     "effect": "このクリーチャーが出た時、自分の山札の上から3枚を見る。そのうちの1枚を手札に加え、1枚をマナゾーンに置き、残りの1枚を墓地に置く。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分の山札の上から3枚を見る",
-          "type": "reveal",
-          "amount": 3
-        },
-        {
-          "label": "そのうちの1枚を手札に加える",
-          "type": "revealedToHand",
-          "amount": 1
-        },
-        {
-          "label": "1枚をマナゾーンに置く",
-          "type": "revealedToMana",
-          "amount": 1
-        },
-        {
-          "label": "残りの1枚を墓地に置く",
-          "type": "revealedToGrave",
-          "takeAll": true
-        }
-      ]
-    },
-    "id": 106
+    "id": 106,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の山札の上から3枚を見る",
+            "type": "reveal",
+            "amount": 3
+          },
+          {
+            "label": "そのうちの1枚を手札に加える",
+            "type": "revealedToHand",
+            "amount": 1
+          },
+          {
+            "label": "1枚をマナゾーンに置く",
+            "type": "revealedToMana",
+            "amount": 1
+          },
+          {
+            "label": "残りの1枚を墓地に置く",
+            "type": "revealedToGrave",
+            "takeAll": true
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "ディザスター・チューン",
@@ -3643,36 +3727,38 @@
     "cost": 3,
     "keywords": [],
     "effect": "自分の山札の上から4枚を見る。それらを1枚ずつ、手札、マナゾーン、墓地、山札の下に置く。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分の山札の上から4枚を見る",
-          "type": "reveal",
-          "amount": 4
-        },
-        {
-          "label": "そのうちの1枚を手札に加える",
-          "type": "revealedToHand",
-          "amount": 1
-        },
-        {
-          "label": "1枚をマナゾーンに置く",
-          "type": "revealedToMana",
-          "amount": 1
-        },
-        {
-          "label": "1枚を墓地に置く",
-          "type": "revealedToGrave",
-          "amount": 1
-        },
-        {
-          "label": "残りの1枚を山札の下に置く",
-          "type": "revealedToDeckBottom"
-        }
-      ]
-    },
-    "id": 107
+    "id": 107,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から4枚を見る",
+            "type": "reveal",
+            "amount": 4
+          },
+          {
+            "label": "そのうちの1枚を手札に加える",
+            "type": "revealedToHand",
+            "amount": 1
+          },
+          {
+            "label": "1枚をマナゾーンに置く",
+            "type": "revealedToMana",
+            "amount": 1
+          },
+          {
+            "label": "1枚を墓地に置く",
+            "type": "revealedToGrave",
+            "amount": 1
+          },
+          {
+            "label": "残りの1枚を山札の下に置く",
+            "type": "revealedToDeckBottom"
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "巨大設計図",
@@ -3683,31 +3769,33 @@
     "cost": 2,
     "keywords": [],
     "effect": "自分の山札の上から4枚を表向きにする。その中からコスト7以上のクリーチャーをすべて手札に加え、残りを好きな順序で山札の下に置く。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分の山札の上から4枚を表向きにする",
-          "type": "reveal",
-          "amount": 4
-        },
-        {
-          "label": "コスト7以上のクリーチャーをすべて手札に加える",
-          "type": "revealedToHand",
-          "takeAll": true,
-          "filter": {
-            "type": "creature",
-            "minCost": 7
+    "id": 108,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から4枚を表向きにする",
+            "type": "reveal",
+            "amount": 4
+          },
+          {
+            "label": "コスト7以上のクリーチャーをすべて手札に加える",
+            "type": "revealedToHand",
+            "takeAll": true,
+            "filter": {
+              "type": "creature",
+              "minCost": 7
+            }
+          },
+          {
+            "label": "残りを好きな順序で山札の下に置く",
+            "type": "revealedToDeckBottom",
+            "order": "choose"
           }
-        },
-        {
-          "label": "残りを好きな順序で山札の下に置く",
-          "type": "revealedToDeckBottom",
-          "order": "choose"
-        }
-      ]
-    },
-    "id": 108
+        ]
+      }
+    ]
   },
   {
     "name": "コレンココ・タンク",
@@ -3721,63 +3809,67 @@
     ],
     "cantAttackPlayer": true,
     "effect": "ガードマン（このクリーチャーをタップして、相手クリーチャーの攻撃先を、自分の他のクリーチャーからこのクリーチャーに変更してもよい）\nこのクリーチャーは、相手プレイヤーを攻撃できない。\nこのクリーチャーが出た時、自分の山札の上から3枚を表向きにする。その中から、パワー12000以上のクリーチャーを好きな数手札に加え、残りをタップしてマナゾーンに置く。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分の山札の上から3枚を表向きにする",
-          "type": "reveal",
-          "amount": 3
-        },
-        {
-          "label": "パワー12000以上のクリーチャーを好きな数手札に加える",
-          "type": "revealedToHand",
-          "any": true,
-          "filter": {
-            "type": "creature",
-            "minPower": 12000
-          }
-        },
-        {
-          "label": "残りをタップしてマナゾーンに置く",
-          "type": "revealedToMana",
-          "takeAll": true,
-          "tapped": true
-        }
-      ]
-    },
     "spellSide": {
       "name": "ボント・プラントボ",
       "cost": 3,
       "civ": "nature",
       "keywords": [],
       "effect": "自分の山札の上から1枚をマナゾーンに置く。それがパワー12000以上のクリーチャーなら、自分の山札の上からもう1枚、マナゾーンに置く。",
-      "autoEffect": {
-        "trigger": "cast",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分の山札の上から1枚をマナゾーンに置く",
+              "type": "topToMana",
+              "amount": 1
+            },
+            {
+              "label": "置いたカードがパワー12000以上のクリーチャーか数える",
+              "type": "count",
+              "zone": "lastMoved",
+              "filter": {
+                "type": "creature",
+                "minPower": 12000
+              }
+            },
+            {
+              "label": "それがパワー12000以上のクリーチャーなら、自分の山札の上からもう1枚、マナゾーンに置く",
+              "type": "topToMana",
+              "amount": "count"
+            }
+          ]
+        }
+      ]
+    },
+    "id": 109,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
         "effects": [
           {
-            "label": "自分の山札の上から1枚をマナゾーンに置く",
-            "type": "topToMana",
-            "amount": 1
+            "label": "自分の山札の上から3枚を表向きにする",
+            "type": "reveal",
+            "amount": 3
           },
           {
-            "label": "置いたカードがパワー12000以上のクリーチャーか数える",
-            "type": "count",
-            "zone": "lastMoved",
+            "label": "パワー12000以上のクリーチャーを好きな数手札に加える",
+            "type": "revealedToHand",
+            "any": true,
             "filter": {
               "type": "creature",
               "minPower": 12000
             }
           },
           {
-            "label": "それがパワー12000以上のクリーチャーなら、自分の山札の上からもう1枚、マナゾーンに置く",
-            "type": "topToMana",
-            "amount": "count"
+            "label": "残りをタップしてマナゾーンに置く",
+            "type": "revealedToMana",
+            "takeAll": true,
+            "tapped": true
           }
         ]
       }
-    },
-    "id": 109
+    ]
   },
   {
     "name": "百鬼の邪王門",
@@ -3802,36 +3894,38 @@
         }
       ]
     },
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分の山札の上から4枚を墓地に置く",
-          "type": "topToGrave",
-          "amount": 4
-        },
-        {
-          "label": "こうして墓地に置いたカードの中から、闇または火のコスト6以下の進化ではないクリーチャーを1体出す",
-          "type": "graveToBz",
-          "zone": "lastMoved",
-          "filter": {
-            "type": "nonEvoCreature",
-            "civ": [
-              "darkness",
-              "fire"
-            ],
-            "maxCost": 6
+    "id": 110,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から4枚を墓地に置く",
+            "type": "topToGrave",
+            "amount": 4
+          },
+          {
+            "label": "こうして墓地に置いたカードの中から、闇または火のコスト6以下の進化ではないクリーチャーを1体出す",
+            "type": "graveToBz",
+            "zone": "lastMoved",
+            "filter": {
+              "type": "nonEvoCreature",
+              "civ": [
+                "darkness",
+                "fire"
+              ],
+              "maxCost": 6
+            }
+          },
+          {
+            "label": "その後、相手のクリーチャーを1体選んでもよい。その2体をバトルさせる",
+            "type": "battle",
+            "selfFrom": "lastPut",
+            "optional": true
           }
-        },
-        {
-          "label": "その後、相手のクリーチャーを1体選んでもよい。その2体をバトルさせる",
-          "type": "battle",
-          "selfFrom": "lastPut",
-          "optional": true
-        }
-      ]
-    },
-    "id": 110
+        ]
+      }
+    ]
   },
   {
     "name": "豊潤フォージュン",
@@ -3842,33 +3936,35 @@
     "civ": "nature",
     "keywords": [],
     "effect": "自分の山札の上から1枚をマナゾーンに置く。その後、自分のマナゾーンのカードが5枚以下なら、カードを1枚引く。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分の山札の上から1枚をマナゾーンに置く",
-          "type": "topToMana",
-          "amount": 1
-        },
-        {
-          "label": "自分のマナゾーンのカードを数える",
-          "type": "count",
-          "zone": "mana",
-          "target": "self",
-          "as": "manaCount"
-        },
-        {
-          "label": "マナゾーンのカードが5枚以下なら、カードを1枚引く",
-          "type": "drawCards",
-          "amount": 1,
-          "onlyIf": {
-            "count": "manaCount",
-            "max": 5
+    "id": 111,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をマナゾーンに置く",
+            "type": "topToMana",
+            "amount": 1
+          },
+          {
+            "label": "自分のマナゾーンのカードを数える",
+            "type": "count",
+            "zone": "mana",
+            "target": "self",
+            "as": "manaCount"
+          },
+          {
+            "label": "マナゾーンのカードが5枚以下なら、カードを1枚引く",
+            "type": "drawCards",
+            "amount": 1,
+            "onlyIf": {
+              "count": "manaCount",
+              "max": 5
+            }
           }
-        }
-      ]
-    },
-    "id": 111
+        ]
+      }
+    ]
   },
   {
     "name": "鬼ヶ大王 ジャオウガ",
@@ -3885,20 +3981,22 @@
       "wBreaker"
     ],
     "effect": "スピードアタッカー（このクリーチャーは召喚酔いしない）\nW・ブレイカー（このクリーチャーはシールドを2つブレイクする）\nこのクリーチャーが出た時、自分のシールドをすべて手札に加えてもよい。ただし、その「S・トリガー」は使えない。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分のシールドをすべて手札に加えてもよい（その「S・トリガー」は使えない）",
-          "type": "shieldToHand",
-          "target": "self",
-          "all": true,
-          "optional": true,
-          "canUseTrigger": false
-        }
-      ]
-    },
-    "id": 112
+    "id": 112,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分のシールドをすべて手札に加えてもよい（その「S・トリガー」は使えない）",
+            "type": "shieldToHand",
+            "target": "self",
+            "all": true,
+            "optional": true,
+            "canUseTrigger": false
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "MAX鬼無双",
@@ -3912,59 +4010,61 @@
     ],
     "keywords": [],
     "effect": "自分のクリーチャー1体またはタマシードを1枚破壊する。その後、その破壊したカードよりコストが1大きい、クリーチャー1体またはタマシードを1枚、自分の墓地から出す。こうして出したカードがクリーチャーなら、このターン「スピードアタッカー」を与え、タマシードならカードを1枚引く。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分のクリーチャー1体またはタマシードを1枚破壊する",
-          "type": "destroy",
-          "target": "self",
-          "filter": {
-            "type": [
-              "creature",
-              "tamaseed"
-            ]
+    "id": 113,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分のクリーチャー1体またはタマシードを1枚破壊する",
+            "type": "destroy",
+            "target": "self",
+            "filter": {
+              "type": [
+                "creature",
+                "tamaseed"
+              ]
+            },
+            "asCost": "destroyedCost"
           },
-          "asCost": "destroyedCost"
-        },
-        {
-          "label": "破壊したカードよりコストが1大きいクリーチャーまたはタマシードを、自分の墓地から出す（クリーチャーならこのターン「スピードアタッカー」）",
-          "type": "graveToBz",
-          "tempKeywords": [
-            "speedAttacker"
-          ],
-          "filter": {
-            "type": [
-              "creature",
-              "tamaseed"
+          {
+            "label": "破壊したカードよりコストが1大きいクリーチャーまたはタマシードを、自分の墓地から出す（クリーチャーならこのターン「スピードアタッカー」）",
+            "type": "graveToBz",
+            "tempKeywords": [
+              "speedAttacker"
             ],
-            "cost": {
-              "var": "destroyedCost",
-              "plus": 1
+            "filter": {
+              "type": [
+                "creature",
+                "tamaseed"
+              ],
+              "cost": {
+                "var": "destroyedCost",
+                "plus": 1
+              }
+            }
+          },
+          {
+            "label": "こうして出したカードのうちクリーチャーを数える",
+            "type": "count",
+            "zone": "lastMoved",
+            "filter": {
+              "creatureOnly": true
+            },
+            "as": "putCreature"
+          },
+          {
+            "label": "出したのがタマシードなら、カードを1枚引く",
+            "type": "drawCards",
+            "amount": 1,
+            "onlyIf": {
+              "count": "putCreature",
+              "max": 0
             }
           }
-        },
-        {
-          "label": "こうして出したカードのうちクリーチャーを数える",
-          "type": "count",
-          "zone": "lastMoved",
-          "filter": {
-            "creatureOnly": true
-          },
-          "as": "putCreature"
-        },
-        {
-          "label": "出したのがタマシードなら、カードを1枚引く",
-          "type": "drawCards",
-          "amount": 1,
-          "onlyIf": {
-            "count": "putCreature",
-            "max": 0
-          }
-        }
-      ]
-    },
-    "id": 113
+        ]
+      }
+    ]
   },
   {
     "name": "忍蛇の聖沌 c0br4",
@@ -3978,25 +4078,25 @@
       "blocker"
     ],
     "effect": "S・トリガー（このカードを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\nブロッカー（このクリーチャーをタップして、相手クリーチャーの攻撃先をこのクリーチャーに変更してもよい）\nこのクリーチャーが出た時、自分の山札の上から2枚を墓地に置く。その後、コスト5以下のクリーチャーを1体、自分の墓地から出す。\n相手のターンにこのクリーチャーが出た時、このターンに2つ以上自分のシールドがブレイクされていなければ、このクリーチャーを破壊する。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分の山札の上から2枚を墓地に置く",
-          "type": "topToGrave",
-          "amount": 2
-        },
-        {
-          "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す",
-          "type": "graveToBz",
-          "filter": {
-            "creatureOnly": true,
-            "maxCost": 5
-          }
-        }
-      ]
-    },
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の山札の上から2枚を墓地に置く",
+            "type": "topToGrave",
+            "amount": 2
+          },
+          {
+            "label": "コスト5以下のクリーチャーを1体、自分の墓地から出す",
+            "type": "graveToBz",
+            "filter": {
+              "creatureOnly": true,
+              "maxCost": 5
+            }
+          }
+        ]
+      },
       {
         "on": "creaturePutBz",
         "turnOf": "opponent",
@@ -4044,35 +4144,37 @@
         }
       ]
     },
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "プレイヤーを1人選ぶ。そのプレイヤーは自身の墓地をシャッフルして山札の下に置く",
-          "type": "graveToDeckBottom",
-          "target": "both",
-          "all": true,
-          "choosePlayer": true,
-          "order": "shuffle"
-        },
-        {
-          "label": "こうして山札の下に置いた枚数を数える",
-          "type": "count",
-          "zone": "lastMoved",
-          "as": "toDeckCount"
-        },
-        {
-          "label": "その枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊してもよい",
-          "type": "destroy",
-          "target": "opponent",
-          "optional": true,
-          "filter": {
-            "maxCost": "toDeckCount"
+    "id": 115,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "プレイヤーを1人選ぶ。そのプレイヤーは自身の墓地をシャッフルして山札の下に置く",
+            "type": "graveToDeckBottom",
+            "target": "both",
+            "all": true,
+            "choosePlayer": true,
+            "order": "shuffle"
+          },
+          {
+            "label": "こうして山札の下に置いた枚数を数える",
+            "type": "count",
+            "zone": "lastMoved",
+            "as": "toDeckCount"
+          },
+          {
+            "label": "その枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊してもよい",
+            "type": "destroy",
+            "target": "opponent",
+            "optional": true,
+            "filter": {
+              "maxCost": "toDeckCount"
+            }
           }
-        }
-      ]
-    },
-    "id": 115
+        ]
+      }
+    ]
   },
   {
     "name": "危識：この先、レッドゾーンあり",
@@ -4092,22 +4194,24 @@
         ]
       }
     },
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "自分のマナゾーンにあるカードを5枚アンタップする",
-          "type": "untap",
-          "zone": "mana",
-          "target": "self",
-          "amount": 5,
-          "filter": {
-            "tapped": true
+    "id": 116,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分のマナゾーンにあるカードを5枚アンタップする",
+            "type": "untap",
+            "zone": "mana",
+            "target": "self",
+            "amount": 5,
+            "filter": {
+              "tapped": true
+            }
           }
-        }
-      ]
-    },
-    "id": 116
+        ]
+      }
+    ]
   },
   {
     "name": "龍素記号wD サイクルペディア",
@@ -4124,24 +4228,24 @@
       "justDiver"
     ],
     "effect": "ブロッカー\nジャストダイバー（このクリーチャーが出た時、次の自分のターンのはじめまで、このクリーチャーは相手に選ばれず、攻撃されない）\nこのクリーチャーが出た時、コスト4以下の呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい。\n各ターンに1度、自分の手札から呪文を唱えた時、その呪文を自分の墓地からコストを支払わずに唱えてもよい。\n自分の墓地から呪文を唱えた後、墓地のかわりに山札の下に置く。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "コスト4以下の呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい",
-          "type": "playFromHand",
-          "zone": "grave",
-          "target": "self",
-          "free": true,
-          "optional": true,
-          "filter": {
-            "type": "spell",
-            "maxCost": 4
-          }
-        }
-      ]
-    },
     "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "コスト4以下の呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい",
+            "type": "playFromHand",
+            "zone": "grave",
+            "target": "self",
+            "free": true,
+            "optional": true,
+            "filter": {
+              "type": "spell",
+              "maxCost": 4
+            }
+          }
+        ]
+      },
       {
         "on": "castSpell",
         "target": "self",
@@ -4193,17 +4297,6 @@
       ],
       "race": "ドラゴン"
     },
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "次の、相手のターンの終わりまで、相手は呪文を唱えられない",
-          "type": "denySpell",
-          "target": "opponent",
-          "until": "endOfNextTurn"
-        }
-      ]
-    },
     "spellSide": {
       "name": "「未来から来る、だからミラクル」",
       "cost": 6,
@@ -4213,30 +4306,45 @@
       ],
       "keywords": [],
       "effect": "カードを3枚引く。その後、コスト5以下の呪文を1枚、自分の手札からコストを支払わずに唱えてもよい。",
-      "autoEffect": {
-        "trigger": "cast",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "カードを3枚引く",
+              "type": "drawCards",
+              "amount": 3
+            },
+            {
+              "label": "コスト5以下の呪文を1枚、自分の手札からコストを支払わずに唱えてもよい",
+              "type": "playFromHand",
+              "zone": "hand",
+              "target": "self",
+              "free": true,
+              "optional": true,
+              "filter": {
+                "type": "spell",
+                "maxCost": 5
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "id": 118,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
         "effects": [
           {
-            "label": "カードを3枚引く",
-            "type": "drawCards",
-            "amount": 3
-          },
-          {
-            "label": "コスト5以下の呪文を1枚、自分の手札からコストを支払わずに唱えてもよい",
-            "type": "playFromHand",
-            "zone": "hand",
-            "target": "self",
-            "free": true,
-            "optional": true,
-            "filter": {
-              "type": "spell",
-              "maxCost": 5
-            }
+            "label": "次の、相手のターンの終わりまで、相手は呪文を唱えられない",
+            "type": "denySpell",
+            "target": "opponent",
+            "until": "endOfNextTurn"
           }
         ]
       }
-    },
-    "id": 118
+    ]
   },
   {
     "name": "切札勝太＆カツキング -熱血の物語-",
@@ -4254,52 +4362,6 @@
       "machFighter"
     ],
     "effect": "マッハファイター（このクリーチャーは、出たターンでもタップされているクリーチャーを攻撃できる）\nこのクリーチャーが出た時、自分の山札の上から5枚を見る。その中から1枚を表向きにして手札に加え、残りを好きな順序で山札の下に置く。こうして表向きにしたカードが火または自然なら、クリーチャーを1体選び、持ち主の手札に戻してもよい。\n革命2：自分のシールドが2つ以下なら、自分のシールドゾーンから手札に加えるこのクリーチャーに「S・トリガー」を与える。\n革命0：自分のシールドが1つもなければ、このクリーチャーのパワーを+10000し、「スピードアタッカー」と「T・ブレイカー」を与える。",
-    "autoEffect": {
-      "trigger": "play",
-      "effects": [
-        {
-          "label": "自分の山札の上から5枚を見る",
-          "type": "reveal",
-          "amount": 5
-        },
-        {
-          "label": "その中から1枚を表向きにして手札に加える",
-          "type": "revealedToHand",
-          "amount": 1
-        },
-        {
-          "label": "こうして表向きにしたカードが火または自然か数える",
-          "type": "count",
-          "zone": "lastMoved",
-          "filter": {
-            "civ": [
-              "fire",
-              "nature"
-            ]
-          },
-          "as": "hotCard"
-        },
-        {
-          "label": "残りを好きな順序で山札の下に置く",
-          "type": "revealedToDeckBottom",
-          "order": "choose"
-        },
-        {
-          "label": "火または自然なら、クリーチャーを1体選び、持ち主の手札に戻してもよい",
-          "type": "bzToHand",
-          "target": "both",
-          "amount": 1,
-          "optional": true,
-          "filter": {
-            "creatureOnly": true
-          },
-          "onlyIf": {
-            "count": "hotCard",
-            "min": 1
-          }
-        }
-      ]
-    },
     "grantSelfSTrigger": {
       "condition": {
         "type": "shieldCount",
@@ -4341,7 +4403,55 @@
         }
       }
     ],
-    "id": 119
+    "id": 119,
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の山札の上から5枚を見る",
+            "type": "reveal",
+            "amount": 5
+          },
+          {
+            "label": "その中から1枚を表向きにして手札に加える",
+            "type": "revealedToHand",
+            "amount": 1
+          },
+          {
+            "label": "こうして表向きにしたカードが火または自然か数える",
+            "type": "count",
+            "zone": "lastMoved",
+            "filter": {
+              "civ": [
+                "fire",
+                "nature"
+              ]
+            },
+            "as": "hotCard"
+          },
+          {
+            "label": "残りを好きな順序で山札の下に置く",
+            "type": "revealedToDeckBottom",
+            "order": "choose"
+          },
+          {
+            "label": "火または自然なら、クリーチャーを1体選び、持ち主の手札に戻してもよい",
+            "type": "bzToHand",
+            "target": "both",
+            "amount": 1,
+            "optional": true,
+            "filter": {
+              "creatureOnly": true
+            },
+            "onlyIf": {
+              "count": "hotCard",
+              "min": 1
+            }
+          }
+        ]
+      }
+    ]
   },
   {
     "name": "魔誕の封殺ディアス Z",
@@ -4419,45 +4529,47 @@
       "sTrigger"
     ],
     "effect": "S・トリガー（このカードを自分のシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\nカードを1枚引き、数字を1つ選ぶ。次の自分のターンのはじめまで、その数字と同じコストの相手のエレメントの能力を無視し、相手はその数字と同じコストの呪文を唱えられない。",
-    "autoEffect": {
-      "trigger": "cast",
-      "effects": [
-        {
-          "label": "カードを1枚引く",
-          "type": "drawCards",
-          "amount": 1
-        },
-        {
-          "label": "数字を1つ選ぶ",
-          "type": "chooseNumber",
-          "as": "n",
-          "min": 0,
-          "max": 12
-        },
-        {
-          "label": "その数字と同じコストの相手のエレメントの能力を、次の自分のターンのはじめまで無視する",
-          "type": "ignoreAbilities",
-          "target": "opponent",
-          "all": true,
-          "filter": {
-            "element": true,
-            "cost": {
-              "var": "n"
+    "id": 121,
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "カードを1枚引く",
+            "type": "drawCards",
+            "amount": 1
+          },
+          {
+            "label": "数字を1つ選ぶ",
+            "type": "chooseNumber",
+            "as": "n",
+            "min": 0,
+            "max": 12
+          },
+          {
+            "label": "その数字と同じコストの相手のエレメントの能力を、次の自分のターンのはじめまで無視する",
+            "type": "ignoreAbilities",
+            "target": "opponent",
+            "all": true,
+            "filter": {
+              "element": true,
+              "cost": {
+                "var": "n"
+              }
+            }
+          },
+          {
+            "label": "次の自分のターンのはじめまで、相手はその数字と同じコストの呪文を唱えられない",
+            "type": "denySpell",
+            "target": "opponent",
+            "filter": {
+              "cost": {
+                "var": "n"
+              }
             }
           }
-        },
-        {
-          "label": "次の自分のターンのはじめまで、相手はその数字と同じコストの呪文を唱えられない",
-          "type": "denySpell",
-          "target": "opponent",
-          "filter": {
-            "cost": {
-              "var": "n"
-            }
-          }
-        }
-      ]
-    },
-    "id": 121
+        ]
+      }
+    ]
   }
 ]

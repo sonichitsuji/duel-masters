@@ -287,7 +287,7 @@ const IDENTITY_KEYS = new Set(["id","uid","name","cost","power","civ","type","ra
 // ssx（下のカードから伝播する能力）と tempBuff（他のカードから与えられた能力）も、
 // 「そのエレメントが持つ能力」なので一緒に消える。
 // evolutionBase は能力ではなくカードの構成なので残す（進化クリーチャーであることは変わらない）。
-const ABILITY_FIELDS = ["keywords","autoEffect","triggers","activated","ssx","tempBuff",
+const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "summonFrom","freeCast","replaceLose","replaceLeave","spellAfterCast","staticDeny",
   "costReduce","condPower","grantKeywords","grantPowerBoost","grantPowerBoostGrave",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
@@ -331,14 +331,27 @@ export function getCardTriggers(card){ return effectiveCard(card)?.triggers || [
 // カードが持つ起動型能力（通常 + 超魂X）
 export function getCardActivated(card){ return effectiveCard(card)?.activated || []; }
 // 「このクリーチャーが出た時」で始まる能力（cip）を持つか。
-// autoEffect{trigger:"play"} でも triggers:[{on:"creaturePutBz"}] でも書けるので両方見る。
-// ツインパクトはクリーチャー面の能力を見る（呪文面の autoEffect は cip ではない）。
+// ツインパクトはクリーチャー面の能力を見る（呪文面の triggers は cip ではない）。
 export function hasPlayTrigger(card){
   const ec = effectiveCard(card);
   if (!ec) return false;
-  if (ec.autoEffect?.trigger === "play") return true;
   return (ec.triggers || []).some(tr =>
     tr.on === "creaturePutBz" && (!tr.target || tr.target === "this"));
+}
+
+// 呪文の本体（唱えた時に必ず起きる効果）。triggers の on:"cast" がそれ。
+// 誘発型能力ではないので、リゾルバでは kind:"spell" として順序固定で解決する
+// （他の誘発と並べて「どれから解決するか」を聞くものではない）。
+// ツインパクトを呪文面で唱える時は、呼び出し側が呪文面を渡すこと。
+export function spellMainEffect(card){
+  return (effectiveCard(card)?.triggers || []).find(tr => tr.on === "cast") || null;
+}
+// 「このカードが場に出た／置かれた時」の本体。cip は誘発型能力なので
+// 通常は fireTrigger("creaturePutBz") が拾うが、クリーチャー以外（城など）は
+// その経路を通らないので、自分自身のぶんだけ直接取り出せるようにしてある。
+export function selfPutTriggers(card){
+  return (effectiveCard(card)?.triggers || [])
+    .filter(tr => tr.on === "creaturePutBz" && (!tr.target || tr.target === "this"));
 }
 // カードが持つキーワード判定（通常 + 超魂X + 一時付与）。
 // 他カードからの継続付与は computeGrantedKeywords を併用すること。
@@ -868,17 +881,3 @@ export function withJustDiver(card) {
     keywords: [...new Set([...(prev.keywords || []), ...JUST_DIVER_BUFF.keywords])] } };
 }
 
-// autoEffect inference from keywords/effect text
-export function inferAutoEffect(keywords, effectText) {
-  if(keywords.includes("sTrigger") && effectText.includes("引く")) return { trigger:"cast", type:"draw", amount:3 };
-  if(keywords.includes("sTrigger") && effectText.includes("タップ")) return { trigger:"cast", type:"tapAll", target:"opponent" };
-  if(keywords.includes("sTrigger") && effectText.includes("破壊")) return { trigger:"cast", type:"destroy", target:"opponent", amount:1 };
-  if(keywords.includes("sTrigger") && effectText.includes("マナゾーンに置く") && effectText.includes("相手")) return { trigger:"cast", type:"sendToMana", target:"opponent", amount:1 };
-  if(keywords.includes("sTrigger") && effectText.includes("手札に戻")) return { trigger:"cast", type:"bounce", target:"opponent", amount:1 };
-  if(keywords.includes("sTrigger") && effectText.includes("マナゾーンに置く") && !effectText.includes("相手")) return { trigger:"cast", type:"deckToMana", amount:1 };
-  if(effectText.includes("出たとき") && effectText.includes("引く")) return { trigger:"play", type:"draw", amount:1 };
-  if(effectText.includes("出たとき") && effectText.includes("マナゾーンのカード") && effectText.includes("手札")) return { trigger:"play", type:"manaReturn", target:"self", amount:1, optional:true };
-  if(effectText.includes("手札を全て見て") && effectText.includes("捨て")) return { trigger:"cast", type:"handDestroy", amount:2, target:"opponent" };
-  if(effectText.includes("手札に加える") && effectText.includes("マナ")) return { trigger:"cast", type:"manaReturn", target:"self", amount:1 };
-  return null;
-}
