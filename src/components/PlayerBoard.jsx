@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, getEffectivePower, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable, spellDenyReason, displayPower } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable, spellDenyReason, displayPower } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { CardEffectText } from "./EffectText";
 import { CreatureDetailPanel } from "./CreatureDetailPanel";
 import { ExceptionPanel } from "./ExceptionPanel";
-import { AttackTriggerModal } from "./modals/AttackTriggerModal";
 import { ManaPayModal } from "./modals/ManaPayModal";
 import { TwinPactChoiceModal } from "./modals/TwinPactChoiceModal";
 import { AlternateCostModal } from "./modals/AlternateCostModal";
@@ -16,10 +15,9 @@ import { ZoneViewModal } from "./modals/ZoneViewModal";
 // ===========================
 // PLAYER BOARD
 // ===========================
-export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onRevChange,onDirectAttack,onHyperUnlock,activatedCount,onOpenActivated,summonUsed,large}){
+export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onDirectAttack,onHyperUnlock,activatedCount,onOpenActivated,summonUsed,large}){
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
-  const [revChangeTarget,setRevChangeTarget]=useState(null);
   const [manaPayModal,setManaPayModal]=useState(null);
   const [twinPactModal,setTwinPactModal]=useState(null);
   const [evolutionSelectModal,setEvolutionSelectModal]=useState(null);
@@ -150,52 +148,12 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     }
   };
 
-  // 攻撃宣言: 革命チェンジ可能かチェック
-  const handleAttackWithTriggerCheck = (uid) => {
-    const card = state.battle.find(c => c.uid === uid);
-    if (!card) return;
-    // 革命チェンジ可能なカードが手札にあるかチェック
-    const hasRevChange = state.hand.some(c => {
-      if (!c.keywords?.includes("revolutionChange") || !c.revolutionChangeCond) return false;
-      const cond = c.revolutionChangeCond;
-      const attackerCivs = getCardCivs(card);
-      const civMatch = !cond.civs?.length || cond.civs.some(cv => attackerCivs.includes(cv));
-      const raceMatch = !cond.race && !cond.races ? true : cond.races ? cond.races.some(r => card.race?.includes(r)) : card.race?.includes(cond.race);
-      const costMatch = !cond.minCost || card.cost >= cond.minCost;
-      const powerMatch = !cond.minPower || getEffectivePower(card, state, state.battle) >= cond.minPower;
-      const nameMatch = !cond.nameContains || card.name?.includes(cond.nameContains);
-      const multiColorMatch = !cond.multiColor || (Array.isArray(card.civ) && card.civ.length >= 2);
-      return civMatch && raceMatch && costMatch && powerMatch && nameMatch && multiColorMatch;
-    });
-    if (hasRevChange) {
-      setRevChangeTarget(card);
-      setSelBattle(null);
-    } else {
-      onStartAttack(uid);
-    }
-  };
-
-  // 革命チェンジ実行
-  const handleRevChange = (handCard) => {
-    if (!revChangeTarget) return;
-    onRevChange(handCard, revChangeTarget);
-    setRevChangeTarget(null);
-  };
-
+  // 攻撃宣言はここでは「誰で攻撃するか」を決めるだけ。
+  // 革命チェンジ・アタックトリガーは攻撃先を決めた後に BattleScreen 側で処理する。
   const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#333":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
     <div style={{display:"flex",flexDirection:"column",overflowY:"auto",minHeight:large?"100%":undefined,background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
-      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} ownerState={state} onHyperUnlock={onHyperUnlock} onAttack={()=>{handleAttackWithTriggerCheck(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
-      {revChangeTarget&&(
-        <AttackTriggerModal
-          attacker={revChangeTarget}
-          hand={state.hand}
-          battle={state.battle}
-          ownerState={state}
-          onRevChange={handleRevChange}
-          onSkip={()=>{ onStartAttack(revChangeTarget.uid); setRevChangeTarget(null); }}
-        />
-      )}
+      {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} ownerState={state} onHyperUnlock={onHyperUnlock} onAttack={()=>{onStartAttack(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
       {manaPayModal&&(
         <ManaPayModal
           card={manaPayModal.card}
