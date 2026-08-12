@@ -15,7 +15,7 @@ import { ZoneViewModal } from "./modals/ZoneViewModal";
 // ===========================
 // PLAYER BOARD
 // ===========================
-export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackShield,drewThisTurn,chargedThisTurn,addLog,onDirectAttack,onHyperUnlock,activatedCount,onOpenActivated,summonUsed,large}){
+export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActive,attackingUid,onDraw,onChargeMana,onPlayCard,onStartAttack,onEndTurn,onAttackCreature,onAttackPlayer,drewThisTurn,chargedThisTurn,addLog,onHyperUnlock,activatedCount,onOpenActivated,summonUsed,large}){
   const [selHand,setSelHand]=useState(null);
   const [selBattle,setSelBattle]=useState(null);
   const [manaPayModal,setManaPayModal]=useState(null);
@@ -236,7 +236,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           )}
         </div>
         <div style={{border:"1px solid #3498dbaa",background:"rgba(52,152,219,0.10)",borderRadius:7,padding:"3px 6px"}}>
-          <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackShield}/>
+          <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackPlayer}/>
         </div>
       </div>
       {/* BZ with red border */}
@@ -295,7 +295,14 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       {attackingUid&&!isActive&&(
         <div style={{background:"rgba(255,80,0,0.08)",border:"1px dashed #f8444488",borderRadius:6,padding:"6px 10px",marginBottom:8}}>
           <div style={{fontSize:11,color:"#f84",marginBottom:4,fontFamily:"'Cinzel',serif",letterSpacing:1}}>攻撃対象を選択</div>
-          <ShieldPile shields={state.shields} canClick onBreak={onAttackShield}/>
+          {/* シールドは「プレイヤーへの攻撃を代わりに受ける」ものなので、
+              シールドの山を押してもプレイヤーを攻撃するボタンを押しても同じ宣言になる */}
+          <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+            <ShieldPile shields={state.shields} canClick onBreak={onAttackPlayer}/>
+            <Btn onClick={onAttackPlayer} col="#ff4444">
+              {state.shields.length===0?"ダイレクトアタック":"プレイヤーを攻撃"}
+            </Btn>
+          </div>
         </div>
       )}
       {/* 起動型能力（各ターンに一度〜等）。timing:"any" の能力は相手ターン中でも使えるので isActive とは独立に出す */}
@@ -311,7 +318,6 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           {drewThisTurn&&selHand!==null&&<Btn onClick={handlePlay} col="#ff8844" disabled={!civCheck?.ok}>PLAY</Btn>}
           {drewThisTurn&&selHand!==null&&gZeroOk&&<Btn onClick={handleGZeroPlay} col="#ff44ff">G-ZERO</Btn>}
           {drewThisTurn&&selHand!==null&&freeCastPerm&&<Btn onClick={handleFreeCastPlay} col="#66ddff">コスト不要</Btn>}
-          {drewThisTurn&&attackingUid&&otherState.shields.length===0&&<Btn onClick={onDirectAttack} col="#ff4444">DIRECT</Btn>}
           {drewThisTurn&&<Btn onClick={onEndTurn} col="#ffaa44">END TURN</Btn>}
         </div>
       )}
