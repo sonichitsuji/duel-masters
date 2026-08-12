@@ -126,6 +126,7 @@
 |---|---|
 | `count` | `{zone,target,filter,as?}` 条件一致の枚数を変数（既定名 `count`）へ |
 | `pick` | `{zone,target,filter,as?}` 対象を選んで変数（既定名 `picked`）へ |
+| `chooseNumber` | `{as,min?,max?}` プレイヤーに数字を1つ選ばせて変数へ → **§7.27** |
 
 ```jsonc
 // 自分の光のクリーチャー/タマシード1つにつき1枚引く
@@ -277,6 +278,7 @@
   （`owner:"destroyed"`=直前に破壊されたクリーチャーの持ち主、`self:true`=このカード自身）
 - `zonesToBz {zones,filter,amount,tempKeywords,…}` — **複数のゾーンから**出す
   （「自分の墓地またはマナゾーンから」→ **§7.26**）
+- `ignoreAbilities {target,all,filter}` — **そのエレメントの能力を無視する** → **§7.27**
 - `graveToHand {target,filter,amount}` — 墓地から手札に戻す
 - `graveToDeck {target,filter,any,all,onePlayer}` — 墓地のカードを**山札に加えてシャッフル**する
   （「自身の山札に加えてシャッフルする」。下に置く `graveToDeckBottom` とは別物）
@@ -1142,6 +1144,64 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 | その他 | `graveToBz` と同じ（`tempKeywords` / `summoningSickness` / `destroyAtEndOfTurn`） |
 
 1ゾーンだけなら `graveToBz` / `manaToBz` を使ってください（validator がエラーにします）。
+
+## 7.27. 能力を無視する（`ignoreAbilities`）と「数字を1つ選ぶ」（`chooseNumber`）
+
+> カードを1枚引き、数字を1つ選ぶ。次の自分のターンのはじめまで、その数字と同じコストの
+> 相手のエレメントの能力を無視し、相手はその数字と同じコストの呪文を唱えられない。
+> （♪立ち上がる 悪魔に天使 堕ちるかな）
+
+```jsonc
+[ { "type":"drawCards", "amount":1 },
+  { "type":"chooseNumber", "as":"n", "min":0, "max":12 },
+  { "type":"ignoreAbilities", "target":"opponent", "all":true,
+    "filter":{ "element":true, "cost":{"var":"n"} } },
+  { "type":"denySpell", "target":"opponent", "filter":{ "cost":{"var":"n"} } } ]
+```
+
+### `chooseNumber`（数字を1つ選ぶ）
+
+| キー | 説明 |
+|---|---|
+| `as` | 選んだ数を入れる変数名（**必須**）。以降のステップから `{"var":"n"}` で参照する |
+| `min` / `max` | 選べる数字の範囲（既定 0〜12） |
+
+カードではなく数字を選ぶステップです。`choosePlayer` と同じで、選んだ結果は `selectedUids` に
+混ぜず `ctx` 経由で渡ります。選ばずに閉じた場合は「行わなかった」扱いになります。
+
+### `ignoreAbilities`（そのエレメントの能力を無視する）
+
+| キー | 説明 |
+|---|---|
+| `target` | 誰のバトルゾーンを見るか（`"opponent"` / `"self"` / `"both"`） |
+| `all` | `true` で `filter` に一致するものすべて。省略すると選択させる |
+| `filter` | どのカードを無視するか（§2 と同じ語彙。`{"var":…}` が使える） |
+
+**能力の読み出しは `effectiveCard()` を通るので、印を1つ付けるだけで全体に効きます。**
+消えるのは能力だけで、名前・コスト・パワー・文明・種族・種別・進化元は残ります。
+
+消えるもの:
+
+- `keywords`（＋ `ssx` 由来と `tempBuff` 由来。**他から与えられた能力も無視されます**）
+- `autoEffect` / `triggers` / `activated`
+- `replaceLeave` / `replaceLose` / `staticDeny` / `spellAfterCast` / `summonFrom` / `freeCast`
+- `costReduce` / `condPower` / `grantKeywords` / `powerAttacker` / `poweredBreaker`
+  → **パワー修整も消えて素のパワーに戻り、他のカードへ配ることもしなくなります**
+- `hyperKeywords` / `hyperPower` / `hyperUnlock` / `hyperOnAttack` / `hyperOnTargeted`
+- `oniEnd` / `ddd` / `gZero` / `revolutionChangeCond` / `finalRevolution` / `grantSelfSTrigger`
+
+残るもの: `name` / `cost` / `power` / `civ` / `type` / `race` / `evolutionBase`
+（進化クリーチャーであることは能力ではないので変わりません。ただし進化元の `ssx` は伝わらなくなります）
+
+**期限は `denySpell` と同じ規則です** — 無視されている側のターンが終わると切れます
+（＝この効果を使った側から見て「次の自分のターンのはじめまで」）。
+解決した時点でバトルゾーンにいたカードだけが対象で、**その後に出たカードには掛かりません**。
+
+### 保存される `filter` に `{var}` を書くとき
+
+`denySpell` のようにプレイヤー状態へ保存される `filter` は、あとから `matchCardFilter`
+（`ctx` を持たない）で評価されるため、**積む時点で数値に固めます**。書く側は
+`{"cost":{"var":"n"}}` と書くだけで、engine 側が固定してから保存します。
 
 ## 8. 常在・付与・ハイパー等のフィールド
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import INITIAL_CARD_DB from "../public/cards.json";
-import { DECK_BOLSHACK, DECK_MIRADANTE, DECK_HEAVENS, DECK_DOOM, DECK_ACE } from "./decks";
+import { DECK_BOLSHACK, DECK_MIRADANTE, DECK_HEAVENS, DECK_DOOM, DECK_ACE, DECK_JAOUMON } from "./decks";
 import { BattleScreen } from "./screens/BattleScreen";
 import { MenuScreen } from "./screens/MenuScreen";
 import { syncCardIdSeed } from "./gameLogic";
@@ -11,7 +11,7 @@ import { syncCardIdSeed } from "./gameLogic";
 
 // 同梱データ（cards.json / decks.js）を更新したら上げる。
 // 保存済みの版数と違えば、同梱カードとサンプルデッキを取り込み直す。
-const DATA_VERSION = 8;
+const DATA_VERSION = 9;
 
 const SAMPLE_DECKS = [
   { name: "サンプルデッキA (ボルシャック)", ids: DECK_BOLSHACK },
@@ -19,6 +19,7 @@ const SAMPLE_DECKS = [
   { name: "サンプルデッキC (光 超化獣)", ids: DECK_HEAVENS },
   { name: "サンプルデッキD (闇水 DOOM墓地進化)", ids: DECK_DOOM },
   { name: "サンプルデッキE (自然 ACEランプ)", ids: DECK_ACE },
+  { name: "4c邪王門", ids: DECK_JAOUMON },
 ];
 
 const readJson = key => {

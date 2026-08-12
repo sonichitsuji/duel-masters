@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -906,7 +906,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const fireAttackTriggers=(attacker,intent)=>{
     if(!attacker){ setPendingAttack({intent}); return; }
     // ハイパーモード攻撃時効果：自分の他クリーチャーを1体アンタップ
-    if(attacker.hyperMode&&attacker.hyperOnAttack?.type==="untapAlly"){
+    const atkHyper=attacker.hyperMode?effectiveCard(attacker).hyperOnAttack:null;
+    if(atkHyper?.type==="untapAlly"){
       const allies=stateRef.current[active].battle.filter(c=>c.uid!==attacker.uid);
       if(allies.length>0) setHyperUntapModal({attackerUid:attacker.uid,allies});
     }
@@ -982,10 +983,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(!selectedUids||!selectedUids.length) return;
     const oppPid=selectorPid==="p1"?"p2":"p1";
     const opp=stateRef.current[oppPid];
-    const hit=(opp?.battle||[]).find(c=>selectedUids.includes(c.uid)&&c.hyperMode&&c.hyperOnTargeted?.type==="breakAttackerShields");
+    const hit=(opp?.battle||[]).find(c=>selectedUids.includes(c.uid)&&c.hyperMode
+      &&effectiveCard(c).hyperOnTargeted?.type==="breakAttackerShields");
     if(!hit) return;
     setHyperTargetedModal({kind:"effect",targetUid:hit.uid,targetName:hit.name,
-      amount:hit.hyperOnTargeted.amount,breakPid:selectorPid});
+      amount:effectiveCard(hit).hyperOnTargeted.amount,breakPid:selectorPid});
   };
   onTargetedRef.current=fireOnTargetedByEffect;
   // ===== 中央破壊パイプライン（スレイヤー/エスケープ置換/離脱トリガーを集約）=====
@@ -1113,9 +1115,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setMessage("アンタップしているクリーチャーは攻撃できません（タップ状態のみ）");return;
     }
     // ハイパーモード：相手に選ばれた時、相手シールドをブレイクしてもよい（ブロックより先）
-    if(target.hyperMode&&target.hyperOnTargeted?.type==="breakAttackerShields"){
+    const tgtHyper=target.hyperMode?effectiveCard(target).hyperOnTargeted:null;
+    if(tgtHyper?.type==="breakAttackerShields"){
       setHyperTargetedModal({kind:"attack",targetUid,targetName:target.name,attackerUid:attacker.uid,
-        amount:target.hyperOnTargeted.amount,breakPid:active});
+        amount:tgtHyper.amount,breakPid:active});
       return;
     }
     declareAttackTarget({kind:"creature",targetUid});
@@ -1201,8 +1204,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // ハイパー化（コスト支払いによる解放：メインステップ）
   const handleHyperUnlock=uid=>{
     const card=activeState.battle.find(c=>c.uid===uid);
-    if(!card?.hyperUnlock||card.hyperMode) return;
-    if(card.hyperUnlock.type==="tapOwnCreature"){
+    const unlock=effectiveCard(card)?.hyperUnlock;
+    if(!unlock||card.hyperMode) return;
+    if(unlock.type==="tapOwnCreature"){
       const allies=activeState.battle.filter(c=>c.uid!==uid&&!c.tapped);
       if(allies.length===0){addLog("ハイパー化の対象（タップできる自分の他のクリーチャー）がいない");setMessage("ハイパー化できません（対象不足）");return;}
       setHyperUnlockModal({sourceUid:uid,allies,desc:"ハイパー化：自分の他のクリーチャーを1体タップする",actionLabel:"ハイパー化"});
@@ -1292,6 +1296,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(activeState.spellDeny?.length){
       setActiveState(s=>({...s,spellDeny:[]}));
       addLog(`${active}: 呪文を唱えられない効果が切れた`);
+    }
+    // 「能力を無視する」も同じ規則で切れる（無視されている側のターンが終わる
+    // ＝ 効果を使った側の「次の自分のターンのはじめ」）
+    if(activeState.battle.some(c=>c.ignoreAbilities)){
+      setActiveState(s=>({...s,battle:s.battle.map(c=>{
+        if(!c.ignoreAbilities) return c;
+        const m={...c};delete m.ignoreAbilities;return m;
+      })}));
+      addLog(`${active}: 能力を無視する効果が切れた`);
     }
     setAttackingUid(null);setUsedFinalRevThisTurn(false);setAttackedThisTurn(false);setUsedThisTurn(new Set());
     // 「そのターン限り」の召喚許可と使用回数をリセット
