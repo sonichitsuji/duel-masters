@@ -36,7 +36,7 @@ const EFFECT_TYPES = new Set([
   // バトルゾーンから
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle",
   // 墓地・シールド
-  "graveToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
+  "graveToBz","zonesToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
   // 呪文封じ
   "denySpell",
   // 山札操作
@@ -72,6 +72,9 @@ const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
 // costReduce.amountPer 専用。「今回の召喚で重ねる進化元の枚数」を数える
 const AMOUNT_PER_ZONES = new Set([...COUNT_ZONES, "evolutionBase"]);
 const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
+const EVOLUTION_KEYS = new Set(["zone","count","min","neo","filter"]);
+// zonesToBz が候補を集められるゾーン
+const ZONES_TO_BZ_FROM = new Set(["grave","mana","hand"]);
 const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 // count(数値)を要する condition。
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
@@ -98,7 +101,7 @@ const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand
 // 効果ステップに書けるキー。綴り違い（takeall / oneplayer など）を弾くために使う。
 // 出典: src/engine/effects.js の effect.X 参照。新しいキーを実装したらここにも足すこと。
 const EFFECT_KEYS = new Set([
-  "type","label","target","zone","filter","amount","count","maxSelect",
+  "type","label","target","zone","zones","filter","amount","count","maxSelect",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
   "asCost","canUseTrigger","choosePlayer","side","until",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
@@ -176,6 +179,12 @@ function checkOne(e, where) {
   if (e.type === "meteorBurn") {
     if (e.to && !METEOR_BURN_TO.has(e.to)) errors.push(`${where}: meteorBurn の to は ${[...METEOR_BURN_TO].join("/")}`);
     if (e.count != null && typeof e.count !== "number") errors.push(`${where}: meteorBurn の count は数値`);
+  }
+  // 「自分の墓地またはマナゾーンから出す」。1ゾーンだけなら graveToBz / manaToBz で書く
+  if (e.zones != null && e.type !== "zonesToBz") errors.push(`${where}: zones は type:"zonesToBz" でのみ使えます`);
+  if (e.type === "zonesToBz") {
+    if (!Array.isArray(e.zones) || e.zones.length < 2) errors.push(`${where}: zonesToBz の zones は2つ以上のゾーンの配列（1つなら graveToBz / manaToBz を使ってください）`);
+    else for (const z of e.zones) if (!ZONES_TO_BZ_FROM.has(z)) errors.push(`${where}: zonesToBz の zones は ${[...ZONES_TO_BZ_FROM].join("/")}`);
   }
 }
 
@@ -450,12 +459,20 @@ for (const c of cards) {
   // 進化（進化元のゾーンと枚数）
   if (c.evolution) {
     const ev = c.evolution;
-    if (c.type !== "evo_creature") warnings.push(`${tag}: evolution があるのに type が "evo_creature" ではありません`);
+    // NEO進化は「重ねてもよい」＝進化するかしないかが任意なので、進化クリーチャーではない。
+    // 「進化ではないクリーチャー」を指す効果に当たったままにするため type は "creature" にする
+    if (ev.neo) {
+      if (c.type === "evo_creature") errors.push(`${tag}.evolution: neo と type:"evo_creature" は併用できません（NEO進化は type:"creature"）`);
+      if (ev.neo !== true && ev.neo !== "g") errors.push(`${tag}.evolution: neo は true か "g"（G-NEO進化）`);
+    } else if (c.type !== "evo_creature") {
+      warnings.push(`${tag}: evolution があるのに type が "evo_creature" ではありません`);
+    }
     if (ev.civFilter != null || ev.raceContains != null)
       errors.push(`${tag}.evolution: civFilter/raceContains の直書きは廃止（filter:{civ,raceContains,…} へ移行してください）`);
     if (ev.zone != null && !EVOLUTION_ZONES.has(ev.zone)) errors.push(`${tag}.evolution: 未知の zone "${ev.zone}"（${[...EVOLUTION_ZONES].join("/")}）`);
     if (ev.count != null && ev.min != null) errors.push(`${tag}.evolution: count と min は同時に指定できません`);
     for (const k of ["count", "min"]) if (ev[k] != null && typeof ev[k] !== "number") errors.push(`${tag}.evolution: ${k} は数値`);
+    for (const k of Object.keys(ev)) if (!EVOLUTION_KEYS.has(k)) errors.push(`${tag}.evolution: 未知のキー "${k}"（${[...EVOLUTION_KEYS].join("/")}）`);
   }
 
   // 超魂X(SSX): 任意の能力フィールドを持てる。中身の検証は通常の能力と同じ

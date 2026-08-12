@@ -22,6 +22,7 @@ function describeFilter(filter) {
 // ===========================
 // EVOLUTION SELECT MODAL
 // 進化元を選ぶ。選んだ順がそのまま重ねる順になる（バトルゾーンに出た後は変更できない）。
+// NEO進化は「重ねてもよい」なので、「重ねずに出す」で進化元なしのまま出せる。
 // ===========================
 export function EvolutionSelectModal({ candidates, card, spec, ownerState, onConfirm, onCancel }) {
   const [picked, setPicked] = useState([]); // uid[] 選択順
@@ -29,6 +30,7 @@ export function EvolutionSelectModal({ candidates, card, spec, ownerState, onCon
   const c = CIV[civs[0]] || CIV.fire;
   const need = evolutionNeeded(spec);
   const exact = spec?.min == null;                       // count 指定なら「ちょうど need 枚」
+  const isNeo = !!spec?.neo;
   const canConfirm = exact ? picked.length === need : picked.length >= need;
   // 「進化元1体につきコスト-1」等、重ねる枚数でコストが変わるカードがあるので選択中のコストを出す
   const costNow = ownerState ? getEffectiveCost(card, ownerState, { evolutionBaseCount: picked.length }) : null;
@@ -49,12 +51,18 @@ export function EvolutionSelectModal({ candidates, card, spec, ownerState, onCon
           <div style={{ fontSize:11, color:"#ccc", marginTop:3 }}>
             {card.name} の進化元を{ZONE_LABEL[spec?.zone] || "バトルゾーン"}から
             {exact ? `${need}体` : `${need}体以上`}選んでください
+            {isNeo && <span style={{ color:"#7fe" }}>（重ねずに出すこともできます）</span>}
           </div>
           <div style={{ fontSize:10, color:"#666", marginTop:2 }}>
             条件: {describeFilter(spec?.filter)}
             {need > 1 && <span style={{ color:"#ffcc66" }}>／選んだ順に下から重なります</span>}
             {spec?.zone === "mana" && <span style={{ color:"#4a8" }}>／タップ済みでも選べます</span>}
           </div>
+          {spec?.neo === "g" && (
+            <div style={{ fontSize:10, color:"#7fe", marginTop:3 }}>
+              重ねると、離れる時にかわりに下のカードすべてが離れます（重ねなければこの耐性はありません）
+            </div>
+          )}
           {costVaries && (
             <div style={{ fontSize:11, color:"#ffcc66", marginTop:4 }}>
               重ねる枚数でコストが変わります — 現在のコスト <b style={{ fontSize:14 }}>{costNow}</b>
@@ -85,6 +93,12 @@ export function EvolutionSelectModal({ candidates, card, spec, ownerState, onCon
             style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
             ✓ 決定 ({picked.length}/{exact ? need : `${need}+`})
           </button>
+          {isNeo && (
+            <button onClick={() => onConfirm([])}
+              style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #7fe", color:"#7fe", cursor:"pointer", fontSize:12, fontWeight:700, whiteSpace:"nowrap" }}>
+              重ねずに出す
+            </button>
+          )}
           <button onClick={onCancel} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #666", color:"#ddd", cursor:"pointer", fontSize:12 }}>
             キャンセル
           </button>

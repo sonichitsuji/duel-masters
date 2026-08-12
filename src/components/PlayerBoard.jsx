@@ -86,14 +86,17 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     return excluded.size?state.mana.filter(c=>!excluded.has(c.uid)):state.mana;
   };
 
-  // 進化元の選択を開く（BZ/墓地/マナのどれでも同じ入口）。候補が足りなければ false を返す
+  // 進化元の選択を開く（BZ/墓地/マナのどれでも同じ入口）。候補が足りなければ false を返す。
+  // NEO は重ねずにも出せるので、候補が0でもモーダルを開く（「重ねずに出す」を押してもらう）
   const openEvolutionSelect=(common)=>{
     const spec=evolutionSpec(common.card);
     const candidates=evolutionCandidates(common.card,state);
-    if(candidates.length===0) return false;
+    if(candidates.length===0&&!spec?.neo) return false;
     setEvolutionSelectModal({...common,spec,candidates});
     return true;
   };
+  // 出す前に進化元を選ぶ必要があるカードか。NEO は type が "creature" のままなので evolution を見る
+  const needsEvolutionSelect=card=>card.type==="evo_creature"||!!evolutionSpec(card);
 
   const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
@@ -101,7 +104,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const handlePlay=()=>{
     if(selHand===null||!civCheck?.ok)return;
     const card=state.hand[selHand];
-    if(card.type==="evo_creature"){
+    if(needsEvolutionSelect(card)){
       if(!openEvolutionSelect({handIdx:selHand,card}))return;
     }else if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
     else if(card.type==="twinpact"){setTwinPactModal({handIdx:selHand,card});}
@@ -119,7 +122,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const handleSummonFromZone=entry=>{
     const {card,idx,perm}=entry;
     const common={handIdx:idx,card,zone:zoneModal,permKey:perm.key};
-    if(card.type==="evo_creature"){
+    if(needsEvolutionSelect(card)){
       openEvolutionSelect(common);
     }else{
       setManaPayModal(common);
@@ -128,7 +131,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const handleGZeroPlay=()=>{
     if(!gZeroOk||selHand===null)return;
     const card=state.hand[selHand];
-    if(card.type==="evo_creature"){
+    if(needsEvolutionSelect(card)){
       if(!openEvolutionSelect({handIdx:selHand,card,gZero:true}))return;
     }else{
       const ok=onPlayCard(selHand,[],null,null);
@@ -140,7 +143,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const handleFreeCastPlay=()=>{
     if(!freeCastPerm||selHand===null)return;
     const card=state.hand[selHand];
-    if(card.type==="evo_creature"){
+    if(needsEvolutionSelect(card)){
       if(!openEvolutionSelect({handIdx:selHand,card,freeCast:true}))return;
     }else{
       const ok=onPlayCard(selHand,[],freeCastSide,null);
@@ -187,10 +190,11 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           spec={evolutionSelectModal.spec}
           ownerState={state}
           onConfirm={baseUids=>{
-            const{handIdx,card,gZero,zone,permKey}=evolutionSelectModal;
+            const{handIdx,card,gZero,freeCast,zone,permKey}=evolutionSelectModal;
             setEvolutionSelectModal(null);
-            if(gZero){
-              const ok=onPlayCard(handIdx,[],null,baseUids);
+            // G・ゼロ / コストを支払わないプレイはマナを1枚もタップしないので支払いUIを挟まない
+            if(gZero||freeCast){
+              const ok=onPlayCard(handIdx,[],freeCast?freeCastSide:null,baseUids);
               if(ok!==false)setSelHand(null);
             }else{
               setManaPayModal({handIdx,card,evolutionBaseUids:baseUids,zone,permKey});

@@ -1,5 +1,5 @@
 import { CIV } from "../constants";
-import { getCardCivs, makeCardBg, ssxKeywords, cardDisplayName, displayPower } from "../gameLogic";
+import { getCardCivs, makeCardBg, ssxKeywords, cardDisplayName, displayPower, evolutionSpec, isEvolutionNow } from "../gameLogic";
 
 // ===========================
 // CARD COMPONENTS
@@ -29,7 +29,8 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
       {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
       <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${displayPower(card)}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="field"?"フィールド":card.type==="castle"?"城":"SPELL"}</div>
-      {card.type==="evo_creature"&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
+      {/* NEO は下にカードがある間だけ進化クリーチャーとして扱われるので、バッジも実体を見て出す */}
+      {isEvolutionNow(card)&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>
         {ownKw.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ff6644",letterSpacing:0}}>SA</span>}
         {!ownKw.includes("speedAttacker")&&grantedKeywords?.includes("speedAttacker")&&<span style={{fontSize:6,fontWeight:700,color:"#ffe066",textShadow:"0 0 4px #ffe066",letterSpacing:0}}>SA</span>}
@@ -48,10 +49,12 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
         {ownKw.includes("zRush")&&<span style={{fontSize:7,color:"#fc0"}}>ZR</span>}
         {/* 鬼エンド。手札から使う能力なので、手札でも見えるようバッジに出す */}
         {card.oniEnd&&<span style={{fontSize:7,fontWeight:900,color:"#ff4466",textShadow:"0 0 4px #ff4466"}}>鬼</span>}
+        {/* NEO進化は「重ねてもよい」＝出す時に選ぶ能力なので、手札でも分かるように出す */}
+        {evolutionSpec(card)?.neo&&<span style={{fontSize:6,fontWeight:900,color:"#7fe",textShadow:"0 0 4px #0cc",letterSpacing:0}}>{evolutionSpec(card).neo==="g"?"GNEO":"NEO"}</span>}
         {card.ssx&&<span style={{fontSize:6,fontWeight:900,color:"#c9f",textShadow:"0 0 4px #a0f"}}>SSX</span>}
       </div>
       {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>HYPER</div>}
-      {card.summonedThisTurn&&!ownKw.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
+      {card.summonedThisTurn&&!isEvolutionNow(card)&&!ownKw.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
       {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:7,background:"rgba(0,0,0,0.75)",color:"#ffe066",borderRadius:3,padding:"1px 3px",fontWeight:700,letterSpacing:0}}>EVO×{card.evolutionBase.length + 1}</div>}
     </div>
   );

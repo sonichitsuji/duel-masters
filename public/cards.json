@@ -4342,5 +4342,71 @@
       }
     ],
     "id": 119
+  },
+  {
+    "name": "魔誕の封殺ディアス Z",
+    "race": "デーモン・コマンド",
+    "cost": 6,
+    "power": 10000,
+    "type": "creature",
+    "civ": [
+      "darkness",
+      "fire",
+      "nature"
+    ],
+    "keywords": [
+      "machFighter",
+      "wBreaker"
+    ],
+    "effect": "G-NEO進化：闇、火、または自然のクリーチャー1体の上に置いてもよい。（カードが下にあれば、NEO進化クリーチャーとして扱い、離れる時、かわりに下のカードすべてが離れる）\nD・D・D[闇/火/自然(4)]（自分のクリーチャーが攻撃する時、[闇/火/自然(4)]を支払って、このカードを自分の手札から実行してもよい）\nマッハファイター（このクリーチャーは、出たターンでもタップされているクリーチャーを攻撃できる）\nW・ブレイカー\nこのクリーチャーの攻撃の終わりに、コスト5以下のクリーチャーを1体、自分の墓地またはマナゾーンから出す。このターン、そのクリーチャーに「スピードアタッカー」を与える。",
+    "evolution": {
+      "zone": "bz",
+      "count": 1,
+      "neo": "g",
+      "filter": {
+        "civ": [
+          "darkness",
+          "fire",
+          "nature"
+        ]
+      }
+    },
+    "ddd": {
+      "on": "attack",
+      "target": "self",
+      "cost": {
+        "cost": 4,
+        "civs": [
+          "darkness",
+          "fire",
+          "nature"
+        ]
+      }
+    },
+    "triggers": [
+      {
+        "on": "attackEnd",
+        "label": "コスト5以下のクリーチャーを1体、自分の墓地またはマナゾーンから出す",
+        "effects": [
+          {
+            "label": "コスト5以下のクリーチャーを1体、自分の墓地またはマナゾーンから出す",
+            "type": "zonesToBz",
+            "zones": [
+              "grave",
+              "mana"
+            ],
+            "amount": 1,
+            "filter": {
+              "creatureOnly": true,
+              "maxCost": 5
+            },
+            "tempKeywords": [
+              "speedAttacker"
+            ]
+          }
+        ]
+      }
+    ],
+    "id": 120
   }
 ]

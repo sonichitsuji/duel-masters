@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, computeGrantedKeywords, ssxKeywords, isCreatureSide, cardDisplayName, displayPower } from "../gameLogic";
+import { getCardCivs, ssxKeywords, isCreatureSide, cardDisplayName, displayPower, isSummoningSick } from "../gameLogic";
 import { CardEffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -15,11 +15,9 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   // 攻撃できるのはクリーチャーだけ（ツインパクトのクリーチャー面を含む。タマシード／フィールドは不可）
   const isCreature=isCreatureSide(card);
   const ownKw=[...(card.keywords||[]), ...ssxKeywords(card)];
-  const granted=computeGrantedKeywords(card,battleZone||[],ownerState);
-  const effectiveSA=ownKw.includes("speedAttacker")||granted.includes("speedAttacker");
-  // マッハファイター: 召喚酔いしていても攻撃できる（ただしその場合クリーチャーしか攻撃できない → §7.15）
-  const effectiveMF=ownKw.includes("machFighter")||granted.includes("machFighter");
-  const sick=card.summonedThisTurn&&!effectiveSA&&!effectiveMF;
+  // 召喚酔いの判定は isSummoningSick に集約してある。スピードアタッカーとマッハファイターで
+  // 酔わないこと（§7.15）に加え、進化かどうか（NEO は進化元が0枚になると酔いが復活する）も見る
+  const sick=isSummoningSick(card,ownerState,battleZone);
   const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!sick&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
   const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":sick?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
 
@@ -77,7 +75,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
         {/* Status indicators */}
         <div style={{padding:"0 12px 8px",display:"flex",gap:6,flexWrap:"wrap"}}>
           {card.tapped&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>TAPPED</div>}
-          {card.summonedThisTurn&&!ownKw.includes("speedAttacker")&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>召喚酔い</div>}
+          {sick&&<div style={{fontSize:10,color:"#888",padding:"2px 8px",background:"#111",borderRadius:3}}>召喚酔い</div>}
         </div>
 
         {/* Evolution base viewer */}
