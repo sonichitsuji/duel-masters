@@ -270,10 +270,11 @@ export function enteringBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
 export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, srcCard) {
   const type = effect.type;
   const c2 = { ...ctx, srcName: srcCard?.name };
-  // 「数字を1つ選ぶ」。カードは選ばないので候補は空だが、数字を決めるまで確定できない
+  // 「数字を1つ選ぶ」。カードは選ばないので候補は空だが、数字を決めるまで確定できない。
+  // max を書かなければ上限なし（DMの「数字を1つ選ぶ」は好きな数字を宣言できる）
   if (NUMBER_CHOICE_TYPES.has(type)) {
     return { candidates: [], isAuto: false,
-      chooseNumber: { min: effect.min ?? 0, max: effect.max ?? 12 } };
+      chooseNumber: { min: effect.min ?? 0, max: effect.max ?? null } };
   }
   if (AUTO_TYPES.has(type)) {
     if (type === "revealedToDeckBottom") {

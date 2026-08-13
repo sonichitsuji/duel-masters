@@ -1218,7 +1218,7 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 
 ```jsonc
 [ { "type":"drawCards", "amount":1 },
-  { "type":"chooseNumber", "as":"n", "min":0, "max":12 },
+  { "type":"chooseNumber", "as":"n", "min":0 },
   { "type":"ignoreAbilities", "target":"opponent", "all":true,
     "filter":{ "element":true, "cost":{"var":"n"} } },
   { "type":"denySpell", "target":"opponent", "filter":{ "cost":{"var":"n"} } } ]
@@ -1229,10 +1229,15 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 | キー | 説明 |
 |---|---|
 | `as` | 選んだ数を入れる変数名（**必須**）。以降のステップから `{"var":"n"}` で参照する |
-| `min` / `max` | 選べる数字の範囲（既定 0〜12） |
+| `min` | 選べる下限（既定 0） |
+| `max` | 選べる上限。**書かなければ上限なし** |
 
 カードではなく数字を選ぶステップです。`choosePlayer` と同じで、選んだ結果は `selectedUids` に
 混ぜず `ctx` 経由で渡ります。選ばずに閉じた場合は「行わなかった」扱いになります。
+
+UI は**数字の入力欄**です（よく使う小さい数字だけクイックボタンとして並びます）。
+DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`max` は書かないのが既定**です。
+書いた場合だけ、その範囲に丸められます。
 
 ### `ignoreAbilities`（そのエレメントの能力を無視する）
 

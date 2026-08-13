@@ -115,9 +115,32 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const activeStepsRef=useRef(null);
   activeStepsRef.current=activeSteps;
   const [pendingEffects,setPendingEffects]=useState([]);
+  // 待ち行列の実体は ref。state は描画用の写しでしかない。
+  // リゾルバは setTimeout の中から読むので、state（レンダー時の closure に固まる値）だと
+  // 「積んだ直後の誘発が見えない」「もう解決したものをもう一度掴む」が起きる。
+  // 積む/取り出すを ref に対して同期的に行い、そのうえで state を更新する。
+  const pendingRef=useRef([]);
+  const setPending=(updater)=>{
+    const next=typeof updater==="function"?updater(pendingRef.current):updater;
+    pendingRef.current=next;
+    setPendingEffects(next);
+  };
+  // 待ち行列から1件を取り出す（もう無ければ null）。取り出しは同期的なので二重に掴めない
+  const takePending=(id)=>{
+    const entry=pendingRef.current.find(e=>e.id===id);
+    if(!entry) return null;
+    setPending(p=>p.filter(e=>e.id!==id));
+    return entry;
+  };
   // 唱え終えた呪文の行き先の置換（spellAfterCast）を待たせておく列。
   // 置換効果なので「墓地に置こうとする時」＝その呪文を解決しきった時に判定する（総合ルール604.2）。
   const [pendingSpellAfterCast,setPendingSpellAfterCast]=useState([]);
+  const pendingAttackRef=useRef(null);
+  const spellAfterCastRef=useRef([]);
+  const queueSpellAfterCast=(item)=>{
+    spellAfterCastRef.current=[...spellAfterCastRef.current,item];
+    setPendingSpellAfterCast(spellAfterCastRef.current);
+  };
   const [triggerOrderModal,setTriggerOrderModal]=useState(null);
   const [gStrikeModal,setGStrikeModal]=useState(null);
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
@@ -187,7 +210,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const enqueueEffect=(entry,{front=false}={})=>{
     if(!entry?.effect) return;
     const e={ id:`pe${++pendingIdRef.current}`, kind:entry.kind||"trigger", priority: entry.priority ?? (entry.ownerPid===active?0:1), ...entry };
-    setPendingEffects(p=> front?[e,...p]:[...p,e]);
+    setPending(p=> front?[e,...p]:[...p,e]);
   };
   enqueueEffectRef.current=enqueueEffect;
 
@@ -224,34 +247,37 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // 唱え終えた呪文の行き先の置換。誘発の解決より先に済ませる ―
       // 呪文は「解決しきったら墓地に置く」までがひと続きで、置換が効くかどうかは
       // その時点の盤面で決まる（総合ルール604.2）。唱えた直後に聞いてはいけない
-      if(pendingSpellAfterCast.length){
-        const [next,...rest]=pendingSpellAfterCast;
+      if(spellAfterCastRef.current.length){
+        const [next,...rest]=spellAfterCastRef.current;
+        spellAfterCastRef.current=rest;
         setPendingSpellAfterCast(rest);
         offerSpellAfterCastRef.current(next.pid,next.card,next.fromZone);
         return;
       }
       // 「攻撃する時」の誘発を解決しきったら、預かっていた攻撃先へ進む
-      if(pendingEffects.length===0&&pendingAttack){
-        const {intent}=pendingAttack;
+      const pending=pendingRef.current;
+      if(pending.length===0&&pendingAttackRef.current){
+        const {intent}=pendingAttackRef.current;
+        pendingAttackRef.current=null;
         setPendingAttack(null);
         setTimeout(()=>proceedAttackRef.current(intent),0);
         return;
       }
-      if(pendingEffects.length===0) return;
-      const minP=Math.min(...pendingEffects.map(e=>e.priority));
-      const group=pendingEffects.filter(e=>e.priority===minP);
+      if(pending.length===0) return;
+      const minP=Math.min(...pending.map(e=>e.priority));
+      const group=pending.filter(e=>e.priority===minP);
       // 呪文と「手札から使うか聞く」宣言は順序固定（割り込ませず enqueue 順で解決）。
       // 待っている能力が2件以上、または任意誘発(単体でも)は選択モーダル。
       // 起動型能力はプレイヤーが既に「使う」と宣言しているので確認しない。
       const spell=group.find(e=>e.kind==="spell"||e.kind==="handPlay");
       if(spell){
-        setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
-        resolveEntry(spell);
+        const taken=takePending(spell.id);
+        if(taken) resolveEntry(taken);
       } else if(group.length>1 || (group[0].effect?.optional && group[0].kind!=="activated")){
         setTriggerOrderModal({priority:minP});
       } else {
-        setPendingEffects(p=>p.filter(e=>e.id!==group[0].id));
-        resolveEntry(group[0]);
+        const taken=takePending(group[0].id);
+        if(taken) resolveEntry(taken);
       }
     },0);
     return ()=>clearTimeout(timer);
@@ -298,7 +324,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
           setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castMain, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
         }
-        setPendingSpellAfterCast(q => [...q, { pid: castOwnerPid, card: castCard, fromZone: castFrom || "hand" }]);
+        queueSpellAfterCast({ pid: castOwnerPid, card: castCard, fromZone: castFrom || "hand" });
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard,fromZone:castFrom||"hand"}), 0);
       }
       // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
@@ -679,7 +705,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
       const main=spellMainEffect(face);
       if(main) enqueueEffect({kind:"spell",effect:main,ownerPid:pid,srcCard:face,sourceName:face.name});
-      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid,card,fromZone:"hand"}]);
+      if(!isCharger) queueSpellAfterCast({pid,card,fromZone:"hand"});
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
     // 宣言した残りは pending に積んであるので、リゾルバが改めて選ばせる
@@ -934,7 +960,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const spellEffect=spellMainEffect(effectiveSide)||spellMainEffect(card);
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
       // 唱えた後の行き先の置換（チャージャーはマナへ行くので対象外）
-      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid:active,card,fromZone:"hand"}]);
+      if(!isCharger) queueSpellAfterCast({pid:active,card,fromZone:"hand"});
       // 汎用トリガー: 呪文を唱えた時
       setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card,fromZone:"hand"}),0);
     }
@@ -1015,7 +1041,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 「攻撃する時」の誘発。革命チェンジで入れ替わった場合は新しいクリーチャーで誘発する。
   // 攻撃先は誘発を積んでから預ける。先に預けるとリゾルバが誘発の前に攻撃を進めてしまう。
   const fireAttackTriggers=(attacker,intent)=>{
-    if(!attacker){ setPendingAttack({intent}); return; }
+    if(!attacker){ pendingAttackRef.current={intent}; setPendingAttack({intent}); return; }
     // ハイパーモード攻撃時効果：自分の他クリーチャーを1体アンタップ
     const atkHyper=attacker.hyperMode?effectiveCard(attacker).hyperOnAttack:null;
     if(atkHyper?.type==="untapAlly"){
@@ -1026,6 +1052,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(firstThisTurn) setAttackedThisTurn(true);
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn});
+      pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
   };
@@ -1466,11 +1493,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         const minP=pendingEffects.length?Math.min(...pendingEffects.map(e=>e.priority)):null;
         const entries=minP===null?[]:pendingEffects.filter(e=>e.priority===minP);
         const dropIds=ids=>{
-          setPendingEffects(p=>p.filter(e=>!ids.includes(e.id)));
+          setPending(p=>p.filter(e=>!ids.includes(e.id)));
           if(entries.every(e=>ids.includes(e.id))) setTriggerOrderModal(null);
         };
         return <TriggerOrderModal entries={entries}
-          onChoose={id=>{const entry=entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}
+          onChoose={id=>{setTriggerOrderModal(null);const entry=takePending(id);if(entry)resolveEntry(entry);}}
           onDecline={id=>{const entry=entries.find(e=>e.id===id);addLog(`${entry?.sourceName??""}: 能力を発動しなかった`);dropIds([id]);}}
           onDeclineAll={()=>{addLog("任意の誘発能力を発動しなかった");dropIds(entries.filter(e=>e.effect?.optional).map(e=>e.id));}}/>;
       })()}
