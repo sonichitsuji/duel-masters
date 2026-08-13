@@ -119,7 +119,12 @@ export function matchFilter(card, filter, ctx) {
   if (f.minPower != null && !((card.power || 0) >= resolveAmount(ctx, f.minPower, f.minPower))) return false;
   // hasCip: 「このクリーチャーが出た時」で始まる能力を持つ
   if (f.hasCip != null && hasPlayTrigger(card) !== !!f.hasCip) return false;
+  // psychic: サイキック・クリーチャー（超次元ゾーンから出るクリーチャー）かどうか
+  if (f.psychic != null && !!card.psychic !== !!f.psychic) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
+  // not: 「〜ではない」。中身は filter と同じ語彙で、1つでも一致したら弾く。
+  // 配列を書けば「そのどれにも当てはまらない」＝ AND で否定する
+  if (f.not && anyOf(f.not, sub => matchFilter(card, sub, ctx))) return false;
   return true;
 }
 

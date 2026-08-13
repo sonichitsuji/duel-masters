@@ -166,6 +166,10 @@ export function matchCardFilter(card, filter) {
   if (filter.maxPower != null && !((card.power || 0) <= filter.maxPower)) return false;
   if (filter.minPower != null && !((card.power || 0) >= filter.minPower)) return false;
   if (filter.hasCip != null && hasPlayTrigger(card) !== !!filter.hasCip) return false;
+  // psychic: サイキック・クリーチャーかどうか。matchFilter と同じ語彙
+  if (filter.psychic != null && !!card.psychic !== !!filter.psychic) return false;
+  // not: 「〜ではない」。1つでも一致したら弾く（配列なら「そのどれにも当てはまらない」）
+  if (filter.not && anyOf(filter.not, sub => matchCardFilter(card, sub))) return false;
   return true;
 }
 const costReduceMatches = matchCardFilter;

@@ -4571,5 +4571,71 @@
         ]
       }
     ]
+  },
+  {
+    "name": "ボルシャック・スーパーヒーロー",
+    "race": "アーマード・ドラゴン/ハンター",
+    "cost": 6,
+    "power": 6000,
+    "type": "twinpact",
+    "civ": "fire",
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "W・ブレイカー\nこのクリーチャーが出た時、パワー3000以下のサイキックではないクリーチャーをすべて破壊する。その後、パワー5000以下のサイキック・クリーチャーをすべて破壊する。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "パワー3000以下のサイキックではないクリーチャーをすべて破壊する",
+            "type": "destroy",
+            "target": "both",
+            "all": true,
+            "filter": {
+              "creatureOnly": true,
+              "maxPower": 3000,
+              "not": {
+                "psychic": true
+              }
+            }
+          },
+          {
+            "label": "その後、パワー5000以下のサイキック・クリーチャーをすべて破壊する",
+            "type": "destroy",
+            "target": "both",
+            "all": true,
+            "filter": {
+              "creatureOnly": true,
+              "maxPower": 5000,
+              "psychic": true
+            }
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "超英雄タイム",
+      "cost": 2,
+      "civ": "fire",
+      "effect": "バトルゾーンにある相手のコスト3以下のカードを1枚選び、破壊する。",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "バトルゾーンにある相手のコスト3以下のカードを1枚選び、破壊する",
+              "type": "destroy",
+              "target": "opponent",
+              "amount": 1,
+              "filter": {
+                "maxCost": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "id": 122
   }
 ]

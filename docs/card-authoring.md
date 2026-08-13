@@ -76,7 +76,8 @@
 **filter**: `side`(ツインパクトの面) `civ` `civNot` `raceContains` `nameContains` `keyword`
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
 `element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `minPower` `notNameSelf`
-`hasCip`(「このクリーチャーが出た時」で始まる能力を持つ)
+`hasCip`(「このクリーチャーが出た時」で始まる能力を持つ) `psychic`(サイキック・クリーチャーかどうか)
+`not`(「〜ではない」→ 下記)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
 
 > **キー名は `npm run validate-cards` が検査します。** 効果ステップと `filter` に未知のキーがあると
@@ -99,6 +100,36 @@
 
 **同じキーの中は OR、違うキーどうしは AND** です。多色カードは持っている文明のどれかが
 一致すれば `civ` に該当します（例: 水/火の多色は `{"civ":["water","darkness"]}` に該当）。
+
+### 「〜ではない」（`not`）
+
+`not` の中身は **filter と同じ語彙**です。そこに一致するカードを除きます。
+
+```jsonc
+// パワー3000以下の、サイキックではないクリーチャー
+{ "creatureOnly": true, "maxPower": 3000, "not": { "psychic": true } }
+
+// ドラゴンでもコマンドでもないクリーチャー（1つの not に2つ書けば AND で否定）
+{ "creatureOnly": true, "not": { "raceContains": ["ドラゴン", "コマンド"] } }
+
+// 「コスト3以下の呪文」ではないカード（not の中も AND なので、
+//   コスト4以上の呪文や、コスト3以下のクリーチャーは残る）
+{ "not": { "type": "spell", "maxCost": 3 } }
+```
+
+- **`not` を配列にすると「そのどれにも当てはまらない」**という意味になります
+  （`{"not":[{"civ":"fire"},{"maxCost":2}]}` = 火でもなく、コスト2以下でもない）
+- `civNot` は `not:{civ:…}` と同じことができますが、既存カードが使っているのでそのまま残しています
+- `not` の中も `npm run validate-cards` がキー名を検査します（入れ子も再帰的に見ます）
+
+### サイキック（`psychic`）
+
+サイキック・クリーチャー（超次元ゾーンから出るクリーチャー）かどうかを見ます。
+カード側は直下に `"psychic": true` と書きます。
+
+> **このリポジトリにサイキック・クリーチャーはまだ1枚もありません。**
+> 「サイキックをすべて破壊する」のようなテキストを書ける場所は用意してありますが、
+> 実際に当たるカードが入るまでは何も起きません。
 
 ### ツインパクトの面（`side`）
 

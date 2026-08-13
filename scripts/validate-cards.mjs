@@ -111,13 +111,24 @@ const EFFECT_KEYS = new Set([
 // filter に書けるキー（engine/effects.js の matchFilter ＋ gameLogic.js の matchCardFilter）
 const FILTER_KEYS = new Set([
   "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
-  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self",
-  "cost","maxCost","minCost","maxPower","minPower",
+  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self","psychic",
+  "cost","maxCost","minCost","maxPower","minPower","not",
 ]);
 function checkFilterKeys(filter, where) {
   if (!filter || typeof filter !== "object") return;
   for (const k of Object.keys(filter)) {
     if (!FILTER_KEYS.has(k)) errors.push(`${where}.filter: 未知のキー "${k}"（綴り違い？）`);
+  }
+  // not:「〜ではない」の中身も filter と同じ語彙なので、同じ検査を再帰でかける
+  if (filter.not != null) {
+    const subs = Array.isArray(filter.not) ? filter.not : [filter.not];
+    for (const sub of subs) {
+      if (!sub || typeof sub !== "object" || Array.isArray(sub)) {
+        errors.push(`${where}.filter.not: filter オブジェクト（またはその配列）を書いてください`);
+        continue;
+      }
+      checkFilterKeys(sub, `${where}.filter.not`);
+    }
   }
 }
 
@@ -439,7 +450,7 @@ function checkAbilityFields(obj, where) {
 // カード直下に書けるキー。ABILITY_KEYS（ssx にも書ける能力）に、カード固有のものを足したもの。
 // ここに無いキーはエラーにして、綴り違いが静かに無視されるのを防ぐ。
 const CARD_KEYS = new Set([...ABILITY_KEYS,
-  "id","name","race","cost","power","type","civ","effect",
+  "id","name","race","cost","power","type","civ","effect","psychic",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
   "alternateCost","oniEnd","ddd","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
@@ -465,6 +476,7 @@ for (const c of cards) {
   for (const k of Object.keys(c)) if (!CARD_KEYS.has(k)) errors.push(`${tag}: カード直下の未知のキー "${k}"（綴り違い？）`);
   if (c.type && !TYPES.has(c.type)) errors.push(`${tag}: 未知のtype "${c.type}"`);
   if (c.type === "field" && c.power != null) warnings.push(`${tag}: フィールドにパワーはありません`);
+  if (c.psychic != null && typeof c.psychic !== "boolean") errors.push(`${tag}: psychic は true/false で書いてください`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
   for (const cv of civs) if (!["light","water","darkness","fire","nature"].includes(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
 
