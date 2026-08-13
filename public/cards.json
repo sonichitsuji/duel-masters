@@ -4571,5 +4571,56 @@
         ]
       }
     ]
+  },
+  {
+    "name": "ボルシャック・テイル・ドラゴン",
+    "race": "アーマード・ドラゴン",
+    "cost": 4,
+    "power": 5000,
+    "powerPlus": true,
+    "type": "creature",
+    "civ": "fire",
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー\nこのクリーチャーが出た時、相手のクリーチャーを1体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる。\nシビルカウント3：自分の火のクリーチャーまたは火のタマシードが合計3つ以上あれば、このクリーチャーのパワーを+2000し、「W・ブレイカー」を与える。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーを1体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる",
+            "type": "battle",
+            "target": "opponent",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "condPower": [
+      {
+        "condition": {
+          "type": "civicCount",
+          "civ": "fire",
+          "count": 3
+        },
+        "amount": 2000
+      }
+    ],
+    "grantKeywords": [
+      {
+        "keyword": "wBreaker",
+        "condition": {
+          "type": "civicCount",
+          "civ": "fire",
+          "count": 3
+        },
+        "filter": {
+          "self": true
+        }
+      }
+    ],
+    "id": 122
   }
 ]
