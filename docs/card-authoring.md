@@ -76,7 +76,8 @@
 **filter**: `side`(ツインパクトの面) `civ` `civNot` `raceContains` `nameContains` `keyword`
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
 `element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `minPower` `notNameSelf`
-`hasCip`(「このクリーチャーが出た時」で始まる能力を持つ)
+`hasCip`(「このクリーチャーが出た時」で始まる能力を持つ) `psychic`(サイキック・クリーチャーかどうか)
+`not`(「〜ではない」→ 下記)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
 
 > **キー名は `npm run validate-cards` が検査します。** 効果ステップと `filter` に未知のキーがあると
@@ -99,6 +100,36 @@
 
 **同じキーの中は OR、違うキーどうしは AND** です。多色カードは持っている文明のどれかが
 一致すれば `civ` に該当します（例: 水/火の多色は `{"civ":["water","darkness"]}` に該当）。
+
+### 「〜ではない」（`not`）
+
+`not` の中身は **filter と同じ語彙**です。そこに一致するカードを除きます。
+
+```jsonc
+// パワー3000以下の、サイキックではないクリーチャー
+{ "creatureOnly": true, "maxPower": 3000, "not": { "psychic": true } }
+
+// ドラゴンでもコマンドでもないクリーチャー（1つの not に2つ書けば AND で否定）
+{ "creatureOnly": true, "not": { "raceContains": ["ドラゴン", "コマンド"] } }
+
+// 「コスト3以下の呪文」ではないカード（not の中も AND なので、
+//   コスト4以上の呪文や、コスト3以下のクリーチャーは残る）
+{ "not": { "type": "spell", "maxCost": 3 } }
+```
+
+- **`not` を配列にすると「そのどれにも当てはまらない」**という意味になります
+  （`{"not":[{"civ":"fire"},{"maxCost":2}]}` = 火でもなく、コスト2以下でもない）
+- `civNot` は `not:{civ:…}` と同じことができますが、既存カードが使っているのでそのまま残しています
+- `not` の中も `npm run validate-cards` がキー名を検査します（入れ子も再帰的に見ます）
+
+### サイキック（`psychic`）
+
+サイキック・クリーチャー（超次元ゾーンから出るクリーチャー）かどうかを見ます。
+カード側は直下に `"psychic": true` と書きます。
+
+> **このリポジトリにサイキック・クリーチャーはまだ1枚もありません。**
+> 「サイキックをすべて破壊する」のようなテキストを書ける場所は用意してありますが、
+> 実際に当たるカードが入るまでは何も起きません。
 
 ### ツインパクトの面（`side`）
 
@@ -1302,9 +1333,19 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 - `poweredBreaker`: `true` — パワード・ブレイカー（パワー6000ごとに1つブレイク、最低1）。
   W/Tブレイカーと併用した場合は**大きい方**が採用される
 - `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` /
+  `{type:"cardCount",zone,filter?,min?,max?}` / `{type:"shieldCount",who?,min?,max?}` /
   `{type:"oniEnd"}`（→ **§7.18**。triggers / activated でのみ使える） / `{flag:"…"}`
   - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
-- `costReduce`: `{amount | amountPer, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
+  - **`cardCount`** = 「あるゾーンに、ある条件のカードが N 枚以上／以下あれば」。
+    `zone` は `bz` `shield` `mana` `grave` `hand` `deck`、`filter` は §2 の語彙。
+    数えるのは `costReduce.amountPer` と同じ関数なので、ゾーンと filter の意味もそこと同じです
+    ```jsonc
+    // 自分のマナゾーンにドラゴン・カードが4枚以上あれば
+    { "type": "cardCount", "zone": "mana", "filter": { "raceContains": "ドラゴン" }, "min": 4 }
+    ```
+    `who` は `self`(既定) / `opponent` / `any`。**相手を見るのは triggers / activated だけ**です
+    （継続能力の評価経路は相手の盤面を受け取らないため）
+- `costReduce`: `{amount | amountPer, min, zones?, filter?, condition?}` — 自分がカードをプレイする際のコスト軽減
   - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
     既定は `["bz","shield"]`（バトルゾーン＋表向きシールド＝継続能力が働く場所）
   - `filter`: 軽減対象の条件 — `civ` `raceContains` `nameContains` `keyword` `multiColor` `maxCost`
@@ -1313,6 +1354,8 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
   - `amountPer`: `{zone,filter}` — 「〜1枚につき1少なくする」の可変軽減（`amount` の代わりに書く）
     - `zone` には通常のゾーンのほか **`"evolutionBase"`**（**今回の召喚で実際に重ねる進化元の枚数**）を指定できる
   - `min`: 下限コスト。複数の軽減は重ねがけされる
+  - `condition`: **「〜であれば」**。満たさない間はその軽減だけを飛ばす（上の共通語彙）。
+    継続能力なので**相手の盤面は見られません**（`who` は `self` のみ）
   ```jsonc
   // バトルゾーンにいる間、自分のドラゴンのコストを2軽減（最低1）
   "costReduce": { "amount":2, "filter":{"raceContains":"ドラゴン"}, "min":1 }
@@ -1324,7 +1367,14 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
   // このクリーチャー自身の召喚コストを、進化元クリーチャー1体につき1軽減（超無限進化など）
   "costReduce": { "amountPer":{"zone":"evolutionBase"},
                   "filter":{"self":true}, "zones":["hand"], "min":1 }
+  // 自分のマナゾーンにドラゴン・カードが4枚以上あれば、このクリーチャーの召喚コストを3少なくする
+  "costReduce": { "amount":3, "min":1, "zones":["hand"], "filter":{"self":true},
+                  "condition":{ "type":"cardCount", "zone":"mana",
+                                "filter":{"raceContains":"ドラゴン"}, "min":4 } }
   ```
+  > **階段状の軽減は `condition`、比例した軽減は `amountPer`** です。
+  > 「4枚以上あれば一律3」は `condition`、「1枚につき1」は `amountPer` で書きます。
+  > ツインパクトで「**召喚**コスト」に限りたい時は `filter` に `"side":"creature"` も足します。
   > `zone:"evolutionBase"` は**進化元を選んだ後**でないと確定しません。UI は
   > 「PLAYできるか」の判定を**重ねられる最大枚数**（＝最も軽くなるケース）で行い、
   > 進化元選択モーダルに現在のコストを表示し、マナ支払い画面で実際の枚数のコストに確定します。

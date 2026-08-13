@@ -115,13 +115,24 @@ const EFFECT_KEYS = new Set([
 // filter に書けるキー（engine/effects.js の matchFilter ＋ gameLogic.js の matchCardFilter）
 const FILTER_KEYS = new Set([
   "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
-  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self",
-  "cost","maxCost","minCost","maxPower","minPower",
+  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self","psychic",
+  "cost","maxCost","minCost","maxPower","minPower","not",
 ]);
 function checkFilterKeys(filter, where) {
   if (!filter || typeof filter !== "object") return;
   for (const k of Object.keys(filter)) {
     if (!FILTER_KEYS.has(k)) errors.push(`${where}.filter: 未知のキー "${k}"（綴り違い？）`);
+  }
+  // not:「〜ではない」の中身も filter と同じ語彙なので、同じ検査を再帰でかける
+  if (filter.not != null) {
+    const subs = Array.isArray(filter.not) ? filter.not : [filter.not];
+    for (const sub of subs) {
+      if (!sub || typeof sub !== "object" || Array.isArray(sub)) {
+        errors.push(`${where}.filter.not: filter オブジェクト（またはその配列）を書いてください`);
+        continue;
+      }
+      checkFilterKeys(sub, `${where}.filter.not`);
+    }
   }
 }
 
@@ -247,6 +258,18 @@ function checkCondition(cond, where, allowBothSides = false) {
     errors.push(`${where}: 相手の盤面を見る condition は triggers / activated でのみ使えます`);
   }
   if (COUNTLESS_CONDITION_TYPES.has(cond.type)) return;
+  // cardCount:「あるゾーンの、ある条件のカードが N 枚以上／以下」。zone と min/max を取る
+  if (cond.type === "cardCount") {
+    if (cond.who != null && !CONDITION_WHO.includes(cond.who)) errors.push(`${where}: condition の who は ${CONDITION_WHO.join("/")}`);
+    if (!COUNT_ZONES.has(cond.zone)) errors.push(`${where}: condition "cardCount" の zone が不正です（${[...COUNT_ZONES].join("/")}）`);
+    if (cond.min == null && cond.max == null) errors.push(`${where}: condition "cardCount" に min か max が必要です`);
+    for (const k of ["min","max"]) if (cond[k] != null && typeof cond[k] !== "number") errors.push(`${where}: condition の ${k} は数値`);
+    checkFilterKeys(cond.filter, `${where}.condition(cardCount)`);
+    for (const k of Object.keys(cond)) {
+      if (!["type","zone","filter","min","max","who"].includes(k)) errors.push(`${where}: condition "cardCount" の未知のキー "${k}"`);
+    }
+    return;
+  }
   if (RANGE_CONDITION_TYPES.has(cond.type)) {
     if (cond.who != null && !CONDITION_WHO.includes(cond.who)) errors.push(`${where}: condition の who は ${CONDITION_WHO.join("/")}`);
     if (cond.min == null && cond.max == null) errors.push(`${where}: condition "${cond.type}" に min か max が必要です`);
@@ -459,7 +482,7 @@ function checkAbilityFields(obj, where) {
 // カード直下に書けるキー。ABILITY_KEYS（ssx にも書ける能力）に、カード固有のものを足したもの。
 // ここに無いキーはエラーにして、綴り違いが静かに無視されるのを防ぐ。
 const CARD_KEYS = new Set([...ABILITY_KEYS,
-  "id","name","race","cost","power","type","civ","effect",
+  "id","name","race","cost","power","type","civ","effect","psychic",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
   "alternateCost","oniEnd","ddd","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
@@ -485,6 +508,7 @@ for (const c of cards) {
   for (const k of Object.keys(c)) if (!CARD_KEYS.has(k)) errors.push(`${tag}: カード直下の未知のキー "${k}"（綴り違い？）`);
   if (c.type && !TYPES.has(c.type)) errors.push(`${tag}: 未知のtype "${c.type}"`);
   if (c.type === "field" && c.power != null) warnings.push(`${tag}: フィールドにパワーはありません`);
+  if (c.psychic != null && typeof c.psychic !== "boolean") errors.push(`${tag}: psychic は true/false で書いてください`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
   for (const cv of civs) if (!CIVS.has(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
 
