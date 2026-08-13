@@ -9,8 +9,10 @@ import { cardDisplayName, isCreatureSide, handPlayLabel } from "../../gameLogic"
 // 誘発のタイミングで、手札のカードをプレイしてよいか聞く。
 // 「〜してもよい」なので必ず見送れる。コストが要るものは支払いの前段になる。
 //
-// 複数枚まとめて宣言できる。2枚以上選んだ場合は、この後に解決順を選ぶモーダルが出る
-// （1枚ずつ提示していると、実行するたびに条件が取り直されて解決順が読めなくなるため）。
+// 複数枚まとめて宣言できる。宣言した後の解決順はここでは決めない ―
+// 1枚ずつ「解決する能力を選択」で選び、解決のたびに、その間に誘発した能力も含めて選び直す。
+// （1枚ずつ提示していると、実行するたびに宣言の条件が取り直されて読めなくなるので、
+//   「何枚使うか」の宣言だけはここでまとめて行う）
 export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
   const [selected, setSelected] = useState(plays.length === 1 ? [plays[0].card.uid] : []);
   const picks = selected.map(uid => plays.find(p => p.card.uid === uid)).filter(Boolean);

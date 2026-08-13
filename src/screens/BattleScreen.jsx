@@ -14,7 +14,6 @@ import { GStrikeModal } from "../components/modals/GStrikeModal";
 import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperModals";
 import { ReplacementModal } from "../components/modals/ReplacementModal";
 import { HandPlayModal } from "../components/modals/HandPlayModal";
-import { HandPlayOrderModal } from "../components/modals/HandPlayOrderModal";
 import { ManaPayModal } from "../components/modals/ManaPayModal";
 import { AttackTriggerModal } from "../components/modals/AttackTriggerModal";
 import { EvolutionSelectModal } from "../components/modals/EvolutionSelectModal";
@@ -131,9 +130,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 手札宣言プレイで進化元を選ぶ（NEO進化を含む）。支払いの前に決める
   const [handPlayEvoModal,setHandPlayEvoModal]=useState(null);
   // 2枚以上まとめて宣言した時、どれから解決するかを選ぶ
-  const [handPlayOrderModal,setHandPlayOrderModal]=useState(null);
   // 宣言した順に1枚ずつ解決するための待ち行列。1枚ぶんの解決が終わるたびに次を出す
-  const [handPlayQueue,setHandPlayQueue]=useState(null);
   // 効果でバトルゾーンを離れるカードに G-NEO の除去耐性があるか聞く。
   // 決めるまで効果の実行を止めるので、選択内容を預かってから advanceStep に渡す
   const [leaveReplaceModal,setLeaveReplaceModal]=useState(null);
@@ -199,6 +196,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const {effect,ownerPid,srcCard,subjectCard,sourceName}=entry;
     // 鬼エンドは「唱えるかどうか」を先に聞く。カット演出は唱えると決めてから出す
     if(entry.kind==="handPlay"){ setHandPlayModal({pid:ownerPid,plays:entry.plays,srcEvent:entry.srcEvent}); return; }
+    // 宣言済みの手札プレイ1枚ぶん。演出はプレイの中で出すのでここでは出さない
+    if(entry.kind==="handPlayOne"){ beginHandPlayRef.current(ownerPid,entry.play,entry.srcEvent); return; }
     if(entry.onceKey) markAbilityUsed(effect,entry.onceKey);
     showCutIn({title:"効果発動！",cardName:sourceName||srcCard?.name,civ:Array.isArray(srcCard?.civ)?srcCard.civ[0]:srcCard?.civ||"fire"});
     if(effect.type==="chooseTimes"){
@@ -208,52 +207,56 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }
   };
 
-  // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
+  // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決する。
+  //   ① いま待っている能力を一覧にする（ターンプレイヤー → 非ターンプレイヤーの順は崩さない）
+  //   ② そこから1つ選んで解決する
+  //   ③ 解決しきったらまた ① へ。その間に新しく誘発した能力も一覧に入る
+  // 順番を最初にまとめて決めないのが肝。解決の途中で出たクリーチャーの cip も、
+  // まだ解決していない能力と一緒に並び直して選べる。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||handPlayOrderModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
-    // 唱え終えた呪文の行き先の置換。誘発の解決より先に済ませる ―
-    // 呪文は「解決しきったら墓地に置く」までがひと続きで、置換が効くかどうかは
-    // その時点の盤面で決まる（総合ルール604.2）。唱えた直後に聞いてはいけない
-    if(pendingSpellAfterCast.length){
-      const [next,...rest]=pendingSpellAfterCast;
-      setPendingSpellAfterCast(rest);
-      offerSpellAfterCastRef.current(next.pid,next.card,next.fromZone);
-      return;
-    }
-    // 宣言した手札プレイを1枚ずつ。前の1枚の効果を解決しきってから次を出す
-    if(pendingEffects.length===0&&handPlayQueue?.plays.length){
-      const {pid,srcEvent,plays}=handPlayQueue;
-      const [next,...rest]=plays;
-      setHandPlayQueue(rest.length?{pid,srcEvent,plays:rest}:null);
-      setTimeout(()=>beginHandPlayRef.current(pid,next,srcEvent),0);
-      return;
-    }
-    // 「攻撃する時」の誘発を解決しきったら、預かっていた攻撃先へ進む
-    if(pendingEffects.length===0&&pendingAttack){
-      const {intent}=pendingAttack;
-      setPendingAttack(null);
-      setTimeout(()=>proceedAttackRef.current(intent),0);
-      return;
-    }
-    if(pendingEffects.length===0) return;
-    const minP=Math.min(...pendingEffects.map(e=>e.priority));
-    const group=pendingEffects.filter(e=>e.priority===minP);
-    // 呪文は順序固定（割り込ませず enqueue 順で解決）。誘発が2件以上、または任意誘発(単体でも)は選択モーダル。
-    // 起動型能力はプレイヤーが既に「使う」と宣言しているので確認しない。
-    const spell=group.find(e=>e.kind==="spell"||e.kind==="handPlay");
-    if(spell){
-      setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
-      resolveEntry(spell);
-    } else if(group.length>1 || (group[0].effect?.optional && group[0].kind!=="activated")){
-      setTriggerOrderModal({entries:group});
-    } else {
-      setPendingEffects(p=>p.filter(e=>e.id!==group[0].id));
-      resolveEntry(group[0]);
-    }
+    // 誘発は setTimeout(…,0) で積まれる（fireTrigger）。1tick 待ってから決めないと、
+    // 「いま解決した能力によって誘発した能力」が一覧に間に合わない。
+    // pendingEffects が動けばこの effect ごと張り直されるので、待った分は取り戻される。
+    const timer=setTimeout(()=>{
+      // 唱え終えた呪文の行き先の置換。誘発の解決より先に済ませる ―
+      // 呪文は「解決しきったら墓地に置く」までがひと続きで、置換が効くかどうかは
+      // その時点の盤面で決まる（総合ルール604.2）。唱えた直後に聞いてはいけない
+      if(pendingSpellAfterCast.length){
+        const [next,...rest]=pendingSpellAfterCast;
+        setPendingSpellAfterCast(rest);
+        offerSpellAfterCastRef.current(next.pid,next.card,next.fromZone);
+        return;
+      }
+      // 「攻撃する時」の誘発を解決しきったら、預かっていた攻撃先へ進む
+      if(pendingEffects.length===0&&pendingAttack){
+        const {intent}=pendingAttack;
+        setPendingAttack(null);
+        setTimeout(()=>proceedAttackRef.current(intent),0);
+        return;
+      }
+      if(pendingEffects.length===0) return;
+      const minP=Math.min(...pendingEffects.map(e=>e.priority));
+      const group=pendingEffects.filter(e=>e.priority===minP);
+      // 呪文と「手札から使うか聞く」宣言は順序固定（割り込ませず enqueue 順で解決）。
+      // 待っている能力が2件以上、または任意誘発(単体でも)は選択モーダル。
+      // 起動型能力はプレイヤーが既に「使う」と宣言しているので確認しない。
+      const spell=group.find(e=>e.kind==="spell"||e.kind==="handPlay");
+      if(spell){
+        setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
+        resolveEntry(spell);
+      } else if(group.length>1 || (group[0].effect?.optional && group[0].kind!=="activated")){
+        setTriggerOrderModal({priority:minP});
+      } else {
+        setPendingEffects(p=>p.filter(e=>e.id!==group[0].id));
+        resolveEntry(group[0]);
+      }
+    },0);
+    return ()=>clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[resolverBusy,pendingEffects,pendingAttack,handPlayQueue,pendingSpellAfterCast]);
+  },[resolverBusy,pendingEffects,pendingAttack,pendingSpellAfterCast]);
 
   // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」「G-NEO の置換」など）。
   // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
@@ -679,17 +682,27 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid,card,fromZone:"hand"}]);
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
-    // 残りは handPlayQueue が順に出す（この1枚の効果を解決しきってから次へ）
+    // 宣言した残りは pending に積んであるので、リゾルバが改めて選ばせる
   };
-  // モーダルで「プレイする」を押した時。宣言したぶんを解決順に並べてから1枚ずつ処理する。
-  // 2枚以上なら順番を聞く（先に解決したものの効果で盤面が変わるため）
+  // モーダルで「プレイする」を押した時。宣言したぶんを1枚ずつ pending に積む。
+  // ここでは順番を決めない。1枚解決するたびに、その間に誘発した能力と一緒に並べ直して選ぶ
   const handleHandPlay=(picks)=>{
     const {pid,srcEvent}=handPlayModal;
     setHandPlayModal(null);
     const plays=Array.isArray(picks)?picks:[picks];
     if(!plays.length) return;
-    if(plays.length===1){ setHandPlayQueue({pid,srcEvent,plays}); return; }
-    setHandPlayOrderModal({pid,srcEvent,plays});
+    plays.forEach(play=>{
+      const face=play.face||play.card;
+      const how=play.cost?`コスト${play.cost.cost}を支払って`:"コストを支払わずに";
+      // priority は既定（ターンプレイヤー=0 / 非ターンプレイヤー=1）に任せる。
+      // 宣言そのものは priority 2 で最後に聞くが、宣言した後の1枚1枚は普通の能力と同じ扱いで、
+      // 解決の途中で誘発した cip などと同じ一覧に並ぶ
+      enqueueEffect({
+        kind:"handPlayOne", ownerPid:pid, play, srcEvent,
+        srcCard:face, sourceName:handPlayLabel(play.kind), onceLabel:handPlayLabel(play.kind),
+        effect:{ label:`${how}${isCreatureSide(face)?"召喚する":"唱える"}` },
+      });
+    });
   };
   // 1枚ぶんを実際に始める。
   // 進化元を選ぶカード（NEO進化を含む）は先に進化元を決めてから、コストの支払いへ進む
@@ -1446,10 +1459,21 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
       {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
       {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
-      {triggerOrderModal&&<TriggerOrderModal entries={triggerOrderModal.entries}
-        onChoose={id=>{const entry=triggerOrderModal.entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}
-        onDecline={id=>{const entry=triggerOrderModal.entries.find(e=>e.id===id);addLog(`${entry?.sourceName??""}: 能力を発動しなかった`);setPendingEffects(p=>p.filter(e=>e.id!==id));setTriggerOrderModal(prev=>{const rest=(prev?.entries||[]).filter(e=>e.id!==id);return rest.length?{entries:rest}:null;});}}
-        onDeclineAll={()=>{const ids=triggerOrderModal.entries.filter(e=>e.effect?.optional).map(e=>e.id);addLog("任意の誘発能力を発動しなかった");setPendingEffects(p=>p.filter(e=>!ids.includes(e.id)));setTriggerOrderModal(prev=>{const rest=(prev?.entries||[]).filter(e=>!ids.includes(e.id));return rest.length?{entries:rest}:null;});}}/>}
+      {triggerOrderModal&&(()=>{
+        // 一覧は開いている間も pendingEffects から作り直す。解決の直後に誘発した能力が
+        // 1tick 遅れて積まれても、開いたままの一覧にそのまま並ぶ。
+        // ターンプレイヤー → 非ターンプレイヤーの順は、毎回いちばん優先度の高い群だけを出すことで保つ
+        const minP=pendingEffects.length?Math.min(...pendingEffects.map(e=>e.priority)):null;
+        const entries=minP===null?[]:pendingEffects.filter(e=>e.priority===minP);
+        const dropIds=ids=>{
+          setPendingEffects(p=>p.filter(e=>!ids.includes(e.id)));
+          if(entries.every(e=>ids.includes(e.id))) setTriggerOrderModal(null);
+        };
+        return <TriggerOrderModal entries={entries}
+          onChoose={id=>{const entry=entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}
+          onDecline={id=>{const entry=entries.find(e=>e.id===id);addLog(`${entry?.sourceName??""}: 能力を発動しなかった`);dropIds([id]);}}
+          onDeclineAll={()=>{addLog("任意の誘発能力を発動しなかった");dropIds(entries.filter(e=>e.effect?.optional).map(e=>e.id));}}/>;
+      })()}
       {finalRevModal&&<FinalRevolutionModal selfState={activeState} onConfirm={handleFinalRevConfirm} onSkip={()=>{setFinalRevModal(false);setUsedFinalRevThisTurn(true);}}/>}
       {gStrikeModal&&<GStrikeModal cards={gStrikeModal.cards} attackerBattle={gStrikeModal.attackerBattle} onConfirm={uid=>{if(uid){const target=gStrikeModal.attackerPid==="p1"?setP1:setP2;target(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,cantAttackThisTurn:true}:c)}));addLog(`[GS] G・ストライク: ${(gStrikeModal.attackerBattle||[]).find(c=>c.uid===uid)?.name} 今ターン攻撃不可`);}setGStrikeModal(null);}} onSkip={()=>setGStrikeModal(null)}/>}
       {handPlayModal&&<HandPlayModal pid={handPlayModal.pid} plays={handPlayModal.plays} onPlay={handleHandPlay} onSkip={()=>{addLog(`[${handPlayLabel(handPlayModal.plays[0]?.kind)}] ${handPlayModal.pid}: 使わない`);setHandPlayModal(null);}}/>}
@@ -1475,13 +1499,6 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         return <EvolutionSelectModal candidates={candidates} card={put.card}
           spec={evolutionSpec(put.card)} ownerState={stateRef.current[put.ownerPid]}
           onConfirm={done} onCancel={()=>done([])}/>;})()}
-      {handPlayOrderModal&&(()=>{const{pid,plays,srcEvent}=handPlayOrderModal;
-        return <HandPlayOrderModal pid={pid} plays={plays}
-          onConfirm={order=>{setHandPlayOrderModal(null);
-            const ordered=order.map(uid=>plays.find(p=>p.card.uid===uid)).filter(Boolean);
-            addLog(`[${handPlayLabel(plays[0].kind)}] ${pid}: ${ordered.map(p=>(p.face||p.card).name).join(" → ")} の順で解決`);
-            setHandPlayQueue({pid,srcEvent,plays:ordered});}}
-          onCancel={()=>{setHandPlayOrderModal(null);addLog(`[${handPlayLabel(plays[0].kind)}] ${pid}: 宣言を取りやめ`);}}/>;})()}
       {handPlayEvoModal&&(()=>{const{pid,play,spec,candidates,srcEvent}=handPlayEvoModal;
         const done=baseUids=>{setHandPlayEvoModal(null);continueHandPlay(pid,{...play,evolutionBaseUids:baseUids||[]},srcEvent);};
         return <EvolutionSelectModal candidates={candidates} card={play.face||play.card} spec={spec}

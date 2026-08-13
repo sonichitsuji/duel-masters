@@ -1,8 +1,10 @@
 import { CIV, EFFECT_TYPE_LABELS } from "../../constants";
 import { getCardCivs } from "../../gameLogic";
 
-// 同時に誘発した複数の能力の解決順をプレイヤーに選ばせるモーダル。
-// リゾルバが「ターンプレイヤー優先」で抽出した群（entries）を一覧表示し、1つ選ぶ。
+// いま解決を待っている能力を一覧表示し、そこから1つ選ばせるモーダル。
+// リゾルバが「ターンプレイヤー優先」で抽出した群（entries）を並べる。
+// 順番をまとめて決めるのではなく毎回1つだけ選ぶので、解決の途中で新しく誘発した能力
+// （出たクリーチャーの cip など）も、次に開いた時には同じ一覧に並ぶ。
 // 解決前に「何が起きるのか」を確認できるよう、能力の中身を行単位で書き出す。
 // 現行の記法は effects 配列。steps は旧記法、type 直書きは単発効果。
 function stepLine(st){
@@ -29,7 +31,7 @@ export function TriggerOrderModal({ entries, onChoose, onDecline, onDeclineAll }
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:420, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:"linear-gradient(160deg,#0a0a1e,#08080f)", border:"2px solid #ffe066", borderRadius:14, padding:20, maxWidth:460, width:"100%", boxShadow:"0 0 30px #ffe06655" }}>
         <div style={{ fontFamily:"'Cinzel',serif", color:"#ffe066", fontSize:13, fontWeight:900, marginBottom:4, letterSpacing:2 }}>解決する能力を選択</div>
-        <div style={{ fontSize:11, color:"#aaa", marginBottom:12 }}>誘発した能力です。解決する順に1つずつ選んでください（ターンプレイヤーの能力から）。「〜してもよい」の能力は発動しないことも選べます。</div>
+        <div style={{ fontSize:11, color:"#aaa", marginBottom:12 }}>いま解決を待っている能力です（ターンプレイヤーの能力から）。1つ選ぶとそれだけを解決し、そのあと新しく誘発した能力も含めてまた選び直します。「〜してもよい」の能力は発動しないことも選べます。</div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {entries.map(entry=>{
             const civs=getCardCivs(entry.srcCard||{civ:"fire"});
