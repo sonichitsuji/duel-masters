@@ -4571,5 +4571,315 @@
         ]
       }
     ]
+  },
+  {
+    "name": "ボルシャック・スーパーヒーロー",
+    "race": "アーマード・ドラゴン/ハンター",
+    "cost": 6,
+    "power": 6000,
+    "type": "twinpact",
+    "civ": "fire",
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "W・ブレイカー\nこのクリーチャーが出た時、パワー3000以下のサイキックではないクリーチャーをすべて破壊する。その後、パワー5000以下のサイキック・クリーチャーをすべて破壊する。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "パワー3000以下のサイキックではないクリーチャーをすべて破壊する",
+            "type": "destroy",
+            "target": "both",
+            "all": true,
+            "filter": {
+              "creatureOnly": true,
+              "maxPower": 3000,
+              "not": {
+                "psychic": true
+              }
+            }
+          },
+          {
+            "label": "その後、パワー5000以下のサイキック・クリーチャーをすべて破壊する",
+            "type": "destroy",
+            "target": "both",
+            "all": true,
+            "filter": {
+              "creatureOnly": true,
+              "maxPower": 5000,
+              "psychic": true
+            }
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "超英雄タイム",
+      "cost": 2,
+      "civ": "fire",
+      "effect": "バトルゾーンにある相手のコスト3以下のカードを1枚選び、破壊する。",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "バトルゾーンにある相手のコスト3以下のカードを1枚選び、破壊する",
+              "type": "destroy",
+              "target": "opponent",
+              "amount": 1,
+              "filter": {
+                "maxCost": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "id": 122
+  },
+  {
+    "name": "「業流」の頂 ゾロ・ア・スタート",
+    "race": "オラクル/ゼニス",
+    "cost": 13,
+    "power": 33333,
+    "type": "creature",
+    "civ": "colorless",
+    "keywords": [
+      "revolutionChange",
+      "worldBreaker"
+    ],
+    "effect": "革命チェンジ：パワー12000以上のクリーチャー\nワールド・ブレイカー\n相手のターンに相手のクリーチャーが超次元ゾーン以外から出る時、かわりにそれを相手の超次元ゾーンに置く。次の相手のターンのはじめに、相手はそのクリーチャーを超次元ゾーンから出す。\nエターナル・Ω（このクリーチャーが離れる時、かわりに手札に戻す）",
+    "revolutionChangeCond": {
+      "minPower": 12000
+    },
+    "replaceEnter": {
+      "who": "opponent",
+      "turnOf": "opponent",
+      "to": "hyper",
+      "release": "startOfOwnerTurn"
+    },
+    "replaceLeave": {
+      "to": "hand",
+      "filter": {
+        "self": true
+      }
+    },
+    "id": 123
+  },
+  {
+    "name": "ボルシャック・テイル・ドラゴン",
+    "race": "アーマード・ドラゴン",
+    "cost": 4,
+    "power": 5000,
+    "powerPlus": true,
+    "type": "creature",
+    "civ": "fire",
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー\nこのクリーチャーが出た時、相手のクリーチャーを1体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる。\nシビルカウント3：自分の火のクリーチャーまたは火のタマシードが合計3つ以上あれば、このクリーチャーのパワーを+2000し、「W・ブレイカー」を与える。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーを1体選んでもよい。その選んだクリーチャーとこのクリーチャーをバトルさせる",
+            "type": "battle",
+            "target": "opponent",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "condPower": [
+      {
+        "condition": {
+          "type": "civicCount",
+          "civ": "fire",
+          "count": 3
+        },
+        "amount": 2000
+      }
+    ],
+    "grantKeywords": [
+      {
+        "keyword": "wBreaker",
+        "condition": {
+          "type": "civicCount",
+          "civ": "fire",
+          "count": 3
+        },
+        "filter": {
+          "self": true
+        }
+      }
+    ],
+    "id": 124
+  },
+  {
+    "id": 125,
+    "name": "光鎧龍ホーリーグレイス",
+    "race": "アーマード・アポロニア・ドラゴン",
+    "cost": 6,
+    "power": 6500,
+    "type": "creature",
+    "civ": [
+      "light"
+    ],
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー\nW・ブレイカー\nこのクリーチャーが出た時、相手のクリーチャーをすべてタップする。\n相手のターンにこのクリーチャーが出た時、このターンに2つ以上自分のシールドがブレイクされていなければ、このクリーチャーを破壊する。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーをすべてタップする",
+            "type": "tap",
+            "target": "opponent",
+            "all": true
+          }
+        ]
+      },
+      {
+        "on": "creaturePutBz",
+        "turnOf": "opponent",
+        "condition": {
+          "type": "shieldsBroken",
+          "who": "self",
+          "max": 1
+        },
+        "effects": [
+          {
+            "label": "このターンに2つ以上自分のシールドがブレイクされていなければ、このクリーチャーを破壊する",
+            "type": "destroy",
+            "self": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ボルシャック・ルピア",
+    "race": "ファイアー・バード",
+    "cost": 4,
+    "power": 2000,
+    "type": "creature",
+    "civ": [
+      "fire"
+    ],
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、自分の山札を見る。その中から、名前に《ボルシャック》とあるクリーチャーを1体選び、相手に見せてから自分の手札に加えてもよい。その後、山札をシャッフルする。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の山札を見る。その中から、名前に《ボルシャック》とあるクリーチャーを1体選び、相手に見せてから自分の手札に加えてもよい。",
+            "type": "search",
+            "destination": "hand",
+            "filter": {
+              "type": "creature",
+              "nameContains": "ボルシャック"
+            },
+            "amount": 1,
+            "optional": true
+          },
+          {
+            "label": "その後、山札をシャッフルする",
+            "type": "shuffleDeck"
+          }
+        ]
+      }
+    ],
+    "id": 126
+  },
+  {
+    "name": "ボルシャック・ドリーム・ドラゴン",
+    "race": "アーマード・ドラゴン",
+    "cost": 7,
+    "power": 11000,
+    "type": "creature",
+    "civ": [
+      "light",
+      "fire",
+      "nature"
+    ],
+    "effect": "自分のマナゾーンにドラゴン・カードが4枚以上あれば、このクリーチャーの召喚コストを3少なくする。\nスピードアタッカー\nW・ブレイカー\n各ターンに1度、自分のドラゴンが出た時、相手のクリーチャーを1体選び、タップしてもよい。\nこのクリーチャーが攻撃する時、自分の山札の上から1枚を表向きにする。それがドラゴンなら出す。それ以外なら墓地に置く。",
+    "keywords": [
+      "speedAttacker",
+      "wBreaker"
+    ],
+    "costReduce": {
+      "amount": 3,
+      "min": 1,
+      "zones": [
+        "hand"
+      ],
+      "filter": {
+        "self": true
+      },
+      "condition": {
+        "type": "cardCount",
+        "zone": "mana",
+        "filter": {
+          "raceContains": "ドラゴン"
+        },
+        "min": 4
+      }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "target": "self",
+        "filter": {
+          "raceContains": "ドラゴン"
+        },
+        "oncePerTurn": true,
+        "optional": true,
+        "label": "相手のクリーチャーを1体選び、タップしてもよい",
+        "effects": [
+          {
+            "label": "相手のクリーチャーを1体選び、タップする",
+            "type": "tap",
+            "target": "opponent",
+            "amount": 1,
+            "filter": {
+              "creatureOnly": true
+            }
+          }
+        ]
+      },
+      {
+        "on": "attack",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚を表向きにする",
+            "type": "reveal",
+            "amount": 1
+          },
+          {
+            "label": "それがドラゴンなら出す。それ以外なら墓地に置く",
+            "type": "revealedToBz",
+            "filter": {
+              "raceContains": "ドラゴン"
+            }
+          },
+          {
+            "label": "それ以外なら墓地に置く",
+            "type": "revealedToGrave",
+            "filter": {
+              "not": {
+                "raceContains": "ドラゴン"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "id": 127
   }
 ]

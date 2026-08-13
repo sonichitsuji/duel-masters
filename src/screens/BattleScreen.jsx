@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -115,6 +115,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const activeStepsRef=useRef(null);
   activeStepsRef.current=activeSteps;
   const [pendingEffects,setPendingEffects]=useState([]);
+  // 唱え終えた呪文の行き先の置換（spellAfterCast）を待たせておく列。
+  // 置換効果なので「墓地に置こうとする時」＝その呪文を解決しきった時に判定する（総合ルール604.2）。
+  const [pendingSpellAfterCast,setPendingSpellAfterCast]=useState([]);
   const [triggerOrderModal,setTriggerOrderModal]=useState(null);
   const [gStrikeModal,setGStrikeModal]=useState(null);
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
@@ -159,6 +162,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const proceedAttackRef=useRef();
   const pendingIdRef=useRef(0);
   const [replacementModal,setReplacementModal]=useState(null);
+  // 出る時の置換の確認待ち。1体ずつ聞くので列で持つ
+  // （ファイナル革命のように複数体が同時に出ると、1つの state では後勝ちで消えてしまう）
+  const [enterReplaceQueue,setEnterReplaceQueue]=useState([]);
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
   const [blockerModal,setBlockerModal]=useState(null);
@@ -208,13 +214,22 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 順番を最初にまとめて決めないのが肝。解決の途中で出たクリーチャーの cip も、
   // まだ解決していない能力と一緒に並び直して選べる。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     // 誘発は setTimeout(…,0) で積まれる（fireTrigger）。1tick 待ってから決めないと、
     // 「いま解決した能力によって誘発した能力」が一覧に間に合わない。
     // pendingEffects が動けばこの effect ごと張り直されるので、待った分は取り戻される。
     const timer=setTimeout(()=>{
+      // 唱え終えた呪文の行き先の置換。誘発の解決より先に済ませる ―
+      // 呪文は「解決しきったら墓地に置く」までがひと続きで、置換が効くかどうかは
+      // その時点の盤面で決まる（総合ルール604.2）。唱えた直後に聞いてはいけない
+      if(pendingSpellAfterCast.length){
+        const [next,...rest]=pendingSpellAfterCast;
+        setPendingSpellAfterCast(rest);
+        offerSpellAfterCastRef.current(next.pid,next.card,next.fromZone);
+        return;
+      }
       // 「攻撃する時」の誘発を解決しきったら、預かっていた攻撃先へ進む
       if(pendingEffects.length===0&&pendingAttack){
         const {intent}=pendingAttack;
@@ -241,7 +256,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     },0);
     return ()=>clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[resolverBusy,pendingEffects,pendingAttack]);
+  },[resolverBusy,pendingEffects,pendingAttack,pendingSpellAfterCast]);
 
   // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」「G-NEO の置換」など）。
   // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
@@ -283,7 +298,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
           setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castMain, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
         }
-        setTimeout(() => offerSpellAfterCastRef.current(castOwnerPid, castCard, castFrom || "hand"), 0);
+        setPendingSpellAfterCast(q => [...q, { pid: castOwnerPid, card: castCard, fromZone: castFrom || "hand" }]);
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard,fromZone:castFrom||"hand"}), 0);
       }
       // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
@@ -300,7 +315,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         // ここは fireTrigger に任せるだけでよい（自分自身のぶんも他カードの反応もまとめて拾う）
         list.forEach(e => {
           if (isCreatureSide(e.card)) {
-            setTimeout(() => fireTriggerRef.current("creaturePutBz", { sourcePid: e.ownerPid, subjectCard: e.card, method: e.method }), 0);
+            setTimeout(() => putCreatureBzRef.current(e.ownerPid, e.card, e.method), 0);
           }
         });
       }
@@ -478,6 +493,52 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
 
   // 汎用トリガー・ディスパッチャ
+  // クリーチャーがバトルゾーンに出た時の入口。cip（creaturePutBz）はここからしか発火しない。
+  // 「出る時、かわりに〜」の置換（replaceEnter）はここで挟む。置換したら cip は誘発しない。
+  //
+  // カードはいったんバトルゾーンに置かれてからここへ来る（呼び出し元が state を更新してから呼ぶ）。
+  // cip の発火がこの1か所に集まっているので、置換した時は「誘発を止めて行き先へ移す」だけで
+  // 「出なかったこと」にできる。
+  const putCreatureBz=(ownerPid,card,method,{fromHyper=false}={})=>{
+    const fire=()=>fireTriggerRef.current("creaturePutBz",{sourcePid:ownerPid,subjectCard:card,method});
+    // 超次元ゾーンから出したものは置換しない（そうしないと永久に出られない）
+    if(fromHyper){ fire(); return; }
+    const hit=findEnterReplacement(card,ownerPid,stateRef.current,active);
+    if(!hit){ fire(); return; }
+    setEnterReplaceQueue(q=>[...q,{ownerPid,card,hit,fire}]);
+  };
+  const putCreatureBzRef=useRef();
+  putCreatureBzRef.current=putCreatureBz;
+  // 置換で超次元ゾーンへ送られたカードを、そのプレイヤーのターンのはじめに出す。
+  // 出どころが超次元ゾーンなので、ここで出す分は replaceEnter を再適用しない
+  const releaseFromHyper=(pid)=>{
+    const st=stateRef.current[pid];
+    const due=(st?.hyper||[]).filter(c=>c.releaseAtStartOfTurn);
+    if(!due.length) return;
+    const setSt=pid==="p1"?setP1:setP2;
+    const uids=due.map(c=>c.uid);
+    const put=due.map(c=>{const m={...c,tapped:false,faceUp:false,enteredThisTurn:true,
+      summonedThisTurn:!hasKeyword(c,"speedAttacker")};delete m.releaseAtStartOfTurn;return m;});
+    setSt(s=>({...s,hyper:(s.hyper||[]).filter(c=>!uids.includes(c.uid)),battle:[...s.battle,...put]}));
+    addLog(`${pid.toUpperCase()}: 超次元ゾーンから ${put.map(c=>c.name).join("、")} を出した`);
+    put.forEach(c=>setTimeout(()=>putCreatureBzRef.current(pid,c,"put",{fromHyper:true}),0));
+  };
+  const releaseFromHyperRef=useRef();
+  releaseFromHyperRef.current=releaseFromHyper;
+  // 置換を適用する: バトルゾーンから抜いて超次元ゾーンへ置く。cip は誘発させない
+  const applyEnterReplacement=(ownerPid,card,rule)=>{
+    const setSt=ownerPid==="p1"?setP1:setP2;
+    const release=rule.release==="startOfOwnerTurn";
+    setSt(s=>{
+      const {newBattle,extracted}=extractFromBattle(s.battle,card.uid);
+      if(!extracted.length) return s;
+      const moved=extracted.map(c=>({...c,tapped:false,faceUp:true,enteredThisTurn:false,summonedThisTurn:false,
+        ...(release?{releaseAtStartOfTurn:true}:{})}));
+      return {...s,battle:newBattle,hyper:[...(s.hyper||[]),...moved]};
+    });
+    addLog(`[置換] ${ownerPid.toUpperCase()}: 「${card.name}」はバトルゾーンに出るかわりに超次元ゾーンへ`);
+  };
+
   // ゾーン走査型: creatureEnter/selfDraw/shieldLeave/shieldAdded/opponentDiscard（opts.sourcePid）
   // 攻撃型: attack（opts.sourcePid, opts.attackerUid）
   // 離脱カード固有型: leave/destroyed/battleDestroy（opts.card, opts.ownerPid）
@@ -610,7 +671,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       });
       maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
       // cip は triggers なので fireTrigger が拾う
-      setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:pid,subjectCard:put,method:"summon"}),0);
+      setTimeout(()=>putCreatureBzRef.current(pid,put,"summon"),0);
     }else{
       // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ（動かすのは元のカード）
       const isCharger=face.keywords?.includes("charger");
@@ -618,7 +679,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
       const main=spellMainEffect(face);
       if(main) enqueueEffect({kind:"spell",effect:main,ownerPid:pid,srcCard:face,sourceName:face.name});
-      if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(pid,card,"hand"),0);
+      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid,card,fromZone:"hand"}]);
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
     // 宣言した残りは pending に積んであるので、リゾルバが改めて選ばせる
@@ -856,7 +917,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）。
       // 自分自身の cip も triggers なので、クリーチャーならこれ1本で足りる
-      if(isCreature) setTimeout(()=>fireTrigger("creaturePutBz",{sourcePid:active,subjectCard:newCreature,method:"summon"}),0);
+      if(isCreature) setTimeout(()=>putCreatureBzRef.current(active,newCreature,"summon"),0);
       // タマシード／フィールドは「クリーチャーが出た時」ではないので上の経路を通らない。
       // 自分自身の「出た時」だけを直接積む
       else selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid}));
@@ -873,7 +934,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const spellEffect=spellMainEffect(effectiveSide)||spellMainEffect(card);
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
       // 唱えた後の行き先の置換（チャージャーはマナへ行くので対象外）
-      if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(active,card,"hand"),0);
+      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid:active,card,fromZone:"hand"}]);
       // 汎用トリガー: 呪文を唱えた時
       setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card,fromZone:"hand"}),0);
     }
@@ -897,7 +958,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // 入れ替わって出たクリーチャーの「出た時」。これまで autoEffect しか撃っておらず、
     // triggers:[{on:"creaturePutBz"}] で書かれた cip が誘発していなかった
     const revPut=newBattle.find(c=>c.uid===handCard.uid);
-    setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:active,subjectCard:revPut,method:"summon"}),0);
+    setTimeout(()=>putCreatureBzRef.current(active,revPut,"summon"),0);
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     else if(handCard.finalRevolution&&!usedFinalRevThisTurn){
       setUsedFinalRevThisTurn(true);
@@ -920,6 +981,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveState(s=>({...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]}));
     addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
     maybeFlagCantAttack(newCards.map(c=>c.uid),setActiveState,otherState.battle);
+    // ここも「出た時」の入口を通す。cip が誘発し、出る時の置換（replaceEnter）も効く
+    newCards.forEach(c=>setTimeout(()=>putCreatureBzRef.current(active,c,"put"),0));
   };
   // 攻撃の流れ:
   //   [ATTACK] ここは「誰で攻撃するか」を決めるだけ。タップも誘発もしない
@@ -1363,6 +1426,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActive(next);setTurn(newTurn);setDrewThisTurn(false);setChargedThisTurn(false);
     // ターンのはじめに（アンタップとフラグのリセットが済んでから発火。sourcePid はターンを始めるプレイヤー）
     // 解決はハンドオフ画面を閉じたあと（resolverBusy に handoff が含まれるため）
+    // 「次の自分のターンのはじめに超次元ゾーンから出す」（replaceEnter の release）
+    setTimeout(()=>releaseFromHyperRef.current(next),0);
     setTimeout(()=>fireTrigger("startOfTurn",{sourcePid:next}),0);
   };
 
@@ -1449,6 +1514,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           else fireAttackTriggers(st.battle.find(c=>c.uid===attacker.uid)||attacker,intent);};
         return <AttackTriggerModal attacker={attacker} ownerState={st}
           onRevChange={c=>done(c)} onSkip={()=>done(null)}/>;})()}
+      {enterReplaceQueue.length>0&&(()=>{const{ownerPid,card,hit,fire}=enterReplaceQueue[0];
+        const done=(apply)=>{setEnterReplaceQueue(q=>q.slice(1));
+          if(apply) applyEnterReplacement(ownerPid,card,hit.rule);
+          else { addLog(`[置換] 例外処理で中止（「${card.name}」は通常どおり出る）`); setTimeout(fire,0); }};
+        return <ReplacementModal modal={{
+          title:`${hit.card.name}（置換効果）`, card:hit.card,
+          message:`${ownerPid.toUpperCase()} の「${card.name}」がバトルゾーンに出ます。\nかわりにそれを ${ownerPid.toUpperCase()} の超次元ゾーンに置きます。`,
+          applyLabel:"かわりに超次元ゾーンへ置く", cancelLabel:"例外処理で中止（通常どおり出す）",
+        }} onApply={()=>done(true)} onCancel={()=>done(false)}/>;})()}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
       {hyperUnlockModal&&<HyperUntapModal modal={hyperUnlockModal} onSelect={uid2=>{
