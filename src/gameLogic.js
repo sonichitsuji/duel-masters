@@ -89,7 +89,8 @@ export function canPayCost(mana,card,costSource,opts={}){
   const untapped=mana.filter(c=>!c.tapped);
   if(untapped.length<effectiveCost) return {ok:false,reason:`マナ不足 (必要:${effectiveCost} / 利用可能:${untapped.length})`};
   if(effectiveCost===0) return {ok:true};
-  const civs=getCardCivs(card);
+  // 無色は文明ではないので、特定の文明のマナを要求しない（コストの数だけ払えばよい）
+  const civs=getCardCivs(card).filter(civ=>civ!=="colorless");
   for(const civ of civs){
     if(!untapped.some(c=>getManaCivs(c).includes(civ))){
       return {ok:false,reason:`${CIV[civ]?.label}文明のマナが必要です`};
@@ -204,8 +205,9 @@ export function getEffectiveCost(card, source, opts = {}) {
     const n = amountPer ? amountPerCount(ownerState, amountPer, opts) : (amount || 0);
     cost = Math.max(min ?? 0, cost - n);
   }
-  // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）
-  return Math.max(cost, getCardCivs(card).length);
+  // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）。
+  // 無色は文明ではないので数えない
+  return Math.max(cost, getCardCivs(card).filter(civ=>civ!=="colorless").length);
 }
 
 export function extractManyFromBattle(battle, uids) {
@@ -292,7 +294,8 @@ const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "costReduce","condPower","grantKeywords","grantPowerBoost","grantPowerBoostGrave",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
-  "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect"];
+  "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
+  "replaceEnter"];
 
 // 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」。
 // 能力の読み出しはほぼすべてこの関数を通るので、「能力を無視されている」間は
@@ -396,6 +399,8 @@ export function findLeaveReplacement(ownerState, card) {
     const rules = effectiveCard(c).replaceLeave;
     if (!rules) continue;
     for (const rule of (Array.isArray(rules) ? rules : [rules])) {
+      // filter.self:「このクリーチャーが離れる時」= 置換元自身にだけ効く（エターナル・Ω）
+      if (rule.filter?.self && c.uid !== card.uid) continue;
       if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
       return { card: c, rule };
     }
@@ -408,6 +413,39 @@ export function findLeaveReplacement(ownerState, card) {
 //   spellAfterCast: [{ from:"grave"|"hand"|"any", to:"deckBottom"|…, filter? }]
 //   from = その呪文を唱えたゾーン（既定 "any"）、to = 墓地のかわりの行き先
 export const SPELL_AFTER_CAST_TO = ["deckBottom", "deckTop", "hand", "mana", "shield"];
+
+// 出る時の置換（「〜が出る時、かわりに〜に置く」）。
+// データ形: replaceEnter: { who?, turnOf?, to, release?, filter? }
+//   who    … 出るクリーチャーの持ち主。"self"(既定 both と同じ扱いにしない) / "opponent" / "both"
+//   turnOf … 誰のターンか。"self" / "opponent" / "both"（既定）
+//   to     … かわりに置く先（いまは "hyper" = 超次元ゾーンのみ）
+//   release… "startOfOwnerTurn" なら、次のその持ち主のターンのはじめにそこから出す
+//   filter … 出るカードの条件（省略時はクリーチャーすべて）
+// who / turnOf はどちらも「置換元のカードの持ち主」から見た関係。
+// 置換は §0 のとおり必ず例外処理で中止できる形で提示すること。
+export function findEnterReplacement(card, ownerPid, states, activePid) {
+  if (!card) return null;
+  for (const srcPid of ["p1", "p2"]) {
+    const st = states?.[srcPid];
+    if (!st) continue;
+    const sources = [...(st.battle || []), ...((st.shields || []).filter(c => c.faceUp))];
+    for (const c of sources) {
+      const rule = effectiveCard(c).replaceEnter;
+      if (!rule) continue;
+      const isSelf = ownerPid === srcPid;
+      const who = rule.who || "both";
+      if (who === "self" && !isSelf) continue;
+      if (who === "opponent" && isSelf) continue;
+      const ownTurn = activePid === srcPid;
+      const turnOf = rule.turnOf || "both";
+      if (turnOf === "self" && !ownTurn) continue;
+      if (turnOf === "opponent" && ownTurn) continue;
+      if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
+      return { card: c, sourcePid: srcPid, rule };
+    }
+  }
+  return null;
+}
 
 // ===========================
 // 呪文を唱えられない（ラフルル・ラブ等）

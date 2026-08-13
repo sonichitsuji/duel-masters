@@ -14,7 +14,7 @@ const root = path.join(__dirname, "..");
 
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
-const CIVS = new Set(["light","water","darkness","fire","nature"]);
+const CIVS = new Set(["light","water","darkness","fire","nature","colorless"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"]);
 const TRIGGER_ONS = new Set(["cast","creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
@@ -61,7 +61,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -88,6 +88,10 @@ const CONDITION_WHO = ["self","opponent","any"];
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
 const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
+// replaceEnter:「出る時、かわりに〜」。いまは超次元ゾーンへ送るものだけ
+const ENTER_TO = new Set(["hyper"]);
+const ENTER_RELEASE = new Set(["startOfOwnerTurn"]);
+const ENTER_WHO = ["self","opponent","both"];
 // playFromHand で唱えられる（＝出せる）元のゾーン
 const PLAY_FROM_ZONES = new Set(["hand","grave"]);
 // spellAfterCast: 唱えた後、墓地のかわりに置く場所と、その対象になる「唱えたゾーン」
@@ -330,6 +334,22 @@ function checkAbilityFields(obj, where) {
     if (!LEAVE_TO.has(rl.to || "mana")) errors.push(`${where}.replaceLeave: to は ${[...LEAVE_TO].join("/")}`);
     if (rl.filter != null && typeof rl.filter !== "object") errors.push(`${where}.replaceLeave: filter はオブジェクト`);
   }
+  // replaceEnter: 「出る時、かわりに超次元ゾーンへ置く」
+  if (obj.replaceEnter != null) {
+    const re = obj.replaceEnter;
+    if (typeof re !== "object" || Array.isArray(re)) errors.push(`${where}.replaceEnter: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(re)) {
+        if (!["who","turnOf","to","release","filter"].includes(k)) errors.push(`${where}.replaceEnter: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (!ENTER_TO.has(re.to)) errors.push(`${where}.replaceEnter: to は ${[...ENTER_TO].join("/")}`);
+      if (re.release != null && !ENTER_RELEASE.has(re.release)) errors.push(`${where}.replaceEnter: 未知の release "${re.release}"`);
+      for (const k of ["who","turnOf"]) {
+        if (re[k] != null && !ENTER_WHO.includes(re[k])) errors.push(`${where}.replaceEnter: ${k} は ${ENTER_WHO.join("/")}`);
+      }
+      checkFilterKeys(re.filter, `${where}.replaceEnter`);
+    }
+  }
   // oniEnd: 鬼エンド（手札から、コストを支払わずにプレイする）
   if (obj.oniEnd != null) {
     const oe = obj.oniEnd;
@@ -466,7 +486,7 @@ for (const c of cards) {
   if (c.type && !TYPES.has(c.type)) errors.push(`${tag}: 未知のtype "${c.type}"`);
   if (c.type === "field" && c.power != null) warnings.push(`${tag}: フィールドにパワーはありません`);
   const civs = Array.isArray(c.civ) ? c.civ : [c.civ];
-  for (const cv of civs) if (!["light","water","darkness","fire","nature"].includes(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
+  for (const cv of civs) if (!CIVS.has(cv)) errors.push(`${tag}: 未知のciv "${cv}"`);
 
   // on:"cast"（呪文の本体）はカードが呪文の時だけ。ツインパクトは呪文面（spellSide）に書く
   for (const tr of c.triggers || []) {

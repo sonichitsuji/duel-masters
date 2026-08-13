@@ -4571,5 +4571,34 @@
         ]
       }
     ]
+  },
+  {
+    "name": "「業流」の頂 ゾロ・ア・スタート",
+    "race": "オラクル/ゼニス",
+    "cost": 13,
+    "power": 33333,
+    "type": "creature",
+    "civ": "colorless",
+    "keywords": [
+      "revolutionChange",
+      "worldBreaker"
+    ],
+    "effect": "革命チェンジ：パワー12000以上のクリーチャー\nワールド・ブレイカー\n相手のターンに相手のクリーチャーが超次元ゾーン以外から出る時、かわりにそれを相手の超次元ゾーンに置く。次の相手のターンのはじめに、相手はそのクリーチャーを超次元ゾーンから出す。\nエターナル・Ω（このクリーチャーが離れる時、かわりに手札に戻す）",
+    "revolutionChangeCond": {
+      "minPower": 12000
+    },
+    "replaceEnter": {
+      "who": "opponent",
+      "turnOf": "opponent",
+      "to": "hyper",
+      "release": "startOfOwnerTurn"
+    },
+    "replaceLeave": {
+      "to": "hand",
+      "filter": {
+        "self": true
+      }
+    },
+    "id": 122
   }
 ]

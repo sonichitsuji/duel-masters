@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -116,6 +116,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const activeStepsRef=useRef(null);
   activeStepsRef.current=activeSteps;
   const [pendingEffects,setPendingEffects]=useState([]);
+  // 唱え終えた呪文の行き先の置換（spellAfterCast）を待たせておく列。
+  // 置換効果なので「墓地に置こうとする時」＝その呪文を解決しきった時に判定する（総合ルール604.2）。
+  const [pendingSpellAfterCast,setPendingSpellAfterCast]=useState([]);
   const [triggerOrderModal,setTriggerOrderModal]=useState(null);
   const [gStrikeModal,setGStrikeModal]=useState(null);
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
@@ -162,6 +165,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const proceedAttackRef=useRef();
   const pendingIdRef=useRef(0);
   const [replacementModal,setReplacementModal]=useState(null);
+  const [enterReplaceModal,setEnterReplaceModal]=useState(null);
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
   const [blockerModal,setBlockerModal]=useState(null);
@@ -204,9 +208,18 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||handPlayOrderModal||leaveReplaceModal||neoPutModal||revChangeModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||handPlayOrderModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceModal||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
+    // 唱え終えた呪文の行き先の置換。誘発の解決より先に済ませる ―
+    // 呪文は「解決しきったら墓地に置く」までがひと続きで、置換が効くかどうかは
+    // その時点の盤面で決まる（総合ルール604.2）。唱えた直後に聞いてはいけない
+    if(pendingSpellAfterCast.length){
+      const [next,...rest]=pendingSpellAfterCast;
+      setPendingSpellAfterCast(rest);
+      offerSpellAfterCastRef.current(next.pid,next.card,next.fromZone);
+      return;
+    }
     // 宣言した手札プレイを1枚ずつ。前の1枚の効果を解決しきってから次を出す
     if(pendingEffects.length===0&&handPlayQueue?.plays.length){
       const {pid,srcEvent,plays}=handPlayQueue;
@@ -238,7 +251,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       resolveEntry(group[0]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[resolverBusy,pendingEffects,pendingAttack,handPlayQueue]);
+  },[resolverBusy,pendingEffects,pendingAttack,handPlayQueue,pendingSpellAfterCast]);
 
   // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」「G-NEO の置換」など）。
   // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
@@ -280,7 +293,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
           setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castMain, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
         }
-        setTimeout(() => offerSpellAfterCastRef.current(castOwnerPid, castCard, castFrom || "hand"), 0);
+        setPendingSpellAfterCast(q => [...q, { pid: castOwnerPid, card: castCard, fromZone: castFrom || "hand" }]);
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard,fromZone:castFrom||"hand"}), 0);
       }
       // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
@@ -297,7 +310,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         // ここは fireTrigger に任せるだけでよい（自分自身のぶんも他カードの反応もまとめて拾う）
         list.forEach(e => {
           if (isCreatureSide(e.card)) {
-            setTimeout(() => fireTriggerRef.current("creaturePutBz", { sourcePid: e.ownerPid, subjectCard: e.card, method: e.method }), 0);
+            setTimeout(() => putCreatureBzRef.current(e.ownerPid, e.card, e.method), 0);
           }
         });
       }
@@ -475,6 +488,52 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
 
   // 汎用トリガー・ディスパッチャ
+  // クリーチャーがバトルゾーンに出た時の入口。cip（creaturePutBz）はここからしか発火しない。
+  // 「出る時、かわりに〜」の置換（replaceEnter）はここで挟む。置換したら cip は誘発しない。
+  //
+  // カードはいったんバトルゾーンに置かれてからここへ来る（呼び出し元が state を更新してから呼ぶ）。
+  // cip の発火がこの1か所に集まっているので、置換した時は「誘発を止めて行き先へ移す」だけで
+  // 「出なかったこと」にできる。
+  const putCreatureBz=(ownerPid,card,method,{fromHyper=false}={})=>{
+    const fire=()=>fireTriggerRef.current("creaturePutBz",{sourcePid:ownerPid,subjectCard:card,method});
+    // 超次元ゾーンから出したものは置換しない（そうしないと永久に出られない）
+    if(fromHyper){ fire(); return; }
+    const hit=findEnterReplacement(card,ownerPid,stateRef.current,active);
+    if(!hit){ fire(); return; }
+    setEnterReplaceModal({ownerPid,card,hit,fire});
+  };
+  const putCreatureBzRef=useRef();
+  putCreatureBzRef.current=putCreatureBz;
+  // 置換で超次元ゾーンへ送られたカードを、そのプレイヤーのターンのはじめに出す。
+  // 出どころが超次元ゾーンなので、ここで出す分は replaceEnter を再適用しない
+  const releaseFromHyper=(pid)=>{
+    const st=stateRef.current[pid];
+    const due=(st?.hyper||[]).filter(c=>c.releaseAtStartOfTurn);
+    if(!due.length) return;
+    const setSt=pid==="p1"?setP1:setP2;
+    const uids=due.map(c=>c.uid);
+    const put=due.map(c=>{const m={...c,tapped:false,faceUp:false,enteredThisTurn:true,
+      summonedThisTurn:!hasKeyword(c,"speedAttacker")};delete m.releaseAtStartOfTurn;return m;});
+    setSt(s=>({...s,hyper:(s.hyper||[]).filter(c=>!uids.includes(c.uid)),battle:[...s.battle,...put]}));
+    addLog(`${pid.toUpperCase()}: 超次元ゾーンから ${put.map(c=>c.name).join("、")} を出した`);
+    put.forEach(c=>setTimeout(()=>putCreatureBzRef.current(pid,c,"put",{fromHyper:true}),0));
+  };
+  const releaseFromHyperRef=useRef();
+  releaseFromHyperRef.current=releaseFromHyper;
+  // 置換を適用する: バトルゾーンから抜いて超次元ゾーンへ置く。cip は誘発させない
+  const applyEnterReplacement=(ownerPid,card,rule)=>{
+    const setSt=ownerPid==="p1"?setP1:setP2;
+    const release=rule.release==="startOfOwnerTurn";
+    setSt(s=>{
+      const {newBattle,extracted}=extractFromBattle(s.battle,card.uid);
+      if(!extracted.length) return s;
+      const moved=extracted.map(c=>({...c,tapped:false,faceUp:true,enteredThisTurn:false,summonedThisTurn:false,
+        ...(release?{releaseAtStartOfTurn:true}:{})}));
+      return {...s,battle:newBattle,hyper:[...(s.hyper||[]),...moved]};
+    });
+    addLog(`[置換] ${ownerPid.toUpperCase()}: 「${card.name}」はバトルゾーンに出るかわりに超次元ゾーンへ`);
+  };
+
   // ゾーン走査型: creatureEnter/selfDraw/shieldLeave/shieldAdded/opponentDiscard（opts.sourcePid）
   // 攻撃型: attack（opts.sourcePid, opts.attackerUid）
   // 離脱カード固有型: leave/destroyed/battleDestroy（opts.card, opts.ownerPid）
@@ -607,7 +666,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       });
       maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
       // cip は triggers なので fireTrigger が拾う
-      setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:pid,subjectCard:put,method:"summon"}),0);
+      setTimeout(()=>putCreatureBzRef.current(pid,put,"summon"),0);
     }else{
       // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ（動かすのは元のカード）
       const isCharger=face.keywords?.includes("charger");
@@ -615,7 +674,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
       const main=spellMainEffect(face);
       if(main) enqueueEffect({kind:"spell",effect:main,ownerPid:pid,srcCard:face,sourceName:face.name});
-      if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(pid,card,"hand"),0);
+      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid,card,fromZone:"hand"}]);
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
     // 残りは handPlayQueue が順に出す（この1枚の効果を解決しきってから次へ）
@@ -843,7 +902,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）。
       // 自分自身の cip も triggers なので、クリーチャーならこれ1本で足りる
-      if(isCreature) setTimeout(()=>fireTrigger("creaturePutBz",{sourcePid:active,subjectCard:newCreature,method:"summon"}),0);
+      if(isCreature) setTimeout(()=>putCreatureBzRef.current(active,newCreature,"summon"),0);
       // タマシード／フィールドは「クリーチャーが出た時」ではないので上の経路を通らない。
       // 自分自身の「出た時」だけを直接積む
       else selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid}));
@@ -860,7 +919,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const spellEffect=spellMainEffect(effectiveSide)||spellMainEffect(card);
       if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
       // 唱えた後の行き先の置換（チャージャーはマナへ行くので対象外）
-      if(!isCharger) setTimeout(()=>offerSpellAfterCastRef.current(active,card,"hand"),0);
+      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid:active,card,fromZone:"hand"}]);
       // 汎用トリガー: 呪文を唱えた時
       setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card,fromZone:"hand"}),0);
     }
@@ -884,7 +943,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // 入れ替わって出たクリーチャーの「出た時」。これまで autoEffect しか撃っておらず、
     // triggers:[{on:"creaturePutBz"}] で書かれた cip が誘発していなかった
     const revPut=newBattle.find(c=>c.uid===handCard.uid);
-    setTimeout(()=>fireTriggerRef.current("creaturePutBz",{sourcePid:active,subjectCard:revPut,method:"summon"}),0);
+    setTimeout(()=>putCreatureBzRef.current(active,revPut,"summon"),0);
     if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
     else if(handCard.finalRevolution&&!usedFinalRevThisTurn){
       setUsedFinalRevThisTurn(true);
@@ -915,12 +974,17 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   //        ② 革命チェンジの確認（入れ替わっても攻撃先は引き継ぐ）
   //        ③ 「攻撃する時」の誘発（アタックトリガー / D・D・D / 鬼エンド）
   //        ④ 解決しきるのを待つ（pendingAttack をリゾルバのアイドルで拾う）
-  //        ⑤ ブロッカー・ガードマンの確認 → ⑥ バトル / ブレイク / ダイレクト
+  //        ⑤ ブロッカー・ガードマンの確認 → ⑥ バトル / プレイヤーへの攻撃
+  //
+  // 攻撃先は「クリーチャー」か「プレイヤー」の2つだけ。シールドは
+  // 「プレイヤーへの攻撃を代わりに受けている」ものなので、シールドへの攻撃と
+  // ダイレクトアタックは分けない。違いはシールドがあるかどうかだけで、
+  // それは⑥（シールドが離れるタイミング）で数え直して決める。
   const handleStartAttack=uid=>{
     setAttackingUid(uid);
     setMessage("攻撃対象を選択");
   };
-  const ATTACK_INTENT_LABEL={ shield:"シールド", creature:"クリーチャー", direct:"ダイレクトアタック" };
+  const ATTACK_INTENT_LABEL={ creature:"クリーチャー", player:"プレイヤー" };
   // 攻撃先が決まった＝攻撃宣言。タップして、革命チェンジ → 誘発 の順に進む
   const declareAttackTarget=(intent)=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
@@ -997,8 +1061,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const resumeAttack=(intent)=>{
     if(!intent) { setMessage("攻撃対象を選択"); return; }
     if(intent.kind==="creature") attackCreatureNow(intent.targetUid);
-    else if(intent.kind==="shield") attackShieldNow();
-    else if(intent.kind==="direct") directAttackNow();
+    else attackPlayerNow();
   };
   // 「相手がこのクリーチャーを選んだ時」の解決後。攻撃で選ばれたなら、そこから攻撃宣言に進む。
   // 効果で選ばれた場合は続きが無い（選んだ効果自体は既に解決済み）。
@@ -1159,19 +1222,25 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(!attacker||!target)return;
     resolveAttackCreature(attacker,target);
   };
-  const handleAttackShield=()=>{
+  // プレイヤーへの攻撃。シールドがあればシールドが代わりに受ける（＝ブレイク）、
+  // 無ければ攻撃が通って攻撃側の勝ちになる。宣言の時点では区別しない
+  const handleAttackPlayer=()=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
     if(attacker.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません（クリーチャーのみ攻撃可）");return;}
     if(machFighterOnly(attacker)){addLog(`${attacker.name} はマッハファイターで攻撃しているのでクリーチャーしか攻撃できない`);setMessage("マッハファイターで攻撃中はクリーチャーのみ攻撃できます");return;}
-    declareAttackTarget({kind:"shield"});
+    declareAttackTarget({kind:"player"});
   };
-  const attackShieldNow=()=>{
+  const attackPlayerNow=()=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker)return;
+    // シールドが離れるタイミングで数え直す。「攻撃する時」の誘発でシールドが
+    // 増えていれば普通にブレイクし、0枚になっていればそのまま攻撃が通る
+    const defShields=stateRef.current[otherPid].shields;
+    if(defShields.length===0){ directAttackNow(attacker); return; }
     const attackerPower=getEffectivePower(attacker,activeState,activeState.battle,{attacking:true});
     const breakCount=getBreakCount(attacker,attackerPower,computeGrantedKeywords(attacker,activeState.battle,activeState));
-    let shields=[...otherState.shields];const broken=[];
+    let shields=[...defShields];const broken=[];
     for(let i=0;i<breakCount;i++){if(shields.length===0)break;broken.push(shields[0]);shields=shields.slice(1);}
     // graveSet: 手札でなく墓地へ送る broken の uid 集合（ボルメテウス置換 / faceUpLeaveTo 置換）
     const finalizeBreak=(graveSet)=>{
@@ -1194,7 +1263,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         setGStrikeModal({cards:gStrikeCards,attackerBattle:activeState.battle,attackerPid:active});
       }
       addLog(`[BREAK] ${attacker.name} ${broken.length}枚ブレイク(残${shields.length})`);
-      if(shields.length===0)setMessage("シールド全滅！ダイレクトアタック可能");
+      if(shields.length===0)setMessage("シールド全滅！次にプレイヤーを攻撃されると負け");
       if(attacker.untapAfterAttack){
         setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attackingUid?{...c,tapped:false,untapAfterAttack:false}:c)}));
         addLog(`${attacker.name}: 攻撃後にアンタップ`);
@@ -1242,14 +1311,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setHyperUnlockModal({sourceUid:uid,allies,desc:"ハイパー化：自分の他のクリーチャーを1体タップする",actionLabel:"ハイパー化"});
     }
   };
-  const handleDirectAttack=()=>{
-    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
-    if(attacker?.cantAttackPlayer){addLog(`${attacker.name} はプレイヤーを攻撃できない`);setMessage("このクリーチャーはプレイヤーを攻撃できません");return;}
-    if(machFighterOnly(attacker)){addLog(`${attacker.name} はマッハファイターで攻撃しているのでクリーチャーしか攻撃できない`);setMessage("マッハファイターで攻撃中はクリーチャーのみ攻撃できます");return;}
-    declareAttackTarget({kind:"direct"});
-  };
-  const directAttackNow=()=>{
-    const attacker=activeState.battle.find(c=>c.uid===attackingUid);
+  // シールドが1枚も無いところへ攻撃が通った時。ダイレクトアタックは
+  // 「プレイヤーへの攻撃」の結果であって、独立した攻撃先ではない
+  const directAttackNow=(attacker)=>{
     addLog(`[DIRECT] ${attacker?.name??""} ダイレクトアタック！${active.toUpperCase()} の勝利！`);
     setAttackingUid(null);
     setWinReason("direct");
@@ -1345,6 +1409,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActive(next);setTurn(newTurn);setDrewThisTurn(false);setChargedThisTurn(false);
     // ターンのはじめに（アンタップとフラグのリセットが済んでから発火。sourcePid はターンを始めるプレイヤー）
     // 解決はハンドオフ画面を閉じたあと（resolverBusy に handoff が含まれるため）
+    // 「次の自分のターンのはじめに超次元ゾーンから出す」（replaceEnter の release）
+    setTimeout(()=>releaseFromHyperRef.current(next),0);
     setTimeout(()=>fireTrigger("startOfTurn",{sourcePid:next}),0);
   };
 
@@ -1427,6 +1493,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           else fireAttackTriggers(st.battle.find(c=>c.uid===attacker.uid)||attacker,intent);};
         return <AttackTriggerModal attacker={attacker} ownerState={st}
           onRevChange={c=>done(c)} onSkip={()=>done(null)}/>;})()}
+      {enterReplaceModal&&(()=>{const{ownerPid,card,hit,fire}=enterReplaceModal;
+        const done=(apply)=>{setEnterReplaceModal(null);
+          if(apply) applyEnterReplacement(ownerPid,card,hit.rule);
+          else { addLog(`[置換] 例外処理で中止（「${card.name}」は通常どおり出る）`); setTimeout(fire,0); }};
+        return <ReplacementModal modal={{
+          title:`${hit.card.name}（置換効果）`, card:hit.card,
+          message:`${ownerPid.toUpperCase()} の「${card.name}」がバトルゾーンに出ます。\nかわりにそれを ${ownerPid.toUpperCase()} の超次元ゾーンに置きます。`,
+          applyLabel:"かわりに超次元ゾーンへ置く", cancelLabel:"例外処理で中止（通常どおり出す）",
+        }} onApply={()=>done(true)} onCancel={()=>done(false)}/>;})()}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}
       {hyperUnlockModal&&<HyperUntapModal modal={hyperUnlockModal} onSelect={uid2=>{
@@ -1443,7 +1518,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         attackerName={activeState.battle.find(c=>c.uid===blockerModal.attackerUid)?.name||""}
         targetName={blockerModal.intent?.kind==="creature"
           ?otherState.battle.find(c=>c.uid===blockerModal.intent.targetUid)?.name
-          :blockerModal.intent?.kind==="shield"?"シールド":"プレイヤー（ダイレクトアタック）"}
+          :otherState.shields.length===0?"プレイヤー（ダイレクトアタック）":"プレイヤー（シールドをブレイク）"}
         onBlock={blockerUid=>{
           const attacker=activeState.battle.find(c=>c.uid===blockerModal.attackerUid);
           const blocker=otherState.battle.find(c=>c.uid===blockerUid);
@@ -1497,8 +1572,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#4af",background:"rgba(10,30,80,0.35)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>◆ ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
-                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+                ? <PlayerBoard key="p1-active" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+                : <PlayerBoard key="p2-active" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
               }
             </div>
           </div>
@@ -1507,8 +1582,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             <div style={{fontSize:9,color:"#f84",background:"rgba(80,15,10,0.25)",textAlign:"center",padding:"3px",borderBottom:"1px solid #1a1a2a",letterSpacing:2,flexShrink:0}}>非ターンプレイヤー</div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
               {active==="p1"
-                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
-                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+                ? <PlayerBoard key="p2-inactive" pid="p2" large state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+                : <PlayerBoard key="p1-inactive" pid="p1" large state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
               }
             </div>
           </div>
@@ -1518,8 +1593,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         <div style={{flex:1,overflow:"hidden",display:"grid",gridTemplateRows:"1fr 22px 1fr",minHeight:0}}>
           <div style={{overflowY:"auto",padding:"6px 10px",borderBottom:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
-              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+              ? <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+              : <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={false} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
             }
           </div>
           <div style={{overflow:"hidden"}}>
@@ -1527,8 +1602,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           </div>
           <div style={{overflowY:"auto",padding:"6px 10px",borderTop:"1px solid #1a1a2a"}}>
             {active==="p1"
-              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
-              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackShield={handleAttackShield} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onDirectAttack={handleDirectAttack} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
+              ? <PlayerBoard key="p1" pid="p1" state={p1} setState={setP1} otherState={p2} setOtherState={setP2} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p1").length} onOpenActivated={()=>setActivatedModal({pid:"p1",entries:collectActivated("p1")})}/>
+              : <PlayerBoard key="p2" pid="p2" state={p2} setState={setP2} otherState={p1} setOtherState={setP1} isActive={true} attackingUid={attackingUid} onDraw={handleDraw} onChargeMana={handleChargeMana} onPlayCard={handlePlayCard} onStartAttack={handleStartAttack} onEndTurn={handleEndTurn} onAttackCreature={handleAttackCreature} onAttackPlayer={handleAttackPlayer} drewThisTurn={drewThisTurn} chargedThisTurn={chargedThisTurn} addLog={addLog} onHyperUnlock={handleHyperUnlock} summonUsed={summonUsed} activatedCount={collectActivated("p2").length} onOpenActivated={()=>setActivatedModal({pid:"p2",entries:collectActivated("p2")})}/>
             }
           </div>
         </div>

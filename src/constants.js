@@ -7,8 +7,12 @@ export const CIV = {
   darkness: { label:"闇", color:"#9b59b6", glow:"#aa44ff", bg:"#0a0010", textColor:"#bb88ff" },
   fire:     { label:"火", color:"#e74c3c", glow:"#ff4444", bg:"#1a0505", textColor:"#ff8877" },
   nature:   { label:"自", color:"#27ae60", glow:"#44ff88", bg:"#021008", textColor:"#88ff99" },
+  // 無色（ゼニス等）。文明を持たないので、支払いに特定の文明のマナを要求しない
+  colorless:{ label:"無", color:"#95a5a6", glow:"#cccccc", bg:"#0b0b0e", textColor:"#dddddd" },
 };
 export const CIVS = Object.keys(CIV);
+// デッキ構築やコスト支払いで「文明」として数える色。無色は文明ではないので含めない
+export const COLOR_CIVS = CIVS.filter(c => c !== "colorless");
 
 export const ZONES = ["hand","battle","mana","grave","shield","deck","hyper"];
 export const ZONE_LABELS = { hand:"手札", battle:"バトルゾーン", mana:"マナゾーン", grave:"墓地", shield:"シールド", deck:"山札", hyper:"超次元ゾーン" };
