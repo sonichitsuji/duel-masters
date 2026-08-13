@@ -1261,9 +1261,19 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 - `poweredBreaker`: `true` — パワード・ブレイカー（パワー6000ごとに1つブレイク、最低1）。
   W/Tブレイカーと併用した場合は**大きい方**が採用される
 - `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` /
+  `{type:"cardCount",zone,filter?,min?,max?}` / `{type:"shieldCount",who?,min?,max?}` /
   `{type:"oniEnd"}`（→ **§7.18**。triggers / activated でのみ使える） / `{flag:"…"}`
   - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
-- `costReduce`: `{amount | amountPer, min, zones?, filter?}` — 自分がカードをプレイする際のコスト軽減
+  - **`cardCount`** = 「あるゾーンに、ある条件のカードが N 枚以上／以下あれば」。
+    `zone` は `bz` `shield` `mana` `grave` `hand` `deck`、`filter` は §2 の語彙。
+    数えるのは `costReduce.amountPer` と同じ関数なので、ゾーンと filter の意味もそこと同じです
+    ```jsonc
+    // 自分のマナゾーンにドラゴン・カードが4枚以上あれば
+    { "type": "cardCount", "zone": "mana", "filter": { "raceContains": "ドラゴン" }, "min": 4 }
+    ```
+    `who` は `self`(既定) / `opponent` / `any`。**相手を見るのは triggers / activated だけ**です
+    （継続能力の評価経路は相手の盤面を受け取らないため）
+- `costReduce`: `{amount | amountPer, min, zones?, filter?, condition?}` — 自分がカードをプレイする際のコスト軽減
   - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
     既定は `["bz","shield"]`（バトルゾーン＋表向きシールド＝継続能力が働く場所）
   - `filter`: 軽減対象の条件 — `civ` `raceContains` `nameContains` `keyword` `multiColor` `maxCost`
@@ -1272,6 +1282,8 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
   - `amountPer`: `{zone,filter}` — 「〜1枚につき1少なくする」の可変軽減（`amount` の代わりに書く）
     - `zone` には通常のゾーンのほか **`"evolutionBase"`**（**今回の召喚で実際に重ねる進化元の枚数**）を指定できる
   - `min`: 下限コスト。複数の軽減は重ねがけされる
+  - `condition`: **「〜であれば」**。満たさない間はその軽減だけを飛ばす（上の共通語彙）。
+    継続能力なので**相手の盤面は見られません**（`who` は `self` のみ）
   ```jsonc
   // バトルゾーンにいる間、自分のドラゴンのコストを2軽減（最低1）
   "costReduce": { "amount":2, "filter":{"raceContains":"ドラゴン"}, "min":1 }
@@ -1283,7 +1295,14 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
   // このクリーチャー自身の召喚コストを、進化元クリーチャー1体につき1軽減（超無限進化など）
   "costReduce": { "amountPer":{"zone":"evolutionBase"},
                   "filter":{"self":true}, "zones":["hand"], "min":1 }
+  // 自分のマナゾーンにドラゴン・カードが4枚以上あれば、このクリーチャーの召喚コストを3少なくする
+  "costReduce": { "amount":3, "min":1, "zones":["hand"], "filter":{"self":true},
+                  "condition":{ "type":"cardCount", "zone":"mana",
+                                "filter":{"raceContains":"ドラゴン"}, "min":4 } }
   ```
+  > **階段状の軽減は `condition`、比例した軽減は `amountPer`** です。
+  > 「4枚以上あれば一律3」は `condition`、「1枚につき1」は `amountPer` で書きます。
+  > ツインパクトで「**召喚**コスト」に限りたい時は `filter` に `"side":"creature"` も足します。
   > `zone:"evolutionBase"` は**進化元を選んだ後**でないと確定しません。UI は
   > 「PLAYできるか」の判定を**重ねられる最大枚数**（＝最も軽くなるケース）で行い、
   > 進化元選択モーダルに現在のコストを表示し、マナ支払い画面で実際の枚数のコストに確定します。

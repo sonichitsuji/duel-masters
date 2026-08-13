@@ -254,6 +254,18 @@ function checkCondition(cond, where, allowBothSides = false) {
     errors.push(`${where}: 相手の盤面を見る condition は triggers / activated でのみ使えます`);
   }
   if (COUNTLESS_CONDITION_TYPES.has(cond.type)) return;
+  // cardCount:「あるゾーンの、ある条件のカードが N 枚以上／以下」。zone と min/max を取る
+  if (cond.type === "cardCount") {
+    if (cond.who != null && !CONDITION_WHO.includes(cond.who)) errors.push(`${where}: condition の who は ${CONDITION_WHO.join("/")}`);
+    if (!COUNT_ZONES.has(cond.zone)) errors.push(`${where}: condition "cardCount" の zone が不正です（${[...COUNT_ZONES].join("/")}）`);
+    if (cond.min == null && cond.max == null) errors.push(`${where}: condition "cardCount" に min か max が必要です`);
+    for (const k of ["min","max"]) if (cond[k] != null && typeof cond[k] !== "number") errors.push(`${where}: condition の ${k} は数値`);
+    checkFilterKeys(cond.filter, `${where}.condition(cardCount)`);
+    for (const k of Object.keys(cond)) {
+      if (!["type","zone","filter","min","max","who"].includes(k)) errors.push(`${where}: condition "cardCount" の未知のキー "${k}"`);
+    }
+    return;
+  }
   if (RANGE_CONDITION_TYPES.has(cond.type)) {
     if (cond.who != null && !CONDITION_WHO.includes(cond.who)) errors.push(`${where}: condition の who は ${CONDITION_WHO.join("/")}`);
     if (cond.min == null && cond.max == null) errors.push(`${where}: condition "${cond.type}" に min か max が必要です`);

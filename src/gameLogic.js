@@ -199,11 +199,13 @@ export function getEffectiveCost(card, source, opts = {}) {
   let cost = card.cost;
   for (const { card: c, zone } of sources) {
     if (!c.costReduce) continue;
-    const { amount, amountPer, filter, min, zones } = c.costReduce;
+    const { amount, amountPer, filter, min, zones, condition } = c.costReduce;
     if (!(zones || COST_REDUCE_DEFAULT_ZONES).includes(zone)) continue;
     // filter.self: 「このクリーチャーの召喚コストを〜」= 軽減元自身にだけ効く
     if (filter?.self && c.uid !== card.uid) continue;
     if (!costReduceMatches(card, filter)) continue;
+    // condition:「〜であれば」。継続能力なので相手の盤面は見られない（who:"self" 相当）
+    if (condition && !checkGrantCondition(condition, ownerState, c)) continue;
     // amountPer: 「〜1枚につき1少なくする」のような可変軽減
     const n = amountPer ? amountPerCount(ownerState, amountPer, opts) : (amount || 0);
     cost = Math.max(min ?? 0, cost - n);
@@ -724,6 +726,23 @@ export function findOniEndPlays(state, otherState, event, ev = {}, ownerPid){
     .filter(x => x.kind === "oniEnd").map(x => x.card);
 }
 
+// ゾーンの枚数を見る条件。「自分のマナゾーンにドラゴン・カードが4枚以上あれば」など。
+// 数えるのは countCardsInZone（amountPer と同じ関数）なので、zone / filter の語彙もそこと同じ。
+export function cardCountMatches(spec, ownerState, otherState){
+  const inRange = state => {
+    const n = countCardsInZone(state, spec);
+    if(spec.min != null && n < spec.min) return false;
+    if(spec.max != null && n > spec.max) return false;
+    return true;
+  };
+  const who = spec.who || "self";
+  if(who === "self") return inRange(ownerState);
+  // 相手を見る場合、盤面を渡されていなければ判定できないので成立させない（安全側）
+  if(!otherState) return false;
+  if(who === "opponent") return inRange(otherState);
+  return inRange(ownerState) || inRange(otherState);   // "any"
+}
+
 // このターンにブレイクされたシールドの枚数を見る条件。
 // 「このターンに2つ以上自分のシールドがブレイクされていなければ」= {who:"self", max:1}
 function shieldsBrokenMatches(spec, ownerState, otherState){
@@ -748,6 +767,7 @@ export function checkGrantCondition(cond, ownerState, card, otherState){
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
   if(cond.type === "stackCount") return stackCount(card) >= cond.count;
   if(cond.type === "shieldCount") return shieldCountMatches(cond, ownerState, otherState);
+  if(cond.type === "cardCount") return cardCountMatches(cond, ownerState, otherState);
   if(cond.type === "shieldsBroken") return shieldsBrokenMatches(cond, ownerState, otherState);
   // 鬼エンド: シールドが1つもないプレイヤーがいる。shieldCount の別名
   if(cond.type === "oniEnd") return shieldCountMatches({ who: "any", max: 0 }, ownerState, otherState);
