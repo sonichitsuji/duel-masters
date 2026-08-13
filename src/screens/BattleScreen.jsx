@@ -165,7 +165,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const proceedAttackRef=useRef();
   const pendingIdRef=useRef(0);
   const [replacementModal,setReplacementModal]=useState(null);
-  const [enterReplaceModal,setEnterReplaceModal]=useState(null);
+  // 出る時の置換の確認待ち。1体ずつ聞くので列で持つ
+  // （ファイナル革命のように複数体が同時に出ると、1つの state では後勝ちで消えてしまう）
+  const [enterReplaceQueue,setEnterReplaceQueue]=useState([]);
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
   const [blockerModal,setBlockerModal]=useState(null);
@@ -208,7 +210,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // 順序選択リゾルバ：アイドル時に pending を1件ずつ解決。ターンプレイヤー優先、同時複数はモーダルで任意順。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||handPlayOrderModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceModal||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||handPlayOrderModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||handoff||winner;
   useEffect(()=>{
     if(resolverBusy) return;
     // 唱え終えた呪文の行き先の置換。誘発の解決より先に済ませる ―
@@ -500,7 +502,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(fromHyper){ fire(); return; }
     const hit=findEnterReplacement(card,ownerPid,stateRef.current,active);
     if(!hit){ fire(); return; }
-    setEnterReplaceModal({ownerPid,card,hit,fire});
+    setEnterReplaceQueue(q=>[...q,{ownerPid,card,hit,fire}]);
   };
   const putCreatureBzRef=useRef();
   putCreatureBzRef.current=putCreatureBz;
@@ -966,6 +968,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveState(s=>({...s,hand:s.hand.filter(c=>!handUids.includes(c.uid)),mana:s.mana.filter(c=>!manaUids.includes(c.uid)),battle:[...s.battle,...newCards]}));
     addLog(`[FINAL] ファイナル革命！${selected.length}枚をバトルゾーンへ`);
     maybeFlagCantAttack(newCards.map(c=>c.uid),setActiveState,otherState.battle);
+    // ここも「出た時」の入口を通す。cip が誘発し、出る時の置換（replaceEnter）も効く
+    newCards.forEach(c=>setTimeout(()=>putCreatureBzRef.current(active,c,"put"),0));
   };
   // 攻撃の流れ:
   //   [ATTACK] ここは「誰で攻撃するか」を決めるだけ。タップも誘発もしない
@@ -1493,8 +1497,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           else fireAttackTriggers(st.battle.find(c=>c.uid===attacker.uid)||attacker,intent);};
         return <AttackTriggerModal attacker={attacker} ownerState={st}
           onRevChange={c=>done(c)} onSkip={()=>done(null)}/>;})()}
-      {enterReplaceModal&&(()=>{const{ownerPid,card,hit,fire}=enterReplaceModal;
-        const done=(apply)=>{setEnterReplaceModal(null);
+      {enterReplaceQueue.length>0&&(()=>{const{ownerPid,card,hit,fire}=enterReplaceQueue[0];
+        const done=(apply)=>{setEnterReplaceQueue(q=>q.slice(1));
           if(apply) applyEnterReplacement(ownerPid,card,hit.rule);
           else { addLog(`[置換] 例外処理で中止（「${card.name}」は通常どおり出る）`); setTimeout(fire,0); }};
         return <ReplacementModal modal={{
