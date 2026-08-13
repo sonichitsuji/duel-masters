@@ -11,10 +11,10 @@ import { syncCardIdSeed } from "./gameLogic";
 
 // 同梱データ（cards.json / decks.js）を更新したら上げる。
 // 保存済みの版数と違えば、同梱カードとサンプルデッキを取り込み直す。
-const DATA_VERSION = 11;
+const DATA_VERSION = 12;
 
 const SAMPLE_DECKS = [
-  { name: "サンプルデッキA (ボルシャック)", ids: DECK_BOLSHACK },
+  { name: "リースボルシャックスタート", ids: DECK_BOLSHACK },
   { name: "サンプルデッキB (ミラダンテ)", ids: DECK_MIRADANTE },
   { name: "サンプルデッキC (光 超化獣)", ids: DECK_HEAVENS },
   { name: "サンプルデッキD (闇水 DOOM墓地進化)", ids: DECK_DOOM },
