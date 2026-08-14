@@ -115,9 +115,41 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const activeStepsRef=useRef(null);
   activeStepsRef.current=activeSteps;
   const [pendingEffects,setPendingEffects]=useState([]);
+  // 待ち行列の実体は ref。state は描画用の写しでしかない。
+  // リゾルバは setTimeout の中から読むので、state（レンダー時の closure に固まる値）だと
+  // 「積んだ直後の誘発が見えない」「もう解決したものをもう一度掴む」が起きる。
+  // 積む/取り出すを ref に対して同期的に行い、そのうえで state を更新する。
+  const pendingRef=useRef([]);
+  const setPending=(updater)=>{
+    const next=typeof updater==="function"?updater(pendingRef.current):updater;
+    pendingRef.current=next;
+    setPendingEffects(next);
+  };
+  // 待ち行列から1件を取り出す（もう無ければ null）。取り出しは同期的なので二重に掴めない
+  const takePending=(id)=>{
+    const entry=pendingRef.current.find(e=>e.id===id);
+    if(!entry) return null;
+    setPending(p=>p.filter(e=>e.id!==id));
+    return entry;
+  };
   // 唱え終えた呪文の行き先の置換（spellAfterCast）を待たせておく列。
   // 置換効果なので「墓地に置こうとする時」＝その呪文を解決しきった時に判定する（総合ルール604.2）。
   const [pendingSpellAfterCast,setPendingSpellAfterCast]=useState([]);
+  const pendingAttackRef=useRef(null);
+  // 唱えている呪文の後始末。DMでは呪文は「唱え終えた時」に墓地へ置かれるので、
+  // 唱えている間はどのゾーンにも置かず、カードの実体をこの列で預かる。
+  //   { pid, card, face, fromZone, to, afterId }
+  //   card    … 実際に動かす元のカード（ツインパクトなら本体）
+  //   face    … 唱えている面（表示と spellAfterCast の filter 判定に使う）
+  //   to      … "grave"（既定） / "mana"（チャージャー）
+  //   afterId … この pending エントリが解決しきるまで待つ（本体が無ければ null）
+  const spellAfterCastRef=useRef([]);
+  const queueSpellAfterCast=(item)=>{
+    spellAfterCastRef.current=[...spellAfterCastRef.current,item];
+    setPendingSpellAfterCast(spellAfterCastRef.current);
+  };
+  const queueSpellAfterCastRef=useRef();
+  queueSpellAfterCastRef.current=queueSpellAfterCast;
   const [triggerOrderModal,setTriggerOrderModal]=useState(null);
   const [gStrikeModal,setGStrikeModal]=useState(null);
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
@@ -187,7 +219,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const enqueueEffect=(entry,{front=false}={})=>{
     if(!entry?.effect) return;
     const e={ id:`pe${++pendingIdRef.current}`, kind:entry.kind||"trigger", priority: entry.priority ?? (entry.ownerPid===active?0:1), ...entry };
-    setPendingEffects(p=> front?[e,...p]:[...p,e]);
+    setPending(p=> front?[e,...p]:[...p,e]);
+    return e.id;
   };
   enqueueEffectRef.current=enqueueEffect;
 
@@ -215,43 +248,58 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // まだ解決していない能力と一緒に並び直して選べる。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
   const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||handoff||winner;
+  // 直列化の判定を timer の中から読むための写し。effect の closure に固まった resolverBusy は、
+  // 「この timer を張った後に始まった解決」を知らない。別々のレンダーで積まれた更新は
+  // 別々のバッチで反映されるので、張り直しの clearTimeout が間に合わず、
+  // すでに解決が始まっているのに timer が動いてしまうことがある。
+  const resolverBusyRef=useRef(false);
+  resolverBusyRef.current=!!resolverBusy;
   useEffect(()=>{
     if(resolverBusy) return;
     // 誘発は setTimeout(…,0) で積まれる（fireTrigger）。1tick 待ってから決めないと、
     // 「いま解決した能力によって誘発した能力」が一覧に間に合わない。
     // pendingEffects が動けばこの effect ごと張り直されるので、待った分は取り戻される。
     const timer=setTimeout(()=>{
-      // 唱え終えた呪文の行き先の置換。誘発の解決より先に済ませる ―
+      if(resolverBusyRef.current) return;   // 張った後に解決が始まっていたら何もしない
+      // 唱え終えた呪文を墓地（チャージャーならマナ）へ置く。誘発の解決より先に済ませる ―
       // 呪文は「解決しきったら墓地に置く」までがひと続きで、置換が効くかどうかは
-      // その時点の盤面で決まる（総合ルール604.2）。唱えた直後に聞いてはいけない
-      if(pendingSpellAfterCast.length){
-        const [next,...rest]=pendingSpellAfterCast;
+      // その時点の盤面で決まる（総合ルール604.2）。
+      // 待っている本体が pending から消えている＝その呪文を解決しきった、ということ
+      // （ここに来た時点で解決中のものは無いので activeSteps も無い）
+      // 呪文の解決は入れ子になりうる（呪文の効果で別の呪文を唱える）ので、
+      // 先頭だけでなく「本体がもう pending にいないもの」を探して片付ける
+      const cleanup=spellAfterCastRef.current.find(cu=>!pendingRef.current.some(e=>e.id===cu.afterId));
+      if(cleanup){
+        const rest=spellAfterCastRef.current.filter(cu=>cu!==cleanup);
+        spellAfterCastRef.current=rest;
         setPendingSpellAfterCast(rest);
-        offerSpellAfterCastRef.current(next.pid,next.card,next.fromZone);
+        finishCastRef.current(cleanup);
         return;
       }
       // 「攻撃する時」の誘発を解決しきったら、預かっていた攻撃先へ進む
-      if(pendingEffects.length===0&&pendingAttack){
-        const {intent}=pendingAttack;
+      const pending=pendingRef.current;
+      if(pending.length===0&&pendingAttackRef.current){
+        const {intent}=pendingAttackRef.current;
+        pendingAttackRef.current=null;
         setPendingAttack(null);
         setTimeout(()=>proceedAttackRef.current(intent),0);
         return;
       }
-      if(pendingEffects.length===0) return;
-      const minP=Math.min(...pendingEffects.map(e=>e.priority));
-      const group=pendingEffects.filter(e=>e.priority===minP);
+      if(pending.length===0) return;
+      const minP=Math.min(...pending.map(e=>e.priority));
+      const group=pending.filter(e=>e.priority===minP);
       // 呪文と「手札から使うか聞く」宣言は順序固定（割り込ませず enqueue 順で解決）。
       // 待っている能力が2件以上、または任意誘発(単体でも)は選択モーダル。
       // 起動型能力はプレイヤーが既に「使う」と宣言しているので確認しない。
       const spell=group.find(e=>e.kind==="spell"||e.kind==="handPlay");
       if(spell){
-        setPendingEffects(p=>p.filter(e=>e.id!==spell.id));
-        resolveEntry(spell);
+        const taken=takePending(spell.id);
+        if(taken) resolveEntry(taken);
       } else if(group.length>1 || (group[0].effect?.optional && group[0].kind!=="activated")){
         setTriggerOrderModal({priority:minP});
       } else {
-        setPendingEffects(p=>p.filter(e=>e.id!==group[0].id));
-        resolveEntry(group[0]);
+        const taken=takePending(group[0].id);
+        if(taken) resolveEntry(taken);
       }
     },0);
     return ()=>clearTimeout(timer);
@@ -291,14 +339,20 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // シールドが離れた時（zRush 解放と shieldLeave）はシールドゾーンを監視する状況起因処理で拾うので、
       // ここでは何もしない。
       if (updatedCtx.castSpell) {
-        const { card: castCard, ownerPid: castOwnerPid, fromZone: castFrom } = updatedCtx.castSpell;
+        const { card: castFace, origCard, ownerPid: castOwnerPid, fromZone: castFrom } = updatedCtx.castSpell;
         delete updatedCtx.castSpell;
-        const castMain = spellMainEffect(castCard);
-        if (castMain) {
+        const castCard = origCard || castFace;   // ゾーンを動かすのは元のカード
+        const castMain = spellMainEffect(castFace);
+        const isCharger = castFace.keywords?.includes("charger");
+        // 本体を積んでから、その id を待つ後始末を積む（順番が逆だと解決前に墓地へ置いてしまう）
+        setTimeout(() => {
           // #6: 呪文解決中に唱えた呪文は先頭へ（LIFO近似）。墓地順B→Aの厳密化は今後の課題。
-          setTimeout(() => enqueueEffectRef.current({ kind:"spell", effect:castMain, ownerPid:castOwnerPid, srcCard:castCard, sourceName:castCard.name }, { front:true }), 0);
-        }
-        setPendingSpellAfterCast(q => [...q, { pid: castOwnerPid, card: castCard, fromZone: castFrom || "hand" }]);
+          const afterId = castMain
+            ? enqueueEffectRef.current({ kind:"spell", effect:castMain, ownerPid:castOwnerPid, srcCard:castFace, sourceName:castFace.name }, { front:true })
+            : null;
+          queueSpellAfterCastRef.current({ pid: castOwnerPid, card: castCard, face: castFace,
+            fromZone: castFrom || "hand", to: isCharger ? "mana" : "grave", afterId });
+        }, 0);
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard,fromZone:castFrom||"hand"}), 0);
       }
       // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
@@ -594,12 +648,28 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   attackingUidRef.current=attackingUid;
 
   // 唱えた後の行き先の置換（「自分の墓地から呪文を唱えた後、墓地のかわりに山札の下に置く」）。
-  // 呪文はすでに墓地に置かれているので、そこから移し替える形で実装する。
+  // いったん墓地に置いてから移し替える形で実装する。
   // 置換なので必ず例外処理で中止できるようにモーダルを挟む（§0）。
-  const offerSpellAfterCast=(pid,card,fromZone)=>{
-    const st=stateRef.current[pid];
-    if(!st?.grave?.some(c=>c.uid===card.uid)) return;   // チャージャー等で墓地に無ければ何もしない
-    const hit=findSpellAfterCast(st,card,fromZone);
+  // 呪文を解決しきった時の後始末。ここで初めてカードがゾーンに入る。
+  //   チャージャー → マナゾーン（タップして置く）
+  //   それ以外     → 墓地。そのうえで spellAfterCast の置換を聞く
+  const finishCast=({pid,card,face,fromZone,to})=>{
+    const setSelf=pid==="p1"?setP1:setP2;
+    if(to==="mana"){
+      setSelf(s=>({...s,mana:[...s.mana,{...card,tapped:true,side:undefined}]}));
+      addLog(`${pid.toUpperCase()}: 唱え終えた「${(face||card).name}」をマナゾーンへ（チャージャー）`);
+      return;
+    }
+    // 置換が効くかどうかは「墓地に置こうとする」この時点の盤面で決まる（総合ルール604.2）。
+    // 置いた後に stateRef を読み直すと反映前の写しを見てしまうので、ここで先に判定しておく
+    const hit=findSpellAfterCast(stateRef.current[pid],face||card,fromZone);
+    setSelf(s=>({...s,grave:[...s.grave,{...card,tapped:false,faceUp:false,side:undefined}]}));
+    if(hit) setTimeout(()=>offerSpellAfterCastRef.current(pid,face||card,hit),0);
+  };
+  const finishCastRef=useRef();
+  finishCastRef.current=finishCast;
+
+  const offerSpellAfterCast=(pid,card,hit)=>{
     if(!hit) return;
     const setSelf=pid==="p1"?setP1:setP2;
     const to=hit.rule.to||"deckBottom";
@@ -673,13 +743,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // cip は triggers なので fireTrigger が拾う
       setTimeout(()=>putCreatureBzRef.current(pid,put,"summon"),0);
     }else{
-      // チャージャーは唱えた後マナゾーンへ。それ以外は墓地へ（動かすのは元のカード）
+      // 唱えている間はどのゾーンにも置かない。手札から取り除くだけにして、
+      // 解決しきった時に墓地（チャージャーならマナ）へ置く
       const isCharger=face.keywords?.includes("charger");
-      setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),
-        ...(isCharger?{mana:[...payMana(s),{...card,tapped:true}]}:{mana:payMana(s),grave:[...s.grave,card]})}));
+      setSelf(s=>({...s,hand:s.hand.filter(c=>c.uid!==card.uid),mana:payMana(s)}));
       const main=spellMainEffect(face);
-      if(main) enqueueEffect({kind:"spell",effect:main,ownerPid:pid,srcCard:face,sourceName:face.name});
-      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid,card,fromZone:"hand"}]);
+      const afterId=main?enqueueEffect({kind:"spell",effect:main,ownerPid:pid,srcCard:face,sourceName:face.name}):null;
+      queueSpellAfterCast({pid,card,face,fromZone:"hand",to:isCharger?"mana":"grave",afterId});
       setTimeout(()=>fireTriggerRef.current("castSpell",{sourcePid:pid,subjectCard:card,fromZone:"hand"}),0);
     }
     // 宣言した残りは pending に積んであるので、リゾルバが改めて選ばせる
@@ -923,18 +993,17 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       else selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid}));
     }else{
       const isCharger=effectiveSide.keywords?.includes("charger");
-      if(isCharger){
-        setActiveState(s=>({...s,hand:newHand,mana:[...newMana,{...card,tapped:true}]}));
-      }else{
-        setActiveState(s=>({...s,hand:newHand,mana:newMana,grave:[...s.grave,card]}));
-      }
+      // 唱えている間はどのゾーンにも置かない（→ 解決しきったら finishCast が置く）
+      setActiveState(s=>({...s,hand:newHand,mana:newMana}));
       const spellName=effectiveSide?.name||card.name;
       addLog(`${active}: 呪文「${spellName}」${isCharger?"(チャージャー→マナへ)":""}`);
       showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       const spellEffect=spellMainEffect(effectiveSide)||spellMainEffect(card);
-      if(spellEffect) triggerEffect(spellEffect,active,{...activeState,hand:newHand,mana:newMana},setActiveState,otherState,setOtherState,spellName,card);
-      // 唱えた後の行き先の置換（チャージャーはマナへ行くので対象外）
-      if(!isCharger) setPendingSpellAfterCast(q=>[...q,{pid:active,card,fromZone:"hand"}]);
+      // triggerEffect と同じ形で積む（srcCard は元のカード）。id は後始末の待ち合わせに使う
+      const afterId=spellEffect
+        ?enqueueEffect({kind:"spell",effect:spellEffect,ownerPid:active,srcCard:card,sourceName:spellName})
+        :null;
+      queueSpellAfterCast({pid:active,card,face:effectiveSide||card,fromZone:"hand",to:isCharger?"mana":"grave",afterId});
       // 汎用トリガー: 呪文を唱えた時
       setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card,fromZone:"hand"}),0);
     }
@@ -1015,7 +1084,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 「攻撃する時」の誘発。革命チェンジで入れ替わった場合は新しいクリーチャーで誘発する。
   // 攻撃先は誘発を積んでから預ける。先に預けるとリゾルバが誘発の前に攻撃を進めてしまう。
   const fireAttackTriggers=(attacker,intent)=>{
-    if(!attacker){ setPendingAttack({intent}); return; }
+    if(!attacker){ pendingAttackRef.current={intent}; setPendingAttack({intent}); return; }
     // ハイパーモード攻撃時効果：自分の他クリーチャーを1体アンタップ
     const atkHyper=attacker.hyperMode?effectiveCard(attacker).hyperOnAttack:null;
     if(atkHyper?.type==="untapAlly"){
@@ -1026,6 +1095,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(firstThisTurn) setAttackedThisTurn(true);
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn});
+      pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
   };
@@ -1466,11 +1536,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         const minP=pendingEffects.length?Math.min(...pendingEffects.map(e=>e.priority)):null;
         const entries=minP===null?[]:pendingEffects.filter(e=>e.priority===minP);
         const dropIds=ids=>{
-          setPendingEffects(p=>p.filter(e=>!ids.includes(e.id)));
+          setPending(p=>p.filter(e=>!ids.includes(e.id)));
           if(entries.every(e=>ids.includes(e.id))) setTriggerOrderModal(null);
         };
         return <TriggerOrderModal entries={entries}
-          onChoose={id=>{const entry=entries.find(e=>e.id===id);setTriggerOrderModal(null);setPendingEffects(p=>p.filter(e=>e.id!==id));if(entry)resolveEntry(entry);}}
+          onChoose={id=>{setTriggerOrderModal(null);const entry=takePending(id);if(entry)resolveEntry(entry);}}
           onDecline={id=>{const entry=entries.find(e=>e.id===id);addLog(`${entry?.sourceName??""}: 能力を発動しなかった`);dropIds([id]);}}
           onDeclineAll={()=>{addLog("任意の誘発能力を発動しなかった");dropIds(entries.filter(e=>e.effect?.optional).map(e=>e.id));}}/>;
       })()}

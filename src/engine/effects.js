@@ -270,10 +270,11 @@ export function enteringBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
 export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, srcCard) {
   const type = effect.type;
   const c2 = { ...ctx, srcName: srcCard?.name };
-  // 「数字を1つ選ぶ」。カードは選ばないので候補は空だが、数字を決めるまで確定できない
+  // 「数字を1つ選ぶ」。カードは選ばないので候補は空だが、数字を決めるまで確定できない。
+  // max を書かなければ上限なし（DMの「数字を1つ選ぶ」は好きな数字を宣言できる）
   if (NUMBER_CHOICE_TYPES.has(type)) {
     return { candidates: [], isAuto: false,
-      chooseNumber: { min: effect.min ?? 0, max: effect.max ?? 12 } };
+      chooseNumber: { min: effect.min ?? 0, max: effect.max ?? null } };
   }
   if (AUTO_TYPES.has(type)) {
     if (type === "revealedToDeckBottom") {
@@ -652,10 +653,12 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           if (playSide(effect, card) === "spell") {
             // ツインパクトは呪文面に差し替えて唱える（効果も呪文面のものを使う）
             const face = spellFace(card);
-            // 墓地から唱えた場合、take で取り除いた後の墓地に置き直す（二重に増えないように）
-            setOf(pidx)(s => { const t = take(s); return { ...t, grave: [...t.grave, card] }; });
+            // 唱えている間、呪文はどのゾーンにもいない。元のゾーンから取り除くだけにして、
+            // 解決しきった時に墓地へ置くのは BattleScreen 側（ctx.castSpell を受けて後始末する）
+            setOf(pidx)(take);
             addLog(`${pid}: 「${face.name}」を${zoneLabel}${freeLabel}唱えた`);
-            ctx.castSpell = { card: face, ownerPid: pidx, fromZone };
+            // card = 実際に動かす元のカード（ツインパクトなら本体）、face = 唱えている面
+            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone };
           } else if (card.type === "castle") {
             setOf(pidx)(s => { const t = take(s); return { ...t, shields: [...t.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }; });
             ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];

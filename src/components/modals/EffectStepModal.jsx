@@ -64,24 +64,54 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
         </div>
 
         {/* 数字を1つ選ぶ（カードではなく数字を選ばせる） */}
-        {chooseNumber && (
-          <div>
-            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>数字を1つ選択：</div>
-            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-              {Array.from({ length: chooseNumber.max - chooseNumber.min + 1 }, (_, i) => chooseNumber.min + i).map(n => {
-                const on = chosenNumber === n;
-                return (
-                  <button key={n} onClick={() => setChosenNumber(on ? null : n)}
-                    style={{ width:38, padding:"10px 0", borderRadius:8, cursor:"pointer", fontSize:15, fontWeight:900,
-                      background: on ? `${c.color}33` : "#111",
-                      border:`1px solid ${on ? c.color : "#333"}`, color: on ? c.textColor : "#888" }}>
-                    {n}
+        {chooseNumber && (() => {
+          // 好きな数字を入力できる（コストに上限は無いので、選択肢を並べる方式にはしない）。
+          // よく使う小さい数字だけクイックボタンとして残す。
+          const lo = chooseNumber.min;
+          const hi = chooseNumber.max;   // null なら上限なし
+          const quick = Array.from({ length: 10 }, (_, i) => lo + i).filter(n => hi == null || n <= hi);
+          const clamp = n => Math.max(lo, hi == null ? n : Math.min(hi, n));
+          const onInput = v => {
+            if (v === "") { setChosenNumber(null); return; }
+            const n = Number(v);
+            if (!Number.isInteger(n)) return;
+            setChosenNumber(clamp(n));
+          };
+          return (
+            <div>
+              <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
+                数字を1つ選択：{hi == null ? `${lo}以上の好きな数字` : `${lo}〜${hi}`}
+              </div>
+              <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:6 }}>
+                <input type="number" min={lo} max={hi ?? undefined} step={1}
+                  value={chosenNumber ?? ""} onChange={e => onInput(e.target.value)}
+                  placeholder="数字"
+                  style={{ width:96, padding:"9px 10px", borderRadius:8, fontSize:16, fontWeight:900, textAlign:"center",
+                    background:"#111", border:`1px solid ${chosenNumber != null ? c.color : "#333"}`,
+                    color: chosenNumber != null ? c.textColor : "#888" }}/>
+                {chosenNumber != null && (
+                  <button onClick={() => setChosenNumber(null)}
+                    style={{ padding:"8px 10px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:11 }}>
+                    クリア
                   </button>
-                );
-              })}
+                )}
+              </div>
+              <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                {quick.map(n => {
+                  const on = chosenNumber === n;
+                  return (
+                    <button key={n} onClick={() => setChosenNumber(on ? null : n)}
+                      style={{ width:34, padding:"7px 0", borderRadius:6, cursor:"pointer", fontSize:13, fontWeight:900,
+                        background: on ? `${c.color}33` : "#111",
+                        border:`1px solid ${on ? c.color : "#333"}`, color: on ? c.textColor : "#888" }}>
+                      {n}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* プレイヤーを1人選ぶ（カードではなくプレイヤーを選ばせる） */}
         {choosePlayer && (
