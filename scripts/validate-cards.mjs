@@ -24,7 +24,7 @@ const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatu
   "selfCreatureDestroyed","opponentCreatureDestroyed","creatureEnter"]);
 const EFFECT_TYPES = new Set([
   // 変数ステップ
-  "count","pick","chooseNumber",
+  "count","pick","chooseNumber","chooseMode",
   // ドロー/山札
   "drawCards","reveal","search","topToGrave","topToMana","topToShield",
   // 公開カードの行き先
@@ -61,7 +61,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","replaceShieldAdd","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -88,8 +88,14 @@ const CONDITION_WHO = ["self","opponent","any"];
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
 const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
-// replaceEnter:「出る時、かわりに〜」。いまは超次元ゾーンへ送るものだけ
-const ENTER_TO = new Set(["hyper"]);
+// replaceLeave の from:「破壊される時だけ」に限定する時に書く（省略なら離れ方を問わない）
+const LEAVE_FROM = new Set(["destroy"]);
+// replaceEnter:「出る時、かわりに〜」の行き先
+const ENTER_TO = new Set(["hyper","mana","grave","hand"]);
+// replaceShieldAdd:「シールドゾーンに置く時、かわりに〜」の行き先
+const SHIELD_ADD_TO = new Set(["grave","hand","mana","deck"]);
+// costOver（「あるゾーンの枚数よりコストが大きい」）で数えられるゾーン
+const COST_OVER_OF = ["owner","source"];
 const ENTER_RELEASE = new Set(["startOfOwnerTurn"]);
 const ENTER_WHO = ["self","opponent","both"];
 // playFromHand で唱えられる（＝出せる）元のゾーン
@@ -107,7 +113,7 @@ const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","zones","filter","amount","count","maxSelect","min","max",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
-  "asCost","canUseTrigger","choosePlayer","side","until",
+  "asCost","canUseTrigger","choosePlayer","side","until","templates",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -115,9 +121,20 @@ const EFFECT_KEYS = new Set([
 // filter に書けるキー（engine/effects.js の matchFilter ＋ gameLogic.js の matchCardFilter）
 const FILTER_KEYS = new Set([
   "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
-  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self","psychic",
+  "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self","psychic","evolution",
   "cost","maxCost","minCost","maxPower","minPower","not",
 ]);
+// costOver:「あるゾーンのカードの枚数よりコストが大きい」（キャディ・ビートル）
+function checkCostOver(spec, where) {
+  if (spec == null) return;
+  if (typeof spec !== "object" || Array.isArray(spec)) { errors.push(`${where}.costOver: オブジェクトで書いてください`); return; }
+  for (const k of Object.keys(spec)) {
+    if (!["zone","filter","of"].includes(k)) errors.push(`${where}.costOver: 未知のキー "${k}"（綴り違い？）`);
+  }
+  if (!COUNT_ZONES.has(spec.zone)) errors.push(`${where}.costOver: zone は ${[...COUNT_ZONES].join("/")}`);
+  if (spec.of != null && !COST_OVER_OF.includes(spec.of)) errors.push(`${where}.costOver: of は ${COST_OVER_OF.join("/")}`);
+  checkFilterKeys(spec.filter, `${where}.costOver`);
+}
 function checkFilterKeys(filter, where) {
   if (!filter || typeof filter !== "object") return;
   for (const k of Object.keys(filter)) {
@@ -145,12 +162,29 @@ try { cards = JSON.parse(fs.readFileSync(cardsPath, "utf8")); }
 catch (e) { console.error("❌ cards.json のJSONが不正:", e.message); process.exit(1); }
 
 // steps/effect の再帰検証
+// chooseTimes（○回選ぶ）/ chooseMode（いずれか1つを選ぶ）の選択肢を検査する
+function checkTemplates(eff, where) {
+  if (!Array.isArray(eff.templates) || eff.templates.length < 2) {
+    errors.push(`${where}: ${eff.type} には templates が2つ以上必要です`);
+  }
+  for (const t of eff.templates || []) {
+    if (t.steps) { errors.push(`${where}: templates 内が旧記法 steps`); continue; }
+    if (!t.label) errors.push(`${where}: templates の各要素に label が必要です`);
+    for (const k of Object.keys(t)) {
+      if (!["label", "effects"].includes(k)) errors.push(`${where}: templates の未知のキー "${k}"（綴り違い？）`);
+    }
+    if (!Array.isArray(t.effects) || t.effects.length === 0) errors.push(`${where}: templates の "${t.label || "?"}" に effects がありません`);
+    for (const e of t.effects || []) checkOne(e, `${where} > ${t.label || "?"}`);
+  }
+}
 function checkOne(e, where) {
   if (!e || !e.type) { errors.push(`${where}: type の無い効果要素`); return; }
   for (const k of Object.keys(e)) {
     if (!EFFECT_KEYS.has(k)) errors.push(`${where}: 効果ステップの未知のキー "${k}"（綴り違い？）`);
   }
   checkFilterKeys(e.filter, where);
+  // chooseMode は effects の途中に置けるので、ここでも選択肢を見る
+  if (e.type === "chooseMode") checkTemplates(e, where);
   if (LEGACY_TYPES.has(e.type)) errors.push(`${where}: 旧記法の効果 "${e.type}"（新語彙へ移行してください）`);
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
   if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
@@ -226,13 +260,7 @@ function checkSummonFrom(list, where) {
 function checkEffect(eff, where) {
   if (!eff || typeof eff !== "object") return;
   if (eff.type === "steps" || eff.steps) { errors.push(`${where}: 旧記法 type:"steps"/steps は廃止（effects へ）`); return; }
-  if (eff.type === "chooseTimes") {
-    for (const t of eff.templates || []) {
-      if (t.steps) { errors.push(`${where}: templates 内が旧記法 steps`); continue; }
-      for (const e of t.effects || []) checkOne(e, where);
-    }
-    return;
-  }
+  if (eff.type === "chooseTimes" || eff.type === "chooseMode") { checkTemplates(eff, where); return; }
   if (eff.effects) {
     eff.effects.forEach((e, i) => {
       checkOne(e, where);
@@ -354,7 +382,11 @@ function checkAbilityFields(obj, where) {
   const rls = obj.replaceLeave == null ? [] : (Array.isArray(obj.replaceLeave) ? obj.replaceLeave : [obj.replaceLeave]);
   for (const rl of rls) {
     if (typeof rl !== "object" || rl == null) { errors.push(`${where}.replaceLeave: オブジェクトで書いてください`); continue; }
+    for (const k of Object.keys(rl)) {
+      if (!["from","to","filter"].includes(k)) errors.push(`${where}.replaceLeave: 未知のキー "${k}"（綴り違い？）`);
+    }
     if (!LEAVE_TO.has(rl.to || "mana")) errors.push(`${where}.replaceLeave: to は ${[...LEAVE_TO].join("/")}`);
+    if (rl.from != null && !LEAVE_FROM.has(rl.from)) errors.push(`${where}.replaceLeave: from は ${[...LEAVE_FROM].join("/")}`);
     if (rl.filter != null && typeof rl.filter !== "object") errors.push(`${where}.replaceLeave: filter はオブジェクト`);
   }
   // replaceEnter: 「出る時、かわりに超次元ゾーンへ置く」
@@ -363,14 +395,30 @@ function checkAbilityFields(obj, where) {
     if (typeof re !== "object" || Array.isArray(re)) errors.push(`${where}.replaceEnter: オブジェクトで書いてください`);
     else {
       for (const k of Object.keys(re)) {
-        if (!["who","turnOf","to","release","filter"].includes(k)) errors.push(`${where}.replaceEnter: 未知のキー "${k}"（綴り違い？）`);
+        if (!["who","turnOf","to","release","filter","costOver"].includes(k)) errors.push(`${where}.replaceEnter: 未知のキー "${k}"（綴り違い？）`);
       }
       if (!ENTER_TO.has(re.to)) errors.push(`${where}.replaceEnter: to は ${[...ENTER_TO].join("/")}`);
       if (re.release != null && !ENTER_RELEASE.has(re.release)) errors.push(`${where}.replaceEnter: 未知の release "${re.release}"`);
       for (const k of ["who","turnOf"]) {
         if (re[k] != null && !ENTER_WHO.includes(re[k])) errors.push(`${where}.replaceEnter: ${k} は ${ENTER_WHO.join("/")}`);
       }
+      checkCostOver(re.costOver, `${where}.replaceEnter`);
       checkFilterKeys(re.filter, `${where}.replaceEnter`);
+    }
+  }
+  // replaceShieldAdd: 「シールドゾーンに置く時、かわりに〜へ置く」
+  if (obj.replaceShieldAdd != null) {
+    const rs = obj.replaceShieldAdd;
+    if (typeof rs !== "object" || Array.isArray(rs)) errors.push(`${where}.replaceShieldAdd: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(rs)) {
+        if (!["who","turnOf","to","filter"].includes(k)) errors.push(`${where}.replaceShieldAdd: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (!SHIELD_ADD_TO.has(rs.to || "grave")) errors.push(`${where}.replaceShieldAdd: to は ${[...SHIELD_ADD_TO].join("/")}`);
+      for (const k of ["who","turnOf"]) {
+        if (rs[k] != null && !ENTER_WHO.includes(rs[k])) errors.push(`${where}.replaceShieldAdd: ${k} は ${ENTER_WHO.join("/")}`);
+      }
+      checkFilterKeys(rs.filter, `${where}.replaceShieldAdd`);
     }
   }
   // oniEnd: 鬼エンド（手札から、コストを支払わずにプレイする）

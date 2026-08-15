@@ -11,7 +11,7 @@ import { syncCardIdSeed } from "./gameLogic";
 
 // 同梱データ（cards.json / decks.js）を更新したら上げる。
 // 保存済みの版数と違えば、同梱カードとサンプルデッキを取り込み直す。
-const DATA_VERSION = 13;
+const DATA_VERSION = 14;
 
 const SAMPLE_DECKS = [
   { name: "リースボルシャックスタート", ids: DECK_BOLSHACK },
