@@ -25,12 +25,14 @@ const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatu
 const EFFECT_TYPES = new Set([
   // 変数ステップ
   "count","pick","chooseNumber","chooseMode",
+  // ターン進行
+  "skipRestOfTurn",
   // ドロー/山札
   "drawCards","reveal","search","topToGrave","topToMana","topToShield",
   // 公開カードの行き先
   "revealedToHand","revealedToBz","revealedToMana","revealedToGrave","revealedToDeckTop","revealedToDeckBottom",
   // 手札から
-  "handToBz","handToShield","handToGrave","handToHyper","playFromHand",
+  "handToBz","handToShield","handToGrave","handToDeck","handToHyper","playFromHand",
   // マナから
   "manaToBz","manaToHand","manaToGrave",
   // バトルゾーンから
@@ -61,7 +63,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","replaceShieldAdd","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","replaceShieldAdd","recycle","costReduce","condPower","grantKeywords","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -113,7 +115,7 @@ const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","zones","filter","amount","count","maxSelect","min","max",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
-  "asCost","canUseTrigger","choosePlayer","side","until","templates",
+  "asCost","canUseTrigger","choosePlayer","side","until","templates","afterCast",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -199,6 +201,17 @@ function checkOne(e, where) {
     }
   }
   if (e.asCost != null && e.type !== "destroy") errors.push(`${where}: asCost は type:"destroy" でのみ使えます`);
+  // afterCast:「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る置換
+  if (e.afterCast != null) {
+    if (e.type !== "playFromHand") errors.push(`${where}: afterCast は type:"playFromHand" でのみ使えます`);
+    if (typeof e.afterCast !== "object" || Array.isArray(e.afterCast)) errors.push(`${where}.afterCast: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(e.afterCast)) {
+        if (k !== "to") errors.push(`${where}.afterCast: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (!SPELL_AFTER_CAST_TO.has(e.afterCast.to)) errors.push(`${where}.afterCast: to は ${[...SPELL_AFTER_CAST_TO].join("/")}`);
+    }
+  }
   if (e.choosePlayer != null) {
     if (typeof e.choosePlayer !== "boolean") errors.push(`${where}: choosePlayer は真偽値`);
     else if (e.choosePlayer) {
@@ -510,6 +523,36 @@ function checkAbilityFields(obj, where) {
       }
     }
   }
+  // attackChance: アタック・チャンス（自分の指定のクリーチャーが攻撃する時、手札から無料で実行）
+  if (obj.attackChance != null) {
+    const ac = obj.attackChance;
+    if (typeof ac !== "object" || Array.isArray(ac)) errors.push(`${where}.attackChance: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(ac)) {
+        if (!["on", "target", "filter"].includes(k)) errors.push(`${where}.attackChance: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (ac.on != null && !TRIGGER_ONS.has(ac.on)) errors.push(`${where}.attackChance: 未知の on "${ac.on}"`);
+      if (ac.target != null && !TRIGGER_SCOPES.includes(ac.target)) errors.push(`${where}.attackChance: 未知の target "${ac.target}"`);
+      if (ac.target === "this") errors.push(`${where}.attackChance: 手札のカードなので target:"this" は使えません`);
+      // filter は「攻撃したクリーチャー」に掛かる（指定のクリーチャー）
+      checkFilterKeys(ac.filter, `${where}.attackChance`);
+    }
+  }
+  // recycle: 自分の墓地から、リサイクル・コストを支払って唱える
+  if (obj.recycle != null) {
+    const rc = obj.recycle;
+    if (typeof rc !== "object" || Array.isArray(rc)) errors.push(`${where}.recycle: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(rc)) {
+        if (!["cost", "civs"].includes(k)) errors.push(`${where}.recycle: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (typeof rc.cost !== "number") errors.push(`${where}.recycle: cost（数値）が必要です`);
+      if (rc.civs != null) {
+        if (!Array.isArray(rc.civs)) errors.push(`${where}.recycle.civs: 配列である必要があります`);
+        else for (const cv of rc.civs) if (!CIVS.has(cv)) errors.push(`${where}.recycle.civs: 未知のciv "${cv}"`);
+      }
+    }
+  }
   // freeCast: コストを支払わずにプレイできる許可（バトルゾーン／表向きシールドで有効）
   const fcs = obj.freeCast == null ? [] : (Array.isArray(obj.freeCast) ? obj.freeCast : [obj.freeCast]);
   for (const fc of fcs) {
@@ -532,7 +575,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","psychic",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","ddd","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
+  "alternateCost","oniEnd","ddd","attackChance","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換

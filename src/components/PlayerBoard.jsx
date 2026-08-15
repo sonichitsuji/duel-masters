@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, collectSummonPermissions, summonPermissionFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable, spellDenyReason, displayPower } from "../gameLogic";
+import { getCardCivs, canPayCost, computeGrantedKeywords, collectSummonPermissions, summonPermissionFor, recycleSpecFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable, spellDenyReason, displayPower } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { CardEffectText } from "./EffectText";
@@ -73,10 +73,15 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       const perm=canSummonNow?summonPermissionFor(card,zone,summonPerms,summonUsed||{}):null;
       // マナから召喚する場合、そのカード自身はコスト支払いに使えない
       const payMana=zone==="mana"?state.mana.filter(c=>c.uid!==card.uid):state.mana;
-      return { card, idx, perm, payable: !!perm&&canPayCost(payMana,card,state,costOptsFor(card)).ok };
+      // リサイクル: 墓地の呪文を、リサイクル・コストを支払って唱える
+      const rec=zone==="grave"&&canSummonNow?recycleSpecFor(card):null;
+      const recCard=rec?{...card,cost:rec.cost,civ:rec.civs||card.civ}:null;
+      return { card, idx, perm, payable: !!perm&&canPayCost(payMana,card,state,costOptsFor(card)).ok,
+        recycle: rec, recycleCard: recCard,
+        recyclePayable: !!rec&&canPayCost(payMana,recCard,state).ok };
     });
   };
-  const summonableCount=zone=>zoneEntries(zone).filter(e=>e.perm).length;
+  const summonableCount=zone=>zoneEntries(zone).filter(e=>e.perm||e.recycle).length;
 
   // コスト支払いに使えるマナ。マナから召喚したカード自身と、マナ進化の進化元は使えない
   const payableMana=(m)=>{
@@ -113,12 +118,16 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   };
   const handleManaConfirm=uids=>{
     if(!manaPayModal)return;
-    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUids||null,manaPayModal.zone||"hand",manaPayModal.permKey||null);
+    const ok=onPlayCard(manaPayModal.handIdx,uids,manaPayModal.twinpactSide||null,manaPayModal.evolutionBaseUids||null,manaPayModal.zone||"hand",manaPayModal.permKey||null,!!manaPayModal.recycle);
     if(ok!==false)setSelHand(null);
     setManaPayModal(null);
     setZoneModal(null);
   };
   // 墓地・マナからの召喚。手札からのプレイと同じ支払い/進化フローに合流する
+  // リサイクルで唱える。支払うのはリサイクル・コストなので、支払いUIには差し替えたカードを渡す
+  const handleRecycleFromZone=entry=>{
+    setManaPayModal({handIdx:entry.idx,card:entry.recycleCard,zone:"grave",recycle:true});
+  };
   const handleSummonFromZone=entry=>{
     const {card,idx,perm}=entry;
     const common={handIdx:idx,card,zone:zoneModal,permKey:perm.key};
@@ -209,6 +218,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           entries={zoneEntries(zoneModal)}
           ownerState={state}
           onSummon={handleSummonFromZone}
+          onRecycle={handleRecycleFromZone}
           onClose={()=>setZoneModal(null)}
         />
       )}

@@ -182,6 +182,7 @@ const SOURCE = {
   handToBz:       { zone: "hand",     target: "self" },
   handToShield:   { zone: "hand",     target: "self" },
   handToGrave:    { zone: "hand",     target: "self" },
+  handToDeck:     { zone: "hand",     target: "self" },
   handToHyper:    { zone: "hand",     target: "self" },
   playFromHand:   { zone: "hand",     target: "self" },
   manaToBz:       { zone: "mana",     target: "self" },
@@ -459,6 +460,13 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
   switch (type) {
     // ---------- 変数ステップ ----------
+    // 「ターンの残りをとばす」。この時点で待機している効果と、このターンの残りのステップ
+    // （ターンの終わりを含む）をすべて消して次のターンへ進む。実際の処理は BattleScreen 側
+    case "skipRestOfTurn":
+      ctx.skipRestOfTurn = true;
+      ctx.stepDone = true;
+      addLog(`${pid}: ターンの残りをとばす`);
+      break;
     // 「次のうちいずれか1つを選ぶ」。どれを選ぶかは UI（BattleScreen）が受け取り、
     // 選んだテンプレートの effects をこの位置に差し込む。ここまで来ることは無いが、
     // 万一来ても何も起こさない（差し込みだけが仕事のステップなので）
@@ -673,7 +681,10 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             setOf(pidx)(take);
             addLog(`${pid}: 「${face.name}」を${zoneLabel}${freeLabel}唱えた`);
             // card = 実際に動かす元のカード（ツインパクトなら本体）、face = 唱えている面
-            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone };
+            // afterCast =「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る
+            // 一度きりの置換で、カード直下の spellAfterCast（継続能力）とは別物
+            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone,
+              afterCast: effect.afterCast || null, afterCastSource: effect.afterCast ? srcCard : null };
           } else if (card.type === "castle") {
             setOf(pidx)(s => { const t = take(s); return { ...t, shields: [...t.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }; });
             noteShieldAdd(ctx, pidx, [card]);
@@ -990,6 +1001,24 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         moved += cards.length;
       }
       ctx.stepDone = moved > 0;
+      break;
+    }
+    // 手札を山札へ。「好きな順序で山札の上に置く」（極智秘伝ローゼス・チューン）用。
+    // order:"choose" なら選んだ順がそのまま並び順になる（先に選んだものが上）
+    case "handToDeck": {
+      const toTop = effect.to !== "bottom";   // 既定は「山札の上」
+      for (const pidx of pids) {
+        const st = stateOf(pidx);
+        const cards = effect.order === "choose"
+          ? selectedUids.map(uid => st.hand.find(c => c.uid === uid)).filter(Boolean)
+          : st.hand.filter(c => selectedUids.includes(c.uid));
+        if (!cards.length) continue;
+        const uids = new Set(cards.map(c => c.uid));
+        setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.has(c.uid)),
+          deck: toTop ? [...cards, ...s.deck] : [...s.deck, ...cards] }));
+        addLog(`${pid}: 手札の${cards.length}枚を${effect.order === "choose" ? "好きな順序で" : ""}山札の${toTop ? "上" : "下"}へ`);
+        ctx.lastMoved = cards;
+      }
       break;
     }
     case "graveToDeckBottom": {
