@@ -77,6 +77,7 @@
 `type`(`creature`＝進化含む / **`nonEvoCreature`**＝進化ではないクリーチャー / `evo_creature` / `nonCreature` / `spell` / `tamaseed`…)
 `element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `minPower` `notNameSelf`
 `hasCip`(「このクリーチャーが出た時」で始まる能力を持つ) `psychic`(サイキック・クリーチャーかどうか)
+`evolution`(進化クリーチャーかどうか。`type:"evo_creature"` と NEO進化の両方を拾う)
 `not`(「〜ではない」→ 下記)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
 
@@ -248,6 +249,38 @@
 
 `filter.cost` は**コストがちょうどその値**という意味です（`maxCost` / `minCost` は以下・以上）。
 
+## 3.6. 「次のうちいずれか1つを選ぶ」（`chooseMode`）
+
+> 自分の手札を1枚捨てる。その後、次のうちいずれか1つを選ぶ。
+> ▶カードを2枚引く。
+> ▶相手のパワー9000以下のクリーチャーを1体選び、破壊する。
+> （虚ト成リシ古ノ蛇神ノ咆哮）
+
+```jsonc
+[ { "label":"自分の手札を1枚捨てる", "type":"handToGrave", "target":"self", "amount":1 },
+  { "label":"次のうちいずれか1つを選ぶ", "type":"chooseMode",
+    "templates":[
+      { "label":"カードを2枚引く",
+        "effects":[ {"type":"drawCards","amount":2} ] },
+      { "label":"相手のパワー9000以下のクリーチャーを1体選び、破壊する",
+        "effects":[ {"type":"destroy","target":"opponent","amount":1,
+                     "filter":{"creatureOnly":true,"maxPower":9000}} ] }
+    ] } ]
+```
+
+| キー | 説明 |
+|---|---|
+| `templates` | 選択肢の配列。各要素は `{ label, effects }`（**2つ以上必要**） |
+
+- 選んだ選択肢の `effects` が、**そのステップの位置にそのまま差し込まれて**続きが解決されます。
+  だから「捨ててから選ぶ」「選んでからさらに続きがある」のどちらも素直に書けます
+- 変数（`count` などで控えた値）はそのまま引き継がれるので、選択の前後で使い回せます
+- 「選ばない」を選ぶと、その選択ぶんだけ飛ばして次のステップへ進みます（例外処理）
+
+> **`chooseTimes` との違い。** `chooseTimes` は「○回選んで実行」で、`triggers` の直下にしか
+> 書けません（`effects` の代わりになる特殊形）。`chooseMode` は**普通のステップ**なので、
+> `effects` の途中に置けます。1回だけ選ぶ「▶」表記のカードはこちらを使ってください。
+
 ## 4. 命名規則
 
 - **ゾーン移動は `<from>To<To>`**（「出す」「置く」「戻す」「捨てる」）。`play` は使わない。
@@ -257,6 +290,9 @@
 ---
 
 ## 5. 効果カタログ
+
+**選択**
+- `chooseMode {templates}` — **「次のうちいずれか1つを選ぶ」** → **§3.6**
 
 **ドロー / 山札**
 - `drawCards {amount}` — ○枚引く
@@ -850,7 +886,15 @@
 | キー | 説明 |
 |---|---|
 | `to` | `"mana"`(既定) / `"hand"` / `"shield"` / `"deck"` |
+| `from` | `"destroy"` と書くと**破壊される時だけ**に限定する（省略すると離れ方を問わない） |
 | `filter` | どのカードに適用するか（省略で全部） |
+
+> **「このクリーチャーが破壊される時、墓地に置くかわりにマナゾーンに置く」**（キャディ・ビートル）は
+> `from:"destroy"` と `filter.self` を組み合わせて書きます。
+> ```jsonc
+> "replaceLeave": [ { "from":"destroy", "to":"mana", "filter":{ "self":true } } ]
+> ```
+> `from` を書かなければ「離れる時」なので、手札やマナへ送る除去にも掛かります（→ 下の箇条書き）。
 
 - §0のとおり**必ず例外処理で中止できる**モーダルで提示します（中止すると通常どおり破壊）
 - 置換されたカードは破壊されていないので `destroyed` は誘発せず、`leave` だけ誘発します
@@ -1259,7 +1303,7 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 
 - `keywords`（＋ `ssx` 由来と `tempBuff` 由来。**他から与えられた能力も無視されます**）
 - `triggers` / `activated`
-- `replaceLeave` / `replaceLose` / `staticDeny` / `spellAfterCast` / `summonFrom` / `freeCast`
+- `replaceLeave` / `replaceLose` / `replaceEnter` / `replaceShieldAdd` / `staticDeny` / `spellAfterCast` / `summonFrom` / `freeCast`
 - `costReduce` / `condPower` / `grantKeywords` / `powerAttacker` / `poweredBreaker`
   → **パワー修整も消えて素のパワーに戻り、他のカードへ配ることもしなくなります**
 - `hyperKeywords` / `hyperPower` / `hyperUnlock` / `hyperOnAttack` / `hyperOnTargeted`
@@ -1298,7 +1342,7 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 たとえば百鬼の邪王門を2枚宣言した場合、1枚目でクリーチャーが出たら、その cip と
 「まだ唱えていない2枚目」を見比べてから次を選べます。
 
-## 7.29. 出る時の置換（`replaceEnter`）と無色
+## 7.29. 出る時／シールドに置く時の置換（`replaceEnter` / `replaceShieldAdd`）と無色
 
 ### `replaceEnter`
 
@@ -1318,9 +1362,28 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 |---|---|
 | `who` | 出るクリーチャーの持ち主。**置換元のカードの持ち主から見た関係**です |
 | `turnOf` | 誰のターンに起きた出来事か。こちらも置換元から見た関係 |
-| `to` | かわりに置く先。いまは `"hyper"`（超次元ゾーン）だけ |
+| `to` | かわりに置く先。`"hyper"`（超次元ゾーン）/ `"mana"` / `"grave"` / `"hand"` |
 | `release` | `"startOfOwnerTurn"` なら、次のその持ち主のターンのはじめに超次元ゾーンから出します |
 | `filter` | 出るカードの条件（省略時はクリーチャーすべて） |
+| `costOver` | **「あるゾーンのカードの枚数よりコストが大きい」**（下記） |
+
+#### `costOver`（枚数とコストを比べる）
+
+「相手のターン中、相手が、**自身のマナゾーンのカードの枚数よりコストが大きい**クリーチャーを
+出す時、かわりにマナゾーンに置く」（キャディ・ビートル）。
+
+```jsonc
+"replaceEnter": {
+  "who": "opponent", "turnOf": "opponent", "to": "mana",
+  "costOver": { "zone": "mana" }
+}
+```
+
+| キー | 説明 |
+|---|---|
+| `zone` | 数えるゾーン（`bz` / `shield` / `mana` / `grave` / `hand` / `deck`） |
+| `filter` | 数える条件（省略で全部）。`cardCount` と同じ語彙 |
+| `of` | 誰のゾーンを数えるか。`"owner"`（既定＝出るクリーチャーの持ち主＝カードの「自身の」）/ `"source"`（置換元の持ち主） |
 
 - **超次元ゾーンから出る分には効きません。** `release` で出したものを再び吸い込んで
   永久に出られなくなるのを防ぐため、engine 側で除外しています
@@ -1331,6 +1394,32 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
   置換した時は誘発を止めて超次元ゾーンへ移すだけで「出なかったこと」になります
 - **複数体が同時に出た時は1体ずつ聞きます**（ファイナル革命など）。
   確認は列で持っているので、片方だけ置換して片方は通す、という選び方ができます
+
+### シールドゾーンに置く時の置換（`replaceShieldAdd`）
+
+「**相手のターン中に、相手が自身のシールドゾーンにカードを置く時、かわりに墓地に置く**」
+（ピッピ・修・ピヨッコ）。
+
+```jsonc
+"replaceShieldAdd": { "who": "opponent", "turnOf": "opponent", "to": "grave" }
+```
+
+| キー | 意味 |
+|---|---|
+| `who` | 置くプレイヤー。**置換元のカードの持ち主から見た関係**（`self` / `opponent` / `both` 既定） |
+| `turnOf` | 誰のターンに起きた出来事か。こちらも置換元から見た関係 |
+| `to` | かわりに置く先。`"grave"`(既定) / `"hand"` / `"mana"` / `"deck"`（山札の下） |
+| `filter` | 置かれるカードの条件（省略で全部） |
+
+- `replaceEnter` と同じ流儀の実装です。**いったんシールドゾーンに置いてから差し替える**ので、
+  **シールドが置かれた時（`shieldAdded`）の発火は `putShields` 1か所に集約**されています
+- 置換したぶんは「置かれなかったこと」になるので、`shieldAdded` は誘発しません。
+  シールドゾーンの中身を監視している `shieldLeave` / Zラッシュからも除かれます
+- **同時に複数枚置かれた時は1枚ずつ聞きます。1枚でも残れば `shieldAdded` は誘発します**
+- 置換は §0 のとおり**必ず例外処理で中止できます**。中止すると通常どおりシールドになります
+- 効果でシールド化する経路（`topToShield` / `handToShield` / `bzToShield` / 城 /
+  `replaceLeave{to:"shield"}` / `spellAfterCast{to:"shield"}`）はすべてここを通ります。
+  **ゲーム開始時の初期シールドは対象外です**（ターン中の出来事ではないため）
 
 ### 無色（`civ: "colorless"`）
 
@@ -1415,7 +1504,8 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 - `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
 - `evolution`: 進化元のゾーンと枚数 → **§7.8**
 - `replaceLeave`: 離れる時の置換 → **§7.16**
-- `replaceEnter`: 出る時の置換（超次元ゾーンへ送る） → **§7.29**
+- `replaceEnter`: 出る時の置換（超次元ゾーン／マナ／墓地／手札へ送る） → **§7.29**
+- `replaceShieldAdd`: シールドゾーンに置く時の置換 → **§7.29**
 - `freeCast`: コストを支払わずにプレイできる許可 → **§7.12**
 - `oniEnd`: 鬼エンド（手札から、コストを支払わずにプレイする） → **§7.18**
 - `ddd`: D・D・D（手札から、指定のコストを支払ってプレイする） → **§7.21**

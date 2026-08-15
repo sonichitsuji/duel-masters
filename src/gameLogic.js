@@ -139,6 +139,12 @@ function isSpellSide(card) {
   if (card.side) return card.side === "spell";
   return card.type === "spell" || card.type === "twinpact";
 }
+// 進化クリーチャーかどうか。type:"evo_creature" と、NEO進化のように
+// type は "creature" のまま evolution（進化元の指定）を持つものの両方を拾う。
+export function isEvolutionCard(card) {
+  return card?.type === "evo_creature" || !!card?.evolution;
+}
+
 function matchesType(card, t) {
   if (t === "creature") return isCreatureSide(card);
   if (t === "nonCreature") return !isCreatureSide(card);
@@ -169,6 +175,8 @@ export function matchCardFilter(card, filter) {
   if (filter.hasCip != null && hasPlayTrigger(card) !== !!filter.hasCip) return false;
   // psychic: サイキック・クリーチャーかどうか。matchFilter と同じ語彙
   if (filter.psychic != null && !!card.psychic !== !!filter.psychic) return false;
+  // evolution: 進化クリーチャーかどうか（NEO進化も含む）。matchFilter と同じ語彙
+  if (filter.evolution != null && isEvolutionCard(card) !== !!filter.evolution) return false;
   // not: 「〜ではない」。1つでも一致したら弾く（配列なら「そのどれにも当てはまらない」）
   if (filter.not && anyOf(filter.not, sub => matchCardFilter(card, sub))) return false;
   return true;
@@ -301,7 +309,7 @@ const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
   "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
-  "replaceEnter"];
+  "replaceEnter","replaceShieldAdd"];
 
 // 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」。
 // 能力の読み出しはほぼすべてこの関数を通るので、「能力を無視されている」間は
@@ -398,13 +406,15 @@ export const LOSE_CAUSES = ["deckOut"];
 // 有効なゾーンはバトルゾーン＋表向きシールド（replaceLose と同じ）。
 //   replaceLeave: { to:"mana"|"hand"|"shield"|"deck", filter?, optional? }
 // 置換は §0 のとおり必ず例外処理で中止できる形で提示すること。
-export function findLeaveReplacement(ownerState, card) {
+export function findLeaveReplacement(ownerState, card, to) {
   if (!ownerState || !card) return null;
   const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
   for (const c of sources) {
     const rules = effectiveCard(c).replaceLeave;
     if (!rules) continue;
     for (const rule of (Array.isArray(rules) ? rules : [rules])) {
+      // from:"destroy"「破壊される時」= 墓地へ送られる時だけ。書かなければ離れ方を問わない
+      if (rule.from === "destroy" && to !== "grave") continue;
       // filter.self:「このクリーチャーが離れる時」= 置換元自身にだけ効く（エターナル・Ω）
       if (rule.filter?.self && c.uid !== card.uid) continue;
       if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
@@ -420,23 +430,25 @@ export function findLeaveReplacement(ownerState, card) {
 //   from = その呪文を唱えたゾーン（既定 "any"）、to = 墓地のかわりの行き先
 export const SPELL_AFTER_CAST_TO = ["deckBottom", "deckTop", "hand", "mana", "shield"];
 
-// 出る時の置換（「〜が出る時、かわりに〜に置く」）。
-// データ形: replaceEnter: { who?, turnOf?, to, release?, filter? }
-//   who    … 出るクリーチャーの持ち主。"self"(既定 both と同じ扱いにしない) / "opponent" / "both"
-//   turnOf … 誰のターンか。"self" / "opponent" / "both"（既定）
-//   to     … かわりに置く先（いまは "hyper" = 超次元ゾーンのみ）
-//   release… "startOfOwnerTurn" なら、次のその持ち主のターンのはじめにそこから出す
-//   filter … 出るカードの条件（省略時はクリーチャーすべて）
+// 「〜に置かれる時、かわりに〜に置く」系の置換元を探す共通処理。
+// 有効なのはバトルゾーン＋表向きシールド（replaceLeave / spellAfterCast と同じ流儀）。
+// 共通のデータ形: { who?, turnOf?, to, filter?, costOver? }
+//   who     … 出来事の当事者（置かれるカードの持ち主）。"self" / "opponent" / "both"（既定）
+//   turnOf  … 誰のターンに起きた出来事か。"self" / "opponent" / "both"（既定）
+//   to      … かわりに置く先
+//   filter  … 置かれるカードの条件
+//   costOver… 「あるゾーンのカードの枚数よりコストが大きい」（{zone, filter?, of?}）。
+//             of は数えるゾーンの持ち主で、既定は置かれるカードの持ち主（＝カードの「自身の」）
 // who / turnOf はどちらも「置換元のカードの持ち主」から見た関係。
 // 置換は §0 のとおり必ず例外処理で中止できる形で提示すること。
-export function findEnterReplacement(card, ownerPid, states, activePid) {
+function findPlacementReplacement(field, card, ownerPid, states, activePid) {
   if (!card) return null;
   for (const srcPid of ["p1", "p2"]) {
     const st = states?.[srcPid];
     if (!st) continue;
     const sources = [...(st.battle || []), ...((st.shields || []).filter(c => c.faceUp))];
     for (const c of sources) {
-      const rule = effectiveCard(c).replaceEnter;
+      const rule = effectiveCard(c)[field];
       if (!rule) continue;
       const isSelf = ownerPid === srcPid;
       const who = rule.who || "both";
@@ -446,11 +458,30 @@ export function findEnterReplacement(card, ownerPid, states, activePid) {
       const turnOf = rule.turnOf || "both";
       if (turnOf === "self" && !ownTurn) continue;
       if (turnOf === "opponent" && ownTurn) continue;
+      if (rule.costOver) {
+        const cntSt = states?.[rule.costOver.of === "source" ? srcPid : ownerPid];
+        if (!((card.cost || 0) > countCardsInZone(cntSt, rule.costOver))) continue;
+      }
       if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
       return { card: c, sourcePid: srcPid, rule };
     }
   }
   return null;
+}
+
+// 出る時の置換（「〜が出る時、かわりに〜に置く」）。
+//   replaceEnter: { who?, turnOf?, to, release?, filter?, costOver? }
+//   to     … かわりに置く先（"hyper" 既定 / "mana" / "grave" / "hand"）
+//   release… "startOfOwnerTurn" なら、次のその持ち主のターンのはじめにそこから出す
+export function findEnterReplacement(card, ownerPid, states, activePid) {
+  return findPlacementReplacement("replaceEnter", card, ownerPid, states, activePid);
+}
+
+// シールドゾーンに置かれる時の置換（「シールドゾーンにカードを置く時、かわりに墓地に置く」）。
+//   replaceShieldAdd: { who?, turnOf?, to, filter? }
+//   to … かわりに置く先（"grave" 既定 / "hand" / "mana" / "deck"）
+export function findShieldAddReplacement(card, ownerPid, states, activePid) {
+  return findPlacementReplacement("replaceShieldAdd", card, ownerPid, states, activePid);
 }
 
 // ===========================

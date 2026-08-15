@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -38,6 +38,10 @@ function triggerScope(tr, event){ return tr.target || DEFAULT_TRIGGER_SCOPE[even
 
 // spellAfterCast の行き先の表示名
 const SPELL_AFTER_CAST_LABELS={ deckBottom:"山札の下", deckTop:"山札の上", hand:"手札", mana:"マナゾーン", shield:"シールド" };
+// replaceEnter（出る時の置換）の行き先の表示名
+const ENTER_TO_LABELS={ hyper:"超次元ゾーン", mana:"マナゾーン", grave:"墓地", hand:"手札" };
+// replaceShieldAdd（シールドゾーンに置く時の置換）の行き先の表示名
+const SHIELD_ADD_TO_LABELS={ grave:"墓地", hand:"手札", mana:"マナゾーン", deck:"山札の下" };
 
 function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   if(tr.on !== event) return false;
@@ -197,6 +201,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 出る時の置換の確認待ち。1体ずつ聞くので列で持つ
   // （ファイナル革命のように複数体が同時に出ると、1つの state では後勝ちで消えてしまう）
   const [enterReplaceQueue,setEnterReplaceQueue]=useState([]);
+  // シールドゾーンに置く時の置換の確認待ち。こちらも同時に複数枚置かれうるので列で持つ
+  const [shieldAddQueue,setShieldAddQueue]=useState([]);
+  // 置換でシールドゾーンから移したカードの uid。「置かれなかったこと」にするので、
+  // シールドゾーンの中身を監視している shieldLeave / Zラッシュの検出からは除く
+  const shieldAddReplacedRef=useRef(new Set());
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
   const [blockerModal,setBlockerModal]=useState(null);
@@ -247,7 +256,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 順番を最初にまとめて決めないのが肝。解決の途中で出たクリーチャーの cip も、
   // まだ解決していない能力と一緒に並び直して選べる。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||shieldAddQueue.length||handoff||winner;
   // 直列化の判定を timer の中から読むための写し。effect の closure に固まった resolverBusy は、
   // 「この timer を張った後に始まった解決」を知らない。別々のレンダーで積まれた更新は
   // 別々のバッチで反映されるので、張り直しの clearTimeout が間に合わず、
@@ -324,11 +333,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         delete updatedCtx.destroyedThisStep;
         list.forEach(d => setTimeout(() => { fireTriggerRef.current("leave",{sourcePid:d.ownerPid,subjectCard:d.card}); fireTriggerRef.current("destroyed",{sourcePid:d.ownerPid,subjectCard:d.card}); if(d.viaBattle) fireTriggerRef.current("battleDestroy",{sourcePid:d.ownerPid,subjectCard:d.card}); }, 0));
       }
-      // ステップ内でシールドが置かれた時の shieldAdded を発火（DARK MEMORY等）
-      if (updatedCtx.shieldAddedFor && updatedCtx.shieldAddedFor.length) {
-        const pids = [...new Set(updatedCtx.shieldAddedFor)];
-        delete updatedCtx.shieldAddedFor;
-        pids.forEach(pid => setTimeout(() => fireTriggerRef.current("shieldAdded",{sourcePid:pid}), 0));
+      // ステップ内でシールドが置かれた時（DARK MEMORY等）。置換を挟んでから shieldAdded を発火する
+      if (updatedCtx.shieldAdded && updatedCtx.shieldAdded.length) {
+        const list = updatedCtx.shieldAdded;
+        delete updatedCtx.shieldAdded;
+        list.forEach(a => setTimeout(() => putShieldsRef.current(a.ownerPid, a.cards), 0));
       }
       // ステップ内で手札が捨てられた時の opponentDiscard を発火（不死の黄昏司祭等）
       if (updatedCtx.discardedBy && updatedCtx.discardedBy.length) {
@@ -430,7 +439,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 進化クリーチャーでもなくなる（＝出たターンなら召喚酔いが復活する）。
   const sacrificeGNeoBases=(card,ownerPid,to)=>{
     const setSt=ownerPid==="p1"?setP1:setP2;
-    const n=(stateRef.current[ownerPid].battle.find(c=>c.uid===card.uid)?.evolutionBase||[]).length;
+    const bases=stateRef.current[ownerPid].battle.find(c=>c.uid===card.uid)?.evolutionBase||[];
+    const n=bases.length;
     setSt(s=>{
       const live=s.battle.find(c=>c.uid===card.uid);
       if(!live?.evolutionBase?.length) return s;
@@ -443,7 +453,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       return {...s,battle,grave:[...s.grave,...moved]};
     });
     addLog(`[G-NEO] ${card.name} のかわりに下のカード${n}枚が${ZONE_LABELS[to]||"墓地"}へ`);
-    if(to==="shield") setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:ownerPid}),0);
+    if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,bases),0);
   };
 
   // 効果でバトルゾーンを離れるカードに、今かけられる置換を1つ返す（無ければ null）。
@@ -465,11 +475,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         message:`${card.name} はバトルゾーンを離れます。\nかわりに下のカードすべてを${ZONE_LABELS[to]||"墓地"}に置いてもよい。`,
         applyLabel:`かわりに下のカードを${ZONE_LABELS[to]||"墓地"}へ`, cancelLabel:"例外処理で中止（通常どおり離れる）" };
     }
-    const lr=findLeaveReplacement(st,live);
+    const lr=findLeaveReplacement(st,live,to);
     if(lr&&!seen("replaceLeave")){
       const zl=ZONE_LABELS[lr.rule.to||"mana"]||"マナゾーン";
       return { kind:"replaceLeave", to:lr.rule.to||"mana", title:`${lr.card.name}（置換効果）`,
-        message:`${card.name} はバトルゾーンを離れます。\n${ZONE_LABELS[to]||"墓地"}に置く代わりに、${zl}に置いてもよい。`,
+        message:`${card.name} は${lr.rule.from==="destroy"?"破壊されます":"バトルゾーンを離れます"}。\n${ZONE_LABELS[to]||"墓地"}に置く代わりに、${zl}に置いてもよい。`,
         applyLabel:`かわりに${zl}へ`, cancelLabel:"例外処理で中止（通常どおり）" };
     }
     return null;
@@ -563,6 +573,48 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
   const putCreatureBzRef=useRef();
   putCreatureBzRef.current=putCreatureBz;
+
+  // シールドゾーンにカードが置かれた時の入口。shieldAdded はここからしか発火しない。
+  // 「シールドゾーンにカードを置く時、かわりに〜」の置換（replaceShieldAdd）はここで挟む。
+  //
+  // replaceEnter と同じ流儀で、カードはいったんシールドゾーンに置かれてからここへ来る。
+  // 置換したぶんはシールドゾーンから移すだけで「置かれなかったこと」にできる。
+  // 同時に複数枚置かれた時は1枚ずつ聞き、1枚でも残れば shieldAdded は誘発する。
+  const putShields=(ownerPid,cards)=>{
+    const list=(cards||[]).filter(Boolean);
+    if(!list.length) return;
+    const batch={left:list.length,done:false};
+    const fire=()=>{
+      if(batch.done) return;
+      batch.done=true;
+      if(batch.left>0) fireTriggerRef.current("shieldAdded",{sourcePid:ownerPid});
+    };
+    const hits=list.map(card=>({card,hit:findShieldAddReplacement(card,ownerPid,stateRef.current,active)}))
+      .filter(x=>x.hit);
+    if(!hits.length){ fire(); return; }
+    setShieldAddQueue(q=>[...q,...hits.map((x,i)=>({ownerPid,card:x.card,hit:x.hit,batch,
+      fire:i===hits.length-1?fire:null}))]);
+  };
+  const putShieldsRef=useRef();
+  putShieldsRef.current=putShields;
+
+  const applyShieldAddReplacement=(ownerPid,card,rule)=>{
+    const setSt=ownerPid==="p1"?setP1:setP2;
+    const to=rule.to||"grave";
+    // 「置かれなかったこと」にするので、シールドゾーン監視の shieldLeave / Zラッシュからは除く
+    shieldAddReplacedRef.current.add(card.uid);
+    setSt(s=>{
+      const target=s.shields.find(c=>c.uid===card.uid);
+      if(!target) return s;
+      const shields=s.shields.filter(c=>c.uid!==card.uid);
+      const moved={...target,tapped:false,faceUp:false};
+      if(to==="hand") return {...s,shields,hand:[...s.hand,moved]};
+      if(to==="mana") return {...s,shields,mana:[...s.mana,moved]};
+      if(to==="deck") return {...s,shields,deck:[...s.deck,moved]};
+      return {...s,shields,grave:[...s.grave,moved]};
+    });
+    addLog(`[置換] ${ownerPid.toUpperCase()}: 「${card.name}」はシールドゾーンに置かれるかわりに${SHIELD_ADD_TO_LABELS[to]}へ`);
+  };
   // 置換で超次元ゾーンへ送られたカードを、そのプレイヤーのターンのはじめに出す。
   // 出どころが超次元ゾーンなので、ここで出す分は replaceEnter を再適用しない
   const releaseFromHyper=(pid)=>{
@@ -582,15 +634,20 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 置換を適用する: バトルゾーンから抜いて超次元ゾーンへ置く。cip は誘発させない
   const applyEnterReplacement=(ownerPid,card,rule)=>{
     const setSt=ownerPid==="p1"?setP1:setP2;
+    const to=rule.to||"hyper";
     const release=rule.release==="startOfOwnerTurn";
     setSt(s=>{
       const {newBattle,extracted}=extractFromBattle(s.battle,card.uid);
       if(!extracted.length) return s;
-      const moved=extracted.map(c=>({...c,tapped:false,faceUp:true,enteredThisTurn:false,summonedThisTurn:false,
+      // 超次元ゾーンだけは表向き（公開領域）。それ以外のゾーンは通常どおり裏向きで置く
+      const moved=extracted.map(c=>({...c,tapped:false,faceUp:to==="hyper",enteredThisTurn:false,summonedThisTurn:false,
         ...(release?{releaseAtStartOfTurn:true}:{})}));
+      if(to==="mana")  return {...s,battle:newBattle,mana:[...s.mana,...moved]};
+      if(to==="grave") return {...s,battle:newBattle,grave:[...s.grave,...moved]};
+      if(to==="hand")  return {...s,battle:newBattle,hand:[...s.hand,...moved]};
       return {...s,battle:newBattle,hyper:[...(s.hyper||[]),...moved]};
     });
-    addLog(`[置換] ${ownerPid.toUpperCase()}: 「${card.name}」はバトルゾーンに出るかわりに超次元ゾーンへ`);
+    addLog(`[置換] ${ownerPid.toUpperCase()}: 「${card.name}」はバトルゾーンに出るかわりに${ENTER_TO_LABELS[to]}へ`);
   };
 
   // ゾーン走査型: creatureEnter/selfDraw/shieldLeave/shieldAdded/opponentDiscard（opts.sourcePid）
@@ -693,7 +750,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           return s;
         });
         addLog(`[置換] ${pid}: 「${card.name}」は墓地のかわりに${SPELL_AFTER_CAST_LABELS[to]||to}へ`);
-        if(to==="shield") setTimeout(()=>fireTriggerRef.current("shieldAdded",{sourcePid:pid}),0);
+        if(to==="shield") setTimeout(()=>putShieldsRef.current(pid,[card]),0);
       },
       onCancel:()=>{setReplacementModal(null);addLog(`[置換] ${pid}: 例外処理で中止（「${card.name}」は墓地のまま）`);},
     });
@@ -838,7 +895,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     shieldUidsRef.current=next;
     if(!prev) return;   // 初期配置は「離れた」ではない
     if(winner) return;
-    const leftPids=["p1","p2"].filter(pid=>[...prev[pid]].some(uid=>!next[pid].has(uid)));
+    // シールドゾーンに置かれるかわりに他ゾーンへ送られたぶんは「置かれなかったこと」なので、
+    // 消えたように見えても「離れた」ではない
+    const replaced=shieldAddReplacedRef.current;
+    const leftPids=["p1","p2"].filter(pid=>[...prev[pid]].some(uid=>!next[pid].has(uid)&&!replaced.has(uid)));
+    [...replaced].forEach(uid=>{ if(!next.p1.has(uid)&&!next.p2.has(uid)) replaced.delete(uid); });
     if(!leftPids.length) return;
     // Zラッシュ：誰のシールドが離れても、バトルゾーンにいる全てのZラッシュが解放される
     const released=[];
@@ -865,6 +926,28 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setTemplateChoiceModal(count>1?{...templateChoiceModal,count:count-1}:null);
     // 選んだテンプレートの effects を現在の解決として実行（chooseTimes の継続。アイドル時のみ表示されるため直接 set）
     setActiveSteps({ steps: tpl.effects, stepIdx: 0, ownerPid, srcCard, context: { srcCardUid: srcCard?.uid, vars: {} } });
+  };
+
+  // 「次のうちいずれか1つを選ぶ」（chooseMode）。chooseTimes と違って効果の途中に置けるので、
+  // 選んだテンプレートの effects を「いま解決している steps のこの位置」に差し込んで続きを解決する。
+  // 変数（ctx.vars）はそのまま引き継がれるので、選択の前後で控えた値を使い回せる。
+  const advanceModeStep=(inserted)=>{
+    const cur=activeStepsRef.current;
+    if(!cur) return;
+    const steps=[...cur.steps.slice(0,cur.stepIdx+1),...inserted,...cur.steps.slice(cur.stepIdx+1)];
+    const nextIdx=cur.stepIdx+1;
+    setActiveSteps(nextIdx>=steps.length?null:{...cur,steps,stepIdx:nextIdx});
+  };
+  const handleModeChoose=(tplIdx)=>{
+    const cur=activeStepsRef.current;
+    const tpl=cur?.steps?.[cur.stepIdx]?.templates?.[tplIdx];
+    if(!tpl) return;
+    addLog(`${cur.ownerPid.toUpperCase()}: 「${tpl.label}」を選んだ`);
+    advanceModeStep(tpl.effects||[]);
+  };
+  const handleModeAbandon=()=>{
+    addLog("[例外処理] どれも選ばなかった");
+    advanceModeStep([]);
   };
 
   // 相手の常時能力(reactivePassive)を考慮し、新たにBZに出たクリーチャーへcantAttackUntilMyTurnを付与
@@ -954,7 +1037,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       showCutIn({title:"城！",cardName:card.name,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
       // 城はシールドゾーンに置かれるので creaturePutBz の経路を通らない。自分自身の「出た時」だけ積む
       selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,mana:newMana,shields:newShields},setActiveState,otherState,setOtherState,card.name,{...card}));
-      setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:active}),0);
+      setTimeout(()=>putShieldsRef.current(active,[card]),0);
     }else if(!isSpell){
       // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
       // #3 常在型: 相手の「クリーチャーを出せない」常在型を解決に先んじて適用（枠組み・現状該当カード無し）
@@ -1242,7 +1325,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     });
     addLog(`[置換] ${card.name} は破壊されるかわりに${ZONE_LABELS[to]||"マナゾーン"}へ`);
     setTimeout(()=>fireTrigger("leave",{sourcePid:ownerPid,subjectCard:card}),0);
-    if(to==="shield") setTimeout(()=>fireTrigger("shieldAdded",{sourcePid:ownerPid}),0);
+    if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,[card]),0);
   };
 
   const resolveAttackCreature=(attacker,target)=>{
@@ -1527,7 +1610,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         </div>
       )}
       {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
-      {activeSteps&&<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>}
+      {activeSteps&&(activeSteps.steps[activeSteps.stepIdx]?.type==="chooseMode"
+        ?<TemplateChoiceModal modal={{templates:activeSteps.steps[activeSteps.stepIdx].templates||[],srcCard:activeSteps.srcCard}}
+           onChoose={handleModeChoose} onAbandon={handleModeAbandon}/>
+        :<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>)}
       {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
       {triggerOrderModal&&(()=>{
         // 一覧は開いている間も pendingEffects から作り直す。解決の直後に誘発した能力が
@@ -1585,13 +1671,25 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         return <AttackTriggerModal attacker={attacker} ownerState={st}
           onRevChange={c=>done(c)} onSkip={()=>done(null)}/>;})()}
       {enterReplaceQueue.length>0&&(()=>{const{ownerPid,card,hit,fire}=enterReplaceQueue[0];
+        const zl=ENTER_TO_LABELS[hit.rule.to||"hyper"];
         const done=(apply)=>{setEnterReplaceQueue(q=>q.slice(1));
           if(apply) applyEnterReplacement(ownerPid,card,hit.rule);
           else { addLog(`[置換] 例外処理で中止（「${card.name}」は通常どおり出る）`); setTimeout(fire,0); }};
         return <ReplacementModal modal={{
           title:`${hit.card.name}（置換効果）`, card:hit.card,
-          message:`${ownerPid.toUpperCase()} の「${card.name}」がバトルゾーンに出ます。\nかわりにそれを ${ownerPid.toUpperCase()} の超次元ゾーンに置きます。`,
-          applyLabel:"かわりに超次元ゾーンへ置く", cancelLabel:"例外処理で中止（通常どおり出す）",
+          message:`${ownerPid.toUpperCase()} の「${card.name}」がバトルゾーンに出ます。\nかわりにそれを ${ownerPid.toUpperCase()} の${zl}に置きます。`,
+          applyLabel:`かわりに${zl}へ置く`, cancelLabel:"例外処理で中止（通常どおり出す）",
+        }} onApply={()=>done(true)} onCancel={()=>done(false)}/>;})()}
+      {shieldAddQueue.length>0&&(()=>{const{ownerPid,card,hit,batch,fire}=shieldAddQueue[0];
+        const zl=SHIELD_ADD_TO_LABELS[hit.rule.to||"grave"];
+        const done=(apply)=>{setShieldAddQueue(q=>q.slice(1));
+          if(apply){ applyShieldAddReplacement(ownerPid,card,hit.rule); batch.left--; }
+          else addLog(`[置換] 例外処理で中止（「${card.name}」は通常どおりシールドゾーンへ）`);
+          if(fire) setTimeout(fire,0);};
+        return <ReplacementModal modal={{
+          title:`${hit.card.name}（置換効果）`, card:hit.card,
+          message:`${ownerPid.toUpperCase()} が「${card.name}」をシールドゾーンに置きます。\nかわりにそれを ${ownerPid.toUpperCase()} の${zl}に置きます。`,
+          applyLabel:`かわりに${zl}へ置く`, cancelLabel:"例外処理で中止（通常どおり置く）",
         }} onApply={()=>done(true)} onCancel={()=>done(false)}/>;})()}
       {replacementModal&&<ReplacementModal modal={replacementModal} onApply={replacementModal.onApply} onCancel={replacementModal.onCancel}/>}
       {hyperUntapModal&&<HyperUntapModal modal={hyperUntapModal} onSelect={uid=>{setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===uid?{...c,tapped:false}:c)}));addLog(`ハイパーモード: ${activeState.battle.find(c=>c.uid===uid)?.name} アンタップ`);setHyperUntapModal(null);}} onSkip={()=>setHyperUntapModal(null)}/>}

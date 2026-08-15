@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, withJustDiver, spellDenyReason, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionCard, withJustDiver, spellDenyReason, evolutionSpec, stackEvolutionBases } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -121,6 +121,8 @@ export function matchFilter(card, filter, ctx) {
   if (f.hasCip != null && hasPlayTrigger(card) !== !!f.hasCip) return false;
   // psychic: サイキック・クリーチャー（超次元ゾーンから出るクリーチャー）かどうか
   if (f.psychic != null && !!card.psychic !== !!f.psychic) return false;
+  // evolution: 進化クリーチャーかどうか（type:"evo_creature" と NEO進化の両方）
+  if (f.evolution != null && isEvolutionCard(card) !== !!f.evolution) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   // not: 「〜ではない」。中身は filter と同じ語彙で、1つでも一致したら弾く。
   // 配列を書けば「そのどれにも当てはまらない」＝ AND で否定する
@@ -153,6 +155,13 @@ function zoneCards(state, zone, ctx) {
     }
     default: return [];
   }
+}
+
+// シールドゾーンにカードが置かれたことを ctx に控える。
+// 置かれたカードそのものを載せるのは、BattleScreen 側が「シールドゾーンに置く時、かわりに〜」
+// （replaceShieldAdd）の置換対象を特定するため。shieldAdded の誘発もここを起点に発火する。
+function noteShieldAdd(ctx, ownerPid, cards) {
+  ctx.shieldAdded = [...(ctx.shieldAdded || []), { ownerPid, cards }];
 }
 
 // 効果でバトルゾーンに出たクリーチャーは召喚酔いする（DMの通常ルール）。
@@ -450,6 +459,12 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
   switch (type) {
     // ---------- 変数ステップ ----------
+    // 「次のうちいずれか1つを選ぶ」。どれを選ぶかは UI（BattleScreen）が受け取り、
+    // 選んだテンプレートの effects をこの位置に差し込む。ここまで来ることは無いが、
+    // 万一来ても何も起こさない（差し込みだけが仕事のステップなので）
+    case "chooseMode":
+      ctx.stepDone = true;
+      break;
     // 「数字を1つ選ぶ」。選んだ数は変数に入れて、以降のステップから {var} で参照する
     case "chooseNumber": {
       const n = ctx.chosenNumber;
@@ -519,7 +534,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const moved = selfState.deck.slice(0, n).map(c => ({ ...c, tapped: false, faceUp: false }));
         setSelf(s => ({ ...s, deck: s.deck.slice(n), shields: [...s.shields, ...moved], shieldAddedThisTurn: true }));
         ctx.lastMoved = moved;
-        ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), ownerPid];
+        noteShieldAdd(ctx, ownerPid, moved);
         addLog(`${pid}: 山札の上から${n}枚をシールド化`);
       }
       break;
@@ -606,7 +621,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)),
           shields: [...s.shields, ...cards.map(c => ({ ...c, tapped: false, faceUp: false }))], shieldAddedThisTurn: true }));
-        ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
+        noteShieldAdd(ctx, pidx, cards);
         addLog(`${pid}: ${cards.map(c => c.name).join(", ")} をシールド化`);
       }
       break;
@@ -661,7 +676,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone };
           } else if (card.type === "castle") {
             setOf(pidx)(s => { const t = take(s); return { ...t, shields: [...t.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }; });
-            ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
+            noteShieldAdd(ctx, pidx, [card]);
             addLog(`${pid}: 城「${card.name}」を${zoneLabel}表向きシールド化`);
           } else {
             setOf(pidx)(s => { const r = withNeoBases(take(s), [card]);
@@ -761,7 +776,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
         setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, shields: [...s.shields, ...extracted.map(c => ({ ...c, tapped: false, faceUp: false }))], shieldAddedThisTurn: true }; });
-        ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), pidx];
+        noteShieldAdd(ctx, pidx, targets);
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} をシールド化`);
       }
       break;
@@ -949,7 +964,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         if (to === "deck")   return { ...s, battle, deck:   [...s.deck,   ...moved] };  // 山札の下
         return { ...s, battle, grave: [...s.grave, ...moved] };
       });
-      if (to === "shield") ctx.shieldAddedFor = [...(ctx.shieldAddedFor || []), ownerPid];
+      if (to === "shield") noteShieldAdd(ctx, ownerPid, moved);
       const ZONE_JP = { grave:"墓地", mana:"マナゾーン", hand:"手札", shield:"シールドゾーン", deck:"山札の下" };
       addLog(`${pid}: [メテオバーン] ${live.name} の下から「${picked.map(c => c.name).join("、")}」を${ZONE_JP[to] || "墓地"}へ`);
       ctx.lastMoved = moved;
