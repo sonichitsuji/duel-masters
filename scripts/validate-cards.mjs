@@ -113,7 +113,7 @@ const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","zones","filter","amount","count","maxSelect","min","max",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
-  "asCost","canUseTrigger","choosePlayer","side","until","templates",
+  "asCost","canUseTrigger","choosePlayer","side","until","templates","afterCast",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -199,6 +199,17 @@ function checkOne(e, where) {
     }
   }
   if (e.asCost != null && e.type !== "destroy") errors.push(`${where}: asCost は type:"destroy" でのみ使えます`);
+  // afterCast:「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る置換
+  if (e.afterCast != null) {
+    if (e.type !== "playFromHand") errors.push(`${where}: afterCast は type:"playFromHand" でのみ使えます`);
+    if (typeof e.afterCast !== "object" || Array.isArray(e.afterCast)) errors.push(`${where}.afterCast: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(e.afterCast)) {
+        if (k !== "to") errors.push(`${where}.afterCast: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (!SPELL_AFTER_CAST_TO.has(e.afterCast.to)) errors.push(`${where}.afterCast: to は ${[...SPELL_AFTER_CAST_TO].join("/")}`);
+    }
+  }
   if (e.choosePlayer != null) {
     if (typeof e.choosePlayer !== "boolean") errors.push(`${where}: choosePlayer は真偽値`);
     else if (e.choosePlayer) {

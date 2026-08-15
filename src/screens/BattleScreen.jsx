@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCast, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -147,6 +147,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   //   face    … 唱えている面（表示と spellAfterCast の filter 判定に使う）
   //   to      … "grave"（既定） / "mana"（チャージャー）
   //   afterId … この pending エントリが解決しきるまで待つ（本体が無ければ null）
+  //   afterCast / afterCastSource
+  //           … 唱えた効果に付いていた一度きりの行き先の置換と、その出どころのカード（§7.22）
   const spellAfterCastRef=useRef([]);
   const queueSpellAfterCast=(item)=>{
     spellAfterCastRef.current=[...spellAfterCastRef.current,item];
@@ -348,7 +350,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // シールドが離れた時（zRush 解放と shieldLeave）はシールドゾーンを監視する状況起因処理で拾うので、
       // ここでは何もしない。
       if (updatedCtx.castSpell) {
-        const { card: castFace, origCard, ownerPid: castOwnerPid, fromZone: castFrom } = updatedCtx.castSpell;
+        const { card: castFace, origCard, ownerPid: castOwnerPid, fromZone: castFrom,
+                afterCast, afterCastSource } = updatedCtx.castSpell;
         delete updatedCtx.castSpell;
         const castCard = origCard || castFace;   // ゾーンを動かすのは元のカード
         const castMain = spellMainEffect(castFace);
@@ -360,7 +363,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             ? enqueueEffectRef.current({ kind:"spell", effect:castMain, ownerPid:castOwnerPid, srcCard:castFace, sourceName:castFace.name }, { front:true })
             : null;
           queueSpellAfterCastRef.current({ pid: castOwnerPid, card: castCard, face: castFace,
-            fromZone: castFrom || "hand", to: isCharger ? "mana" : "grave", afterId });
+            fromZone: castFrom || "hand", to: isCharger ? "mana" : "grave", afterId,
+            afterCast, afterCastSource });
         }, 0);
         setTimeout(() => fireTriggerRef.current("castSpell",{sourcePid:castOwnerPid,subjectCard:castCard,fromZone:castFrom||"hand"}), 0);
       }
@@ -710,7 +714,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 呪文を解決しきった時の後始末。ここで初めてカードがゾーンに入る。
   //   チャージャー → マナゾーン（タップして置く）
   //   それ以外     → 墓地。そのうえで spellAfterCast の置換を聞く
-  const finishCast=({pid,card,face,fromZone,to})=>{
+  const finishCast=({pid,card,face,fromZone,to,afterCast,afterCastSource})=>{
     const setSelf=pid==="p1"?setP1:setP2;
     if(to==="mana"){
       setSelf(s=>({...s,mana:[...s.mana,{...card,tapped:true,side:undefined}]}));
@@ -718,41 +722,64 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       return;
     }
     // 置換が効くかどうかは「墓地に置こうとする」この時点の盤面で決まる（総合ルール604.2）。
-    // 置いた後に stateRef を読み直すと反映前の写しを見てしまうので、ここで先に判定しておく
-    const hit=findSpellAfterCast(stateRef.current[pid],face||card,fromZone);
+    // 置いた後に stateRef を読み直すと反映前の写しを見てしまうので、ここで先に判定しておく。
+    // 候補は2種類 ―
+    //   ① 唱えた効果自身に付いている一度きりの置換（「そうしたら、唱えた後、〜に加える」）
+    //   ② バトルゾーン／表向きシールドにある継続能力 spellAfterCast
+    // 同じイベントを置換するので、複数あればプレイヤーが1つだけ選ぶ（→ offerSpellAfterCast）
+    const opts=[];
+    if(afterCast) opts.push({card:afterCastSource,rule:afterCast});
+    opts.push(...findSpellAfterCastAll(stateRef.current[pid],face||card,fromZone));
     setSelf(s=>({...s,grave:[...s.grave,{...card,tapped:false,faceUp:false,side:undefined}]}));
-    if(hit) setTimeout(()=>offerSpellAfterCastRef.current(pid,face||card,hit),0);
+    if(opts.length) setTimeout(()=>offerSpellAfterCastRef.current(pid,face||card,opts),0);
   };
   const finishCastRef=useRef();
   finishCastRef.current=finishCast;
 
-  const offerSpellAfterCast=(pid,card,hit)=>{
-    if(!hit) return;
+  // 唱え終えた呪文の行き先の置換を提示する。opts は候補の配列。
+  // 同じイベントを置換する効果が複数ある時、DMでは**1つだけ選んでそれだけを適用**する
+  // （選ばなかった置換は起きない）ので、2つ以上あれば選択式のモーダルにする。
+  const offerSpellAfterCast=(pid,card,opts)=>{
+    if(!opts?.length) return;
     const setSelf=pid==="p1"?setP1:setP2;
-    const to=hit.rule.to||"deckBottom";
+    const zoneOf=o=>{const t=o.rule.to||"deckBottom";return SPELL_AFTER_CAST_LABELS[t]||t;};
+    const apply=(o)=>{
+      const to=o.rule.to||"deckBottom";
+      setSelf(s=>{
+        const target=s.grave.find(c=>c.uid===card.uid);
+        if(!target) return s;
+        const grave=s.grave.filter(c=>c.uid!==card.uid);
+        const moved={...target,tapped:false,faceUp:false,side:undefined};
+        if(to==="deckBottom") return {...s,grave,deck:[...s.deck,moved]};
+        if(to==="deckTop")    return {...s,grave,deck:[moved,...s.deck]};
+        if(to==="hand")       return {...s,grave,hand:[...s.hand,moved]};
+        if(to==="mana")       return {...s,grave,mana:[...s.mana,{...moved,tapped:true}]};
+        if(to==="shield")     return {...s,grave,shields:[...s.shields,moved],shieldAddedThisTurn:true};
+        return s;
+      });
+      addLog(`[置換] ${pid}: 「${card.name}」は墓地のかわりに${zoneOf(o)}へ（${o.card?.name||"効果"}）`);
+      if(to==="shield") setTimeout(()=>putShieldsRef.current(pid,[card]),0);
+    };
+    const cancel=()=>{setReplacementModal(null);addLog(`[置換] ${pid}: 例外処理で中止（「${card.name}」は墓地のまま）`);};
+    if(opts.length===1){
+      const o=opts[0];
+      setReplacementModal({
+        title:"置換効果",
+        card:o.card,
+        message:`「${o.card?.name||"効果"}」により、唱え終えた「${card.name}」を墓地のかわりに${zoneOf(o)}へ置きます。`,
+        applyLabel:`${zoneOf(o)}へ置く`,
+        onApply:()=>{setReplacementModal(null);apply(o);},
+        onCancel:cancel,
+      });
+      return;
+    }
     setReplacementModal({
-      title:"置換効果",
-      card:hit.card,
-      message:`「${hit.card.name}」の効果により、唱え終えた「${card.name}」を墓地のかわりに${SPELL_AFTER_CAST_LABELS[to]||to}へ置きます。`,
-      applyLabel:`${SPELL_AFTER_CAST_LABELS[to]||to}へ置く`,
-      onApply:()=>{
-        setReplacementModal(null);
-        setSelf(s=>{
-          const target=s.grave.find(c=>c.uid===card.uid);
-          if(!target) return s;
-          const grave=s.grave.filter(c=>c.uid!==card.uid);
-          const moved={...target,tapped:false,faceUp:false,side:undefined};
-          if(to==="deckBottom") return {...s,grave,deck:[...s.deck,moved]};
-          if(to==="deckTop")    return {...s,grave,deck:[moved,...s.deck]};
-          if(to==="hand")       return {...s,grave,hand:[...s.hand,moved]};
-          if(to==="mana")       return {...s,grave,mana:[...s.mana,{...moved,tapped:true}]};
-          if(to==="shield")     return {...s,grave,shields:[...s.shields,moved],shieldAddedThisTurn:true};
-          return s;
-        });
-        addLog(`[置換] ${pid}: 「${card.name}」は墓地のかわりに${SPELL_AFTER_CAST_LABELS[to]||to}へ`);
-        if(to==="shield") setTimeout(()=>putShieldsRef.current(pid,[card]),0);
-      },
-      onCancel:()=>{setReplacementModal(null);addLog(`[置換] ${pid}: 例外処理で中止（「${card.name}」は墓地のまま）`);},
+      title:"置換効果（1つ選ぶ）",
+      card,
+      message:`唱え終えた「${card.name}」の行き先を置換する効果が${opts.length}つあります。\n適用するものを1つ選んでください。`,
+      options:opts.map(o=>({label:`「${o.card?.name||"効果"}」… 墓地のかわりに${zoneOf(o)}へ`})),
+      onApply:(i)=>{setReplacementModal(null);apply(opts[i]);},
+      onCancel:cancel,
     });
   };
   offerSpellAfterCastRef.current=offerSpellAfterCast;

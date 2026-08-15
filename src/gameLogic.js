@@ -508,7 +508,15 @@ export function spellDenyReason(card, ownerState, otherState) {
   return null;
 }
 export function findSpellAfterCast(ownerState, card, fromZone = "hand") {
-  if (!ownerState || !card) return null;
+  return findSpellAfterCastAll(ownerState, card, fromZone)[0] || null;
+}
+
+// 唱え終えた呪文の行き先を置換するものを**すべて**集める。
+// 同じイベントを置換する効果が複数あるとき、DMでは影響を受ける側が**1つだけ選んで適用**し、
+// 選ばなかったものは起きない。だから最初の1つで打ち切らずに全部返し、選ばせる。
+export function findSpellAfterCastAll(ownerState, card, fromZone = "hand") {
+  if (!ownerState || !card) return [];
+  const out = [];
   const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
   for (const c of sources) {
     const rules = effectiveCard(c).spellAfterCast;
@@ -516,10 +524,10 @@ export function findSpellAfterCast(ownerState, card, fromZone = "hand") {
     for (const rule of (Array.isArray(rules) ? rules : [rules])) {
       if (rule.from && rule.from !== "any" && rule.from !== fromZone) continue;
       if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
-      return { card: c, rule };
+      out.push({ card: c, rule });
     }
   }
-  return null;
+  return out;
 }
 
 export function findLoseReplacement(ownerState, cause) {

@@ -673,7 +673,10 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             setOf(pidx)(take);
             addLog(`${pid}: 「${face.name}」を${zoneLabel}${freeLabel}唱えた`);
             // card = 実際に動かす元のカード（ツインパクトなら本体）、face = 唱えている面
-            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone };
+            // afterCast =「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る
+            // 一度きりの置換で、カード直下の spellAfterCast（継続能力）とは別物
+            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone,
+              afterCast: effect.afterCast || null, afterCastSource: effect.afterCast ? srcCard : null };
           } else if (card.type === "castle") {
             setOf(pidx)(s => { const t = take(s); return { ...t, shields: [...t.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }; });
             noteShieldAdd(ctx, pidx, [card]);
