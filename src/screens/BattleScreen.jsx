@@ -42,6 +42,9 @@ const SPELL_AFTER_CAST_LABELS={ deckBottom:"山札の下", deckTop:"山札の上
 const ENTER_TO_LABELS={ hyper:"超次元ゾーン", mana:"マナゾーン", grave:"墓地", hand:"手札" };
 // replaceShieldAdd（シールドゾーンに置く時の置換）の行き先の表示名
 const SHIELD_ADD_TO_LABELS={ grave:"墓地", hand:"手札", mana:"マナゾーン", deck:"山札の下" };
+// replaceLeave（離れる時の置換）の行き先の表示名。
+// deck は山札の「下」に入るので、上下が分かるように ZONE_LABELS とは別に持つ
+const LEAVE_TO_LABELS={ mana:"マナゾーン", hand:"手札", shield:"シールドゾーン", deck:"山札の下" };
 
 function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   if(tr.on !== event) return false;
@@ -481,7 +484,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }
     const lr=findLeaveReplacement(st,live,to);
     if(lr&&!seen("replaceLeave")){
-      const zl=ZONE_LABELS[lr.rule.to||"mana"]||"マナゾーン";
+      const zl=LEAVE_TO_LABELS[lr.rule.to||"mana"]||"マナゾーン";
       return { kind:"replaceLeave", to:lr.rule.to||"mana", title:`${lr.card.name}（置換効果）`,
         message:`${card.name} は${lr.rule.from==="destroy"?"破壊されます":"バトルゾーンを離れます"}。\n${ZONE_LABELS[to]||"墓地"}に置く代わりに、${zl}に置いてもよい。`,
         applyLabel:`かわりに${zl}へ`, cancelLabel:"例外処理で中止（通常どおり）" };
@@ -1350,7 +1353,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(to==="deck")   return {...s,battle:newBattle,deck:[...s.deck,...moved]};
       return {...s,battle:newBattle,mana:[...s.mana,...moved]};
     });
-    addLog(`[置換] ${card.name} は破壊されるかわりに${ZONE_LABELS[to]||"マナゾーン"}へ`);
+    addLog(`[置換] ${card.name} は破壊されるかわりに${LEAVE_TO_LABELS[to]||"マナゾーン"}へ`);
     setTimeout(()=>fireTrigger("leave",{sourcePid:ownerPid,subjectCard:card}),0);
     if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,[card]),0);
   };
