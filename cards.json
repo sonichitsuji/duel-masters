@@ -5011,5 +5011,75 @@
       }
     ],
     "id": 131
+  },
+  {
+    "name": "極智秘伝ローゼス・チューン",
+    "type": "spell",
+    "civ": "water",
+    "race": null,
+    "cost": 3,
+    "power": 0,
+    "keywords": [],
+    "effect": "アタック・チャンス：水のパワー4000以上のクリーチャー（自分の指定のクリーチャーが攻撃する時、このカードをコストを支払わずに実行してもよい）\nカードを3枚引き、自分の手札を2枚、好きな順序で山札の上に置く。\nリサイクル[水(4)]（この呪文を自分の墓地から「リサイクル」コストを支払って唱えてもよい。こうして唱えた後、墓地のかわりに山札の下に置く）",
+    "attackChance": {
+      "on": "attack",
+      "target": "self",
+      "filter": {
+        "creatureOnly": true,
+        "civ": "water",
+        "minPower": 4000
+      }
+    },
+    "recycle": {
+      "cost": 4,
+      "civs": [
+        "water"
+      ]
+    },
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "カードを3枚引く",
+            "type": "drawCards",
+            "amount": 3
+          },
+          {
+            "label": "自分の手札を2枚、好きな順序で山札の上に置く",
+            "type": "handToDeck",
+            "target": "self",
+            "amount": 2,
+            "to": "top",
+            "order": "choose"
+          }
+        ]
+      }
+    ],
+    "id": 132
+  },
+  {
+    "name": "終末の時計 ザ・クロック",
+    "type": "creature",
+    "civ": "water",
+    "race": "アウトレイジMAX",
+    "cost": 3,
+    "power": 3000,
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー（このカードをシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\nこのクリーチャーが出た時、ターンの残りをとばす。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "ターンの残りをとばす",
+            "type": "skipRestOfTurn"
+          }
+        ]
+      }
+    ],
+    "id": 133
   }
 ]
