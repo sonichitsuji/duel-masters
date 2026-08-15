@@ -4880,5 +4880,136 @@
       }
     ],
     "id": 127
+  },
+  {
+    "name": "虚ト成リシ古ノ蛇神ノ咆哮",
+    "type": "spell",
+    "civ": "fire",
+    "race": null,
+    "cost": 2,
+    "power": 0,
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー（このカードをシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\n自分の手札を1枚捨てる。その後、次のうちいずれか1つを選ぶ。\n▶カードを2枚引く。\n▶相手のパワー9000以下のクリーチャーを1体選び、破壊する。",
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分の手札を1枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 1
+          },
+          {
+            "label": "次のうちいずれか1つを選ぶ",
+            "type": "chooseMode",
+            "templates": [
+              {
+                "label": "カードを2枚引く",
+                "effects": [
+                  {
+                    "label": "カードを2枚引く",
+                    "type": "drawCards",
+                    "amount": 2
+                  }
+                ]
+              },
+              {
+                "label": "相手のパワー9000以下のクリーチャーを1体選び、破壊する",
+                "effects": [
+                  {
+                    "label": "相手のパワー9000以下のクリーチャーを1体破壊する",
+                    "type": "destroy",
+                    "target": "opponent",
+                    "amount": 1,
+                    "filter": {
+                      "creatureOnly": true,
+                      "maxPower": 9000
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "id": 128
+  },
+  {
+    "name": "ピッピ・修・ピヨッコ",
+    "type": "creature",
+    "civ": "fire",
+    "race": "アーマード・ファイアー・バード",
+    "cost": 2,
+    "power": 3000,
+    "keywords": [],
+    "effect": "相手のターン中に、相手が自身のシールドゾーンにカードを置く時、かわりに墓地に置く。",
+    "replaceShieldAdd": {
+      "who": "opponent",
+      "turnOf": "opponent",
+      "to": "grave"
+    },
+    "id": 129
+  },
+  {
+    "name": "キャディ・ビートル",
+    "type": "creature",
+    "civ": "nature",
+    "race": "ジャイアント・インセクト",
+    "cost": 2,
+    "power": 1000,
+    "keywords": [],
+    "effect": "相手のターン中、相手が、自身のマナゾーンのカードの枚数よりコストが大きいクリーチャーを出す時、かわりにマナゾーンに置く。\nこのクリーチャーが破壊される時、墓地に置くかわりにマナゾーンに置く。",
+    "replaceEnter": {
+      "who": "opponent",
+      "turnOf": "opponent",
+      "to": "mana",
+      "costOver": {
+        "zone": "mana"
+      }
+    },
+    "replaceLeave": [
+      {
+        "from": "destroy",
+        "to": "mana",
+        "filter": {
+          "self": true
+        }
+      }
+    ],
+    "id": 130
+  },
+  {
+    "name": "エボリューション・エッグ",
+    "type": "spell",
+    "civ": "nature",
+    "race": null,
+    "cost": 2,
+    "power": 0,
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー（このカードをシールドゾーンから手札に加える時、コストを支払わずにすぐ実行してもよい）\n自分の山札を見る。その中から進化クリーチャーを1体選び、表向きにしてから自分の手札に加えてもよい。その後、山札をシャッフルする。",
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "山札から進化クリーチャーを1体、手札に加えてもよい（その後シャッフル）",
+            "type": "search",
+            "destination": "hand",
+            "amount": 1,
+            "optional": true,
+            "filter": {
+              "evolution": true
+            }
+          }
+        ]
+      }
+    ],
+    "id": 131
   }
 ]
