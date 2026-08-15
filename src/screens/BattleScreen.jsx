@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -413,6 +413,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         addLog(`[EXWIN] ${wpid.toUpperCase()} の勝利！`);
         setWinReason(reason);
         setWinner(wpid.toUpperCase());
+        return null;
+      }
+      // 「ターンの残りをとばす」。待機中の効果ごと消して次のターンへ進むので、
+      // この解決もここで打ち切る（setActiveSteps の更新関数の中からは呼べないので1tick 遅らせる）
+      if (updatedCtx.skipRestOfTurn) {
+        delete updatedCtx.skipRestOfTurn;
+        setTimeout(() => skipRestOfTurnRef.current(), 0);
         return null;
       }
       // 「そうしたら」「そうした場合」: 直前のステップを実際に行わなかったら以降は起こらない
@@ -1039,12 +1046,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const handleChargeMana=idx=>{if(chargedThisTurn)return;const card=activeState.hand[idx];const isMulti=Array.isArray(card.civ)&&card.civ.length>=2;setActiveState(s=>({...s,hand:s.hand.filter((_,i)=>i!==idx),mana:[...s.mana,{...card,tapped:isMulti}]}));setChargedThisTurn(true);addLog(`${active}: ${card.name}→マナ${isMulti?" (タップ)":""}`);};
   // fromZone: "hand"(通常) / "grave" / "mana"。墓地・マナからの召喚は summonFrom 系の許可が必要（PlayerBoard 側で判定済み）。
   // permKey が来た場合、その許可の使用回数を1つ消費する。
-  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUids=null,fromZone="hand",permKey=null)=>{
+  // recycle: 墓地の呪文をリサイクル・コストで唱える（PlayerBoard 側で支払い済みの判定を通っている）
+  const handlePlayCard=(idx,selectedManaUids,twinpactSide=null,evolutionBaseUids=null,fromZone="hand",permKey=null,recycle=false)=>{
     const srcZone=fromZone==="hand"?activeState.hand:fromZone==="grave"?activeState.grave:activeState.mana;
     const card=srcZone[idx];
     if(!card) return true;
     const isSpell=card.type==="spell"||(card.type==="twinpact"&&twinpactSide==="spell");
-    if(fromZone!=="hand"&&(isSpell||card.type==="castle")){addLog(`${active}: ${card.name} は召喚できない`);return true;}
+    // 墓地・マナから「召喚」できるのはクリーチャーだけ。呪文はリサイクルの時だけ墓地から唱えられる
+    const isRecycleCast=recycle&&fromZone==="grave"&&!!recycleSpecFor(card);
+    if(fromZone!=="hand"&&(isSpell||card.type==="castle")&&!isRecycleCast){addLog(`${active}: ${card.name} は召喚できない`);return true;}
     // 呪文を唱えられない（ラフルル・ラブ等）。面が確定しているのでここで弾ける
     if(isSpell){
       const deny=spellDenyReason({...card,...(twinpactSide==="spell"?card.spellSide:{}),side:"spell"},activeState,otherState);
@@ -1106,8 +1116,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       else selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid}));
     }else{
       const isCharger=effectiveSide.keywords?.includes("charger");
-      // 唱えている間はどのゾーンにも置かない（→ 解決しきったら finishCast が置く）
-      setActiveState(s=>({...s,hand:newHand,mana:newMana}));
+      // 唱えている間はどのゾーンにも置かない（→ 解決しきったら finishCast が置く）。
+      // リサイクルは墓地から唱えるので、墓地から取り除いたことも反映する
+      setActiveState(s=>({...s,hand:newHand,mana:newMana,grave:newGrave}));
       const spellName=effectiveSide?.name||card.name;
       addLog(`${active}: 呪文「${spellName}」${isCharger?"(チャージャー→マナへ)":""}`);
       showCutIn({title:"呪文！",cardName:spellName,civ:Array.isArray(card.civ)?card.civ[0]:card.civ});
@@ -1116,9 +1127,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const afterId=spellEffect
         ?enqueueEffect({kind:"spell",effect:spellEffect,ownerPid:active,srcCard:card,sourceName:spellName})
         :null;
-      queueSpellAfterCast({pid:active,card,face:effectiveSide||card,fromZone:"hand",to:isCharger?"mana":"grave",afterId});
+      // リサイクルは「こうして唱えた後、墓地のかわりに山札の下に置く」までがキーワードの定義なので、
+      // 一度きりの置換（afterCast）として付ける。他の置換と競合したら1つ選ばせる（§7.22）
+      queueSpellAfterCast({pid:active,card,face:effectiveSide||card,fromZone:isRecycleCast?"grave":"hand",
+        to:isCharger?"mana":"grave",afterId,
+        afterCast:isRecycleCast?{to:"deckBottom"}:null,afterCastSource:isRecycleCast?{...card,name:"リサイクル"}:null});
       // 汎用トリガー: 呪文を唱えた時
-      setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card,fromZone:"hand"}),0);
+      setTimeout(()=>fireTrigger("castSpell",{sourcePid:active,subjectCard:card,fromZone:isRecycleCast?"grave":"hand"}),0);
     }
     return true;
   };
@@ -1519,7 +1534,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setWinReason("direct");
     setWinner(active.toUpperCase());
   };
-  const handleEndTurn=()=>{
+  // ターンを終える処理は2つに分かれている。
+  //   ① endOfTurnResolution … 「ターンの終わりに」の誘発と、終わりに予約された効果
+  //   ② advanceToNextTurn   … アンタップ・フラグのリセット・手番の受け渡し（盤面の帳尻合わせ）
+  // 「ターンの残りをとばす」（終末の時計 ザ・クロック）は ① を丸ごと飛ばして ② だけ行う。
+  const handleEndTurn=()=>{ endOfTurnResolution(); advanceToNextTurn(); };
+
+  const endOfTurnResolution=()=>{
     // 汎用 endOfTurn トリガー（hyperOnly/condition を現状態で同期評価してから発火）
     [{pid:"p1",st:p1},{pid:"p2",st:p2}].forEach(({pid,st})=>{
       const setSelf=pid==="p1"?setP1:setP2;const oPid=pid==="p1"?"p2":"p1";const setOther=pid==="p1"?setP2:setP1;
@@ -1558,6 +1579,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         }
       });
     });
+  };
+
+  const advanceToNextTurn=()=>{
     // 終了するプレイヤー: このターン限定のフラグのみリセット（タップ状態・cantAttackUntilMyTurnは自分の次のターン開始時まで維持）
     setActiveState(s=>({...s,shieldAddedThisTurn:false,shieldsBrokenThisTurn:0,battle:s.battle.map(c=>({
       ...c,
@@ -1613,6 +1637,31 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setTimeout(()=>releaseFromHyperRef.current(next),0);
     setTimeout(()=>fireTrigger("startOfTurn",{sourcePid:next}),0);
   };
+
+  // 「ターンの残りをとばす」（終末の時計 ザ・クロック）。
+  // この能力を解決した時点で、
+  //   ・まだ解決していない効果（待ち行列・解決中のステップ・確認待ちのモーダル）をすべて消す
+  //   ・このターンの終わりを含む残りのステップを行わない（endOfTurnResolution を丸ごと飛ばす）
+  // そのうえで強制的に次のターンのはじめにする。盤面の帳尻合わせ（アンタップやフラグの
+  // リセット）はステップではなくターンの移り変わりそのものなので、advanceToNextTurn は行う。
+  const skipRestOfTurn=()=>{
+    addLog(`[ターンの残りをとばす] 待機している効果と、このターンの残りをすべて飛ばす`);
+    // 解決待ちを全部捨てる
+    setPending([]);
+    spellAfterCastRef.current=[];setPendingSpellAfterCast([]);
+    pendingAttackRef.current=null;setPendingAttack(null);
+    setActiveSteps(null);setTemplateChoiceModal(null);setTriggerOrderModal(null);
+    setReplacementModal(null);setEnterReplaceQueue([]);setShieldAddQueue([]);
+    setLeaveReplaceModal(null);setNeoPutModal(null);setRevChangeModal(null);
+    setHandPlayModal(null);setHandPlayPayModal(null);setHandPlayEvoModal(null);
+    setActivatedModal(null);setBlockerModal(null);setGStrikeModal(null);
+    setFinalRevModal(false);setHyperUntapModal(null);setHyperTargetedModal(null);setHyperUnlockModal(null);
+    // 攻撃も中断する（攻撃クリーチャーは既にタップ済みのまま）
+    setAttackingUid(null);
+    advanceToNextTurn();
+  };
+  const skipRestOfTurnRef=useRef();
+  skipRestOfTurnRef.current=skipRestOfTurn;
 
   return(
     <div className="battle-ui" style={{height:"calc(100vh / var(--ui-scale))",overflow:"hidden",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>

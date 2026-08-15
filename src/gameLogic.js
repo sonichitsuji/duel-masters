@@ -309,7 +309,7 @@ const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
   "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
-  "replaceEnter","replaceShieldAdd"];
+  "replaceEnter","replaceShieldAdd","recycle"];
 
 // 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」。
 // 能力の読み出しはほぼすべてこの関数を通るので、「能力を無視されている」間は
@@ -692,6 +692,16 @@ export function summonPermissionFor(card, zone, perms, usedCounts = {}) {
   ) || null;
 }
 
+// リサイクル: この呪文を自分の墓地から、指定のコストを支払って唱えてもよい。
+//   recycle: { cost, civs }
+// 「こうして唱えた後、墓地のかわりに山札の下に置く」はリサイクルの定義に含まれる挙動なので、
+// データには書かず engine 側（handlePlayCard → afterCast）で付ける。
+export function recycleSpecFor(card) {
+  if (!card || card.type !== "spell") return null;   // ツインパクトの呪文面は未対応
+  const spec = effectiveCard(card).recycle;
+  return spec && typeof spec.cost === "number" ? spec : null;
+}
+
 // シビルカウント: 自分の指定文明の「クリーチャーまたはタマシード」の数
 // （バトルゾーン＋シールドゾーンの表向きカードを数える。種別非依存で faceUp を見る）
 export function civicCount(state, civ){
@@ -753,16 +763,17 @@ export function manaHasAll(state, filters){
 // 違いは ①提示の条件 ②コストを払うかどうか の2つだけなので、1つの枠組みにまとめてある。
 //   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
 //   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
-export const HAND_PLAY_KINDS = ["oniEnd", "ddd"];
+export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance"];
 // sTrigger は誘発で手札を探す能力ではないが、「手札のカードをコストを支払わずにプレイしてよいか
 // 聞く」点が同じなので、同じ枠組み（HandPlayModal / playFromHandDeclared）に乗せている。
-const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", sTrigger: "S・トリガー" };
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", sTrigger: "S・トリガー" };
 export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
 
 // 誘発の on / target がこのイベントに合うか（両方の能力で共通）
-function handPlayMatchesEvent(spec, event, ev, ownerPid){
+function handPlayMatchesEvent(spec, event, ev, ownerPid, kind){
   if((spec.on || "attack") !== event) return false;
-  const scope = spec.target || "both";
+  // アタック・チャンスは「**自分の**指定のクリーチャーが攻撃する時」なので既定が self
+  const scope = spec.target || (kind === "attackChance" ? "self" : "both");
   if(scope === "self" && ev.sourcePid !== ownerPid) return false;
   if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
   return true;
@@ -776,13 +787,19 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
   for(const card of state?.hand || []){
     for(const kind of HAND_PLAY_KINDS){
       const spec = card[kind];
-      if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid)) continue;
+      if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid, kind)) continue;
       // 呪文を唱えられない状態なら呪文は提示しない（ラフルル・ラブ等）
       if(spellDenyReason(card, state, otherState)) continue;
       if(kind === "oniEnd"){
         // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
         if(!oniEndActive(state, otherState)) continue;
         if(!manaHasAll(state, spec.manaHas)) continue;
+        out.push({ card, kind, cost: null });
+      }else if(kind === "attackChance"){
+        // アタック・チャンス:「自分の指定のクリーチャーが攻撃する時」。
+        // filter は攻撃したクリーチャー（ev.subjectCard）に掛かる。コストは支払わない
+        if(!ev.subjectCard) continue;
+        if(spec.filter && !matchCardFilter(ev.subjectCard, spec.filter)) continue;
         out.push({ card, kind, cost: null });
       }else{
         // D・D・D: 指定コストを払えること（払えないなら提示しない）

@@ -13,9 +13,10 @@ const ZONE_META = {
   hyper: { label: "超次元ゾーン", color: "#66ddff" },
 };
 
-export function ZoneViewModal({ zone, entries, ownerState, onSummon, onClose }) {
+export function ZoneViewModal({ zone, entries, ownerState, onSummon, onRecycle, onClose }) {
   const meta = ZONE_META[zone] || ZONE_META.grave;
   const summonable = entries.filter(e => e.perm);
+  const recyclable = entries.filter(e => e.recycle);
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:400, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div style={{ background:"linear-gradient(160deg,#0b0b1a,#08080f)", border:`2px solid ${meta.color}`, borderRadius:14, padding:20, maxWidth:640, width:"100%", boxShadow:`0 0 30px ${meta.color}55`, maxHeight:"calc(88vh / var(--ui-scale))", display:"flex", flexDirection:"column", gap:10 }}>
@@ -24,6 +25,11 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onClose }) 
           {summonable.length > 0 && (
             <div style={{ fontSize:11, color:"#ffcc66", marginTop:4 }}>
               {summonable.length}体を{meta.label}から召喚できます（コストは通常どおり支払います）
+            </div>
+          )}
+          {recyclable.length > 0 && (
+            <div style={{ fontSize:11, color:"#66ddff", marginTop:4 }}>
+              {recyclable.length}枚を「リサイクル」で唱えられます（唱えた後、墓地のかわりに山札の下へ）
             </div>
           )}
         </div>
@@ -36,7 +42,16 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onClose }) 
             const cost = getEffectiveCost(e.card, ownerState);
             return (
               <div key={e.card.uid} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3, width:80 }}>
-                <CardFace card={e.card} small dimmed={!e.perm} />
+                <CardFace card={e.card} small dimmed={!e.perm && !e.recycle} />
+                {e.recycle && (
+                  <button onClick={() => e.recyclePayable && onRecycle(e)} disabled={!e.recyclePayable}
+                    title={e.recyclePayable ? "リサイクルで唱える" : "マナが足りません"}
+                    style={{ width:"100%", padding:"3px 0", borderRadius:4, fontSize:10, fontWeight:700,
+                             background:e.recyclePayable?"#66ddff22":"#111", border:`1px solid ${e.recyclePayable?"#66ddff":"#333"}`,
+                             color:e.recyclePayable?"#66ddff":"#444", cursor:e.recyclePayable?"pointer":"not-allowed" }}>
+                    リサイクル ({e.recycle.cost})
+                  </button>
+                )}
                 {e.perm && (
                   <button onClick={() => e.payable && onSummon(e)} disabled={!e.payable}
                     title={e.payable ? e.perm.label || "召喚する" : "マナが足りません"}
