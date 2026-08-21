@@ -78,6 +78,7 @@
 `element`(クリーチャー/タマシード/フィールド) `creatureOnly` `multiColor` `tapped` `maxCost` `minCost` `maxPower` `minPower` `notNameSelf`
 `hasCip`(「このクリーチャーが出た時」で始まる能力を持つ) `psychic`(サイキック・クリーチャーかどうか)
 `evolution`(進化クリーチャーかどうか。`type:"evo_creature"` と NEO進化の両方を拾う)
+`notSelf`(「自分の**他の**〜」。その効果の持ち主自身を除く)
 `not`(「〜ではない」→ 下記)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
 
@@ -891,7 +892,7 @@
 
 | キー | 説明 |
 |---|---|
-| `to` | `"mana"`(既定) / `"hand"` / `"shield"` / `"deck"`（**山札の下**） |
+| `to` | `"mana"`(既定) / `"hand"` / `"shield"` / `"deck"`（**山札の下**） / `"effect"`（下記） |
 | `from` | `"destroy"` と書くと**破壊される時だけ**に限定する（省略すると離れ方を問わない） |
 | `filter` | どのカードに適用するか（省略で全部） |
 
@@ -906,6 +907,31 @@
 > ```jsonc
 > "replaceLeave": [ { "from":"destroy", "to":"deck", "filter":{ "self":true } } ]
 > ```
+
+#### `to:"effect"`（かわりに〜する）
+
+> このクリーチャーが離れる時、**かわりに自分の他のクリーチャーを1体破壊してもよい**。
+
+ゾーンへ動かすのではなく、書かれた効果を行う置換です。**本体はバトルゾーンに残ります**
+（エスケープと同じ流儀）。
+
+```jsonc
+"replaceLeave": [
+  { "to": "effect",
+    "filter": { "self": true },
+    "effects": [
+      { "label": "自分の他のクリーチャーを1体破壊する",
+        "type": "destroy", "target": "self",
+        "filter": { "creatureOnly": true, "notSelf": true } }
+    ] }
+]
+```
+
+- `effects` は `to:"effect"` の時だけ書けます（1つ以上必要）
+- **`filter.notSelf` が「自分の“他の”」**にあたります。置換元自身を候補から外します
+- **行えない時は提示しません。** 上の例で他にクリーチャーがいなければ、
+  置換モーダルが出ずに通常どおり離れます（身代わりが居ないのに生き延びるのを防ぐため）
+- 「〜してもよい」は、置換モーダルの「例外処理で中止」がそのまま担います（§0）
 
 - §0のとおり**必ず例外処理で中止できる**モーダルで提示します（中止すると通常どおり破壊）
 - 置換されたカードは破壊されていないので `destroyed` は誘発せず、`leave` だけ誘発します

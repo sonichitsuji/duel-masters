@@ -107,6 +107,8 @@ export function matchFilter(card, filter, ctx) {
   if (f.raceContains && !anyOf(f.raceContains, x => !!card.race?.includes(x))) return false;
   if (f.nameContains && !anyOf(f.nameContains, x => !!card.name?.includes(x))) return false;
   if (f.notNameSelf && ctx?.srcName && card.name === ctx.srcName) return false;
+  // notSelf:「自分の**他の**〜」。この効果の持ち主（srcCardUid）自身を候補から除く
+  if (f.notSelf && ctx?.srcCardUid && card.uid === ctx.srcCardUid) return false;
   if (f.keyword && !anyOf(f.keyword, x => hasKeyword(card, x))) return false;
   if (f.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (f.element && !isElement(card)) return false;
@@ -277,6 +279,11 @@ export function enteringBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
 // ===========================
 // 候補算出（選択UI用）
 // ===========================
+// そのステップが「カードを選ぶ」ものかどうか。
+// getEffectCandidates の isAuto は「候補が0」でも true になるため、
+// 「対象が居ないから行えない」の判定にはこちらを併せて使う（置換を提示してよいかの判定など）。
+export const stepSelectsCards = type => !!SOURCE[type];
+
 export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, srcCard) {
   const type = effect.type;
   const c2 = { ...ctx, srcName: srcCard?.name };

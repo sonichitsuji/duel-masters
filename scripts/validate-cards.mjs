@@ -89,7 +89,8 @@ const COUNTLESS_CONDITION_TYPES = new Set(["oniEnd"]);
 const CONDITION_WHO = ["self","opponent","any"];
 const ACTIVATED_TIMINGS = new Set(["ownTurn","any"]);
 const LOSE_CAUSES = new Set(["deckOut"]);
-const LEAVE_TO = new Set(["mana","hand","shield","deck"]);
+// replaceLeave の to。"effect" は「ゾーンへ動かすかわりに、書かれた効果を行う」
+const LEAVE_TO = new Set(["mana","hand","shield","deck","effect"]);
 // replaceLeave の from:「破壊される時だけ」に限定する時に書く（省略なら離れ方を問わない）
 const LEAVE_FROM = new Set(["destroy"]);
 // replaceEnter:「出る時、かわりに〜」の行き先
@@ -396,7 +397,17 @@ function checkAbilityFields(obj, where) {
   for (const rl of rls) {
     if (typeof rl !== "object" || rl == null) { errors.push(`${where}.replaceLeave: オブジェクトで書いてください`); continue; }
     for (const k of Object.keys(rl)) {
-      if (!["from","to","filter"].includes(k)) errors.push(`${where}.replaceLeave: 未知のキー "${k}"（綴り違い？）`);
+      if (!["from","to","filter","effects"].includes(k)) errors.push(`${where}.replaceLeave: 未知のキー "${k}"（綴り違い？）`);
+    }
+    // to:"effect" は「かわりに行う効果」が本体なので effects が要る。逆に他の to では書けない
+    if (rl.to === "effect") {
+      if (!Array.isArray(rl.effects) || rl.effects.length === 0) {
+        errors.push(`${where}.replaceLeave: to:"effect" には effects（1つ以上）が必要です`);
+      } else {
+        rl.effects.forEach(e => checkOne(e, `${where}.replaceLeave(effect)`));
+      }
+    } else if (rl.effects != null) {
+      errors.push(`${where}.replaceLeave: effects は to:"effect" の時だけ書けます`);
     }
     if (!LEAVE_TO.has(rl.to || "mana")) errors.push(`${where}.replaceLeave: to は ${[...LEAVE_TO].join("/")}`);
     if (rl.from != null && !LEAVE_FROM.has(rl.from)) errors.push(`${where}.replaceLeave: from は ${[...LEAVE_FROM].join("/")}`);

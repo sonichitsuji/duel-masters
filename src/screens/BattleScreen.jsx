@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
-import { executeEffect, matchFilter, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
+import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
 import { HandoffScreen } from "./HandoffScreen";
@@ -491,12 +491,45 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }
     const lr=findLeaveReplacement(st,live,to);
     if(lr&&!seen("replaceLeave")){
+      const leaveText=`${card.name} は${lr.rule.from==="destroy"?"破壊されます":"バトルゾーンを離れます"}。`;
+      // to:"effect" =「かわりに〜する」。ゾーンへ動かすのではなく、書かれた効果を行う。
+      // 本体はバトルゾーンに残る（エスケープと同じ流儀）
+      if(lr.rule.to==="effect"){
+        // 行えない置換は提示しない（他にクリーチャーがいないのに身代わりで生き延びるのを防ぐ）
+        if(!canRunLeaveEffect(lr,ownerPid)) return null;
+        const what=lr.rule.effects?.[0]?.label||"かわりの効果";
+        return { kind:"replaceLeave", to:"effect", rule:lr.rule, src:lr.card, title:`${lr.card.name}（置換効果）`,
+          message:`${leaveText}\nかわりに「${what}」を行ってもよい。`,
+          applyLabel:`かわりに ${what}`, cancelLabel:"例外処理で中止（通常どおり）" };
+      }
       const zl=LEAVE_TO_LABELS[lr.rule.to||"mana"]||"マナゾーン";
       return { kind:"replaceLeave", to:lr.rule.to||"mana", title:`${lr.card.name}（置換効果）`,
-        message:`${card.name} は${lr.rule.from==="destroy"?"破壊されます":"バトルゾーンを離れます"}。\n${ZONE_LABELS[to]||"墓地"}に置く代わりに、${zl}に置いてもよい。`,
+        message:`${leaveText}\n${ZONE_LABELS[to]||"墓地"}に置く代わりに、${zl}に置いてもよい。`,
         applyLabel:`かわりに${zl}へ`, cancelLabel:"例外処理で中止（通常どおり）" };
     }
     return null;
+  };
+
+  // to:"effect" の置換が実際に行えるか。1つ目のステップに対象があるかだけを見る
+  //（選択の要らない自動ステップなら常に行える）
+  const canRunLeaveEffect=(lr,ownerPid)=>{
+    const step=lr.rule.effects?.[0];
+    if(!step) return false;
+    const oPid=ownerPid==="p1"?"p2":"p1";
+    const selfSt=stateRef.current[ownerPid], otherSt=stateRef.current[oPid];
+    // notSelf（「自分の**他の**〜」）が置換元自身を除けるよう srcCardUid を渡す
+    const ctx={ vars:{}, srcCardUid:lr.card.uid };
+    const cand=getEffectCandidates(step,selfSt,otherSt,ctx,
+      ownerPid==="p1"?selfSt:otherSt, ownerPid==="p1"?otherSt:selfSt, lr.card);
+    // 対象を選ぶステップなら候補が1つ以上要る（候補0でも isAuto が立つので併せて見る）
+    return stepSelectsCards(step.type) ? cand.candidates.length>0 : true;
+  };
+
+  // to:"effect" の置換を適用する。本体は動かさず、書かれた効果を解決待ちに積むだけ
+  const applyLeaveEffect=(card,ownerPid,rep)=>{
+    addLog(`[置換] ${card.name} は離れるかわりに「${rep.rule.effects?.[0]?.label||"効果"}」`);
+    enqueueEffectRef.current({ kind:"trigger", effect:{ effects:rep.rule.effects },
+      ownerPid, srcCard:rep.src, sourceName:rep.src?.name });
   };
 
   // 効果を実行する前の割り込み。決めた内容を extra に載せて runStep へ渡す。
@@ -1341,7 +1374,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           setReplacementModal(null);
           if(rep.kind==="escape")            escapeShieldToHand(v.card,v.ownerPid);
           else if(rep.kind==="gneo")         sacrificeGNeoBases(v.card,v.ownerPid,"grave");
-          else if(rep.kind==="replaceLeave") moveLeavingCard(v.card,v.ownerPid,rep.to);
+          else if(rep.kind==="replaceLeave"){ if(rep.to==="effect") applyLeaveEffect(v.card,v.ownerPid,rep); else moveLeavingCard(v.card,v.ownerPid,rep.to); }
           processVictims(victims,idx+1,onDone,asked);
         },
         onCancel:()=>{
@@ -1717,7 +1750,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           if(applied){
             if(rep.kind==="escape")           escapeShieldToHand(victim.card,victim.ownerPid);
             else if(rep.kind==="gneo")        sacrificeGNeoBases(victim.card,victim.ownerPid,to);
-            else if(rep.kind==="replaceLeave")moveLeavingCard(victim.card,victim.ownerPid,rep.to);
+            else if(rep.kind==="replaceLeave"){ if(rep.to==="effect") applyLeaveEffect(victim.card,victim.ownerPid,rep); else moveLeavingCard(victim.card,victim.ownerPid,rep.to); }
           }
           // 置換したカードは通常どおりには離れないので、この後の実行から外す。
           // 中止したものは聞き直さないよう leaveAsked に控えて advanceStep をやり直す
