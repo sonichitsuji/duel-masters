@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, ssxKeywords, isCreatureSide, cardDisplayName, displayPower, isSummoningSick, effectiveCard } from "../gameLogic";
+import { getCardCivs, ssxKeywords, isCreatureSide, cardDisplayName, displayPower, isSummoningSick, effectiveCard, attackDenyReason } from "../gameLogic";
 import { CardEffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -20,8 +20,10 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   // 召喚酔いの判定は isSummoningSick に集約してある。スピードアタッカーとマッハファイターで
   // 酔わないこと（§7.15）に加え、進化かどうか（NEO は進化元が0枚になると酔いが復活する）も見る
   const sick=isSummoningSick(card,ownerState,battleZone);
-  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!sick&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn;
-  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":sick?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":!drewThisTurn?"ドロー前":null;
+  // 「攻撃できない」（denyAttackBlock）で縛られているか
+  const denied=attackDenyReason(card,ownerState,"attack");
+  const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!sick&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn&&!denied;
+  const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":sick?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":denied?denied:!drewThisTurn?"ドロー前":null;
 
   const hyper=card.hyperMode;
   const hyperTBreaker=hyper&&ec.hyperKeywords?.includes("tBreaker");

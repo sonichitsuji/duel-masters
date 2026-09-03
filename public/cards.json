@@ -5081,5 +5081,51 @@
       }
     ],
     "id": 133
+  },
+  {
+    "name": "裏斬隠 テンサイ・ハート",
+    "type": "creature",
+    "civ": "water",
+    "race": "サイバー・ウイルス/グレートメカオー/シノビ",
+    "cost": 3,
+    "power": 3000,
+    "keywords": [],
+    "effect": "ウラ・ニンジャ・ストライク3（水）（相手のクリーチャーが攻撃またはブロックした時、自分のマナゾーンにカードが3枚以上で水文明があり、その攻撃中に「ニンジャ・ストライク」能力を使っていなかった場合、このシノビをコストを支払わずに召喚してもよい。そのターンの終わりに、このシノビを自分の山札の一番下に置く）\nこのクリーチャーが出た時、カードを2枚引き、自分の手札を1枚捨てる。次の自分のターンのはじめまで、その捨てたカードと同じコストの相手のクリーチャーはすべて、攻撃もブロックもできない。",
+    "ninjaStrike": {
+      "count": 3,
+      "civ": "water"
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "カードを2枚引く",
+            "type": "drawCards",
+            "amount": 2
+          },
+          {
+            "label": "自分の手札を1枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 1,
+            "asCost": "discardedCost"
+          },
+          {
+            "label": "次の自分のターンのはじめまで、その捨てたカードと同じコストの相手のクリーチャーは攻撃もブロックもできない",
+            "type": "denyAttackBlock",
+            "target": "opponent",
+            "mode": "both",
+            "filter": {
+              "creatureOnly": true,
+              "cost": {
+                "var": "discardedCost"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "id": 134
   }
 ]

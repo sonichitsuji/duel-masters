@@ -16,7 +16,7 @@ const root = path.join(__dirname, "..");
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
 const CIVS = new Set(["light","water","darkness","fire","nature","colorless"]);
 const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"]);
-const TRIGGER_ONS = new Set(["cast","creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
+const TRIGGER_ONS = new Set(["cast","creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","attack","block","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
 const LEGACY_ONS = new Set(["selfCreaturePlay","opponentCreaturePlay","ownCreatureAttack","selfDraw","opponentDiscard",
@@ -39,8 +39,8 @@ const EFFECT_TYPES = new Set([
   "destroy","bzToHand","bzToMana","bzToShield","tap","untap","tapToggle","untapAllMana","powerBuff","grant","battle","ignoreAbilities",
   // 墓地・シールド
   "graveToBz","zonesToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
-  // 呪文封じ
-  "denySpell",
+  // 呪文封じ／攻撃・ブロック封じ
+  "denySpell","denyAttackBlock",
   // 山札操作
   "shuffleDeck",
   // 進化元を動かすコスト / 特殊勝利
@@ -116,7 +116,7 @@ const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","zones","filter","amount","count","maxSelect","min","max",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
-  "asCost","canUseTrigger","choosePlayer","side","until","templates","afterCast",
+  "asCost","canUseTrigger","choosePlayer","side","until","templates","afterCast","mode",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -201,7 +201,10 @@ function checkOne(e, where) {
       if (e.onlyIf.min == null && e.onlyIf.max == null) errors.push(`${where}.onlyIf: min か max が必要です`);
     }
   }
-  if (e.asCost != null && e.type !== "destroy") errors.push(`${where}: asCost は type:"destroy" でのみ使えます`);
+  // asCost:「破壊した／捨てたカードと同じコスト」を変数に控える
+  if (e.asCost != null && !["destroy", "handToGrave"].includes(e.type)) {
+    errors.push(`${where}: asCost は type:"destroy" / "handToGrave" でのみ使えます`);
+  }
   // afterCast:「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る置換
   if (e.afterCast != null) {
     if (e.type !== "playFromHand") errors.push(`${where}: afterCast は type:"playFromHand" でのみ使えます`);
@@ -549,6 +552,21 @@ function checkAbilityFields(obj, where) {
       checkFilterKeys(ac.filter, `${where}.attackChance`);
     }
   }
+  // ninjaStrike: ニンジャ・ストライクN（X）
+  if (obj.ninjaStrike != null) {
+    const ns = obj.ninjaStrike;
+    if (typeof ns !== "object" || Array.isArray(ns)) errors.push(`${where}.ninjaStrike: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(ns)) {
+        if (!["count", "civ", "target"].includes(k)) errors.push(`${where}.ninjaStrike: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (typeof ns.count !== "number") errors.push(`${where}.ninjaStrike: count（マナの枚数、数値）が必要です`);
+      if (ns.civ != null && !CIVS.has(ns.civ)) errors.push(`${where}.ninjaStrike: 未知のciv "${ns.civ}"`);
+      if (ns.target != null && !TRIGGER_SCOPES.includes(ns.target)) errors.push(`${where}.ninjaStrike: 未知の target "${ns.target}"`);
+      if (ns.target === "this") errors.push(`${where}.ninjaStrike: 手札のカードなので target:"this" は使えません`);
+      // 「相手のクリーチャーが攻撃またはブロックした時」が契機なので on は書けない
+    }
+  }
   // recycle: 自分の墓地から、リサイクル・コストを支払って唱える
   if (obj.recycle != null) {
     const rc = obj.recycle;
@@ -586,7 +604,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","psychic",
   "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","ddd","attackChance","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
+  "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換

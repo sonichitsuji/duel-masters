@@ -219,7 +219,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","winGame","shuffleDeck"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","denyAttackBlock","winGame","shuffleDeck"]);
 // 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
 const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
 
@@ -666,6 +666,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)), grave: [...s.grave, ...cards] }));
         addLog(`${pid}: ${pidx === ownerPid ? "自分" : "相手"}の手札を${effect.random ? `${cards.length}枚（見ないで）` : cards.map(c => c.name).join(", ")}捨てた`);
+        // asCost:「捨てたカードと同じコスト」を控える（destroy の asCost と同じ規約）
+        if (effect.asCost) ctx.vars[effect.asCost] = Math.max(...cards.map(c => c.cost || 0));
         ctx.discardedBy = [...(ctx.discardedBy || []), pidx];
       }
       break;
@@ -836,6 +838,15 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const rule = { until: effect.until || "endOfNextTurn", filter: freezeFilter(effect.filter, ctx), label: effect.label };
       for (const pidx of pids) setOf(pidx)(s => ({ ...s, spellDeny: [...(s.spellDeny || []), rule] }));
       addLog(`${pid}: 次の相手のターンの終わりまで、${tgt === "self" ? "自分" : "相手"}は${rule.filter?.cost != null ? `コスト${rule.filter.cost}の` : ""}呪文を唱えられない`);
+      break;
+    }
+    // 「次の自分のターンのはじめまで、〜の相手のクリーチャーは攻撃もブロックもできない」。
+    // denySpell と同じ流儀で、縛られる側のプレイヤー状態に積む（期限の管理も同じ）
+    case "denyAttackBlock": {
+      const rule = { mode: effect.mode || "both", filter: freezeFilter(effect.filter, ctx), label: effect.label };
+      for (const pidx of pids) setOf(pidx)(s => ({ ...s, attackDeny: [...(s.attackDeny || []), rule] }));
+      const what = rule.mode === "attack" ? "攻撃" : rule.mode === "block" ? "ブロック" : "攻撃もブロックも";
+      addLog(`${pid}: 次の自分のターンのはじめまで、${rule.filter?.cost != null ? `コスト${rule.filter.cost}の` : ""}${tgt === "self" ? "自分" : "相手"}のクリーチャーは${what}できない`);
       break;
     }
     // 「そのエレメントの能力を無視する」。バトルゾーンのカードに印を付けるだけで、

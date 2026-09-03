@@ -507,6 +507,21 @@ export function spellDenyReason(card, ownerState, otherState) {
   }
   return null;
 }
+// 「攻撃もブロックもできない」（denyAttackBlock）。
+// spellDeny と同じ流儀で、縛られる側のプレイヤー状態 attackDeny に積む。
+// 期限も同じ規則（縛られた側のターンが終わると切れる ＝ 使った側の「次の自分のターンのはじめ」）。
+//   attackDeny: [{ filter?, label?, mode? }]   mode: "both"(既定) / "attack" / "block"
+// 戻り値は理由の文字列（縛られていなければ null）。
+export function attackDenyReason(card, ownerState, mode = "attack") {
+  if (!card) return null;
+  for (const d of ownerState?.attackDeny || []) {
+    if ((d.mode || "both") !== "both" && d.mode !== mode) continue;
+    if (d.filter && !matchCardFilter(card, d.filter)) continue;
+    return d.label || `相手の効果により${mode === "block" ? "ブロック" : "攻撃"}できない`;
+  }
+  return null;
+}
+
 export function findSpellAfterCast(ownerState, card, fromZone = "hand") {
   return findSpellAfterCastAll(ownerState, card, fromZone)[0] || null;
 }
@@ -763,17 +778,21 @@ export function manaHasAll(state, filters){
 // 違いは ①提示の条件 ②コストを払うかどうか の2つだけなので、1つの枠組みにまとめてある。
 //   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
 //   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
-export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance"];
+export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike"];
 // sTrigger は誘発で手札を探す能力ではないが、「手札のカードをコストを支払わずにプレイしてよいか
 // 聞く」点が同じなので、同じ枠組み（HandPlayModal / playFromHandDeclared）に乗せている。
-const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", sTrigger: "S・トリガー" };
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", sTrigger: "S・トリガー" };
 export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
 
 // 誘発の on / target がこのイベントに合うか（両方の能力で共通）
 function handPlayMatchesEvent(spec, event, ev, ownerPid, kind){
-  if((spec.on || "attack") !== event) return false;
-  // アタック・チャンスは「**自分の**指定のクリーチャーが攻撃する時」なので既定が self
-  const scope = spec.target || (kind === "attackChance" ? "self" : "both");
+  // ニンジャ・ストライクは「攻撃**または**ブロックした時」の2つが契機
+  if(kind === "ninjaStrike"){
+    if(event !== "attack" && event !== "block") return false;
+  }else if((spec.on || "attack") !== event) return false;
+  // アタック・チャンスは「**自分の**指定のクリーチャーが攻撃する時」なので既定が self、
+  // ニンジャ・ストライクは「**相手の**クリーチャーが〜した時」なので既定が opponent
+  const scope = spec.target || (kind === "attackChance" ? "self" : kind === "ninjaStrike" ? "opponent" : "both");
   if(scope === "self" && ev.sourcePid !== ownerPid) return false;
   if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
   return true;
@@ -794,6 +813,16 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
         // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
         if(!oniEndActive(state, otherState)) continue;
         if(!manaHasAll(state, spec.manaHas)) continue;
+        out.push({ card, kind, cost: null });
+      }else if(kind === "ninjaStrike"){
+        // ニンジャ・ストライクN（X）: 自分のマナゾーンにカードがN枚以上で、X文明があること。
+        // マナはタップしない（支払いではなく条件）。
+        // 「その攻撃中に『ニンジャ・ストライク』能力を使っていなかった場合」は
+        // 盤面ではなく進行の状態なので、呼び出し側から ev.ninjaUsed で渡してもらう
+        if(ev.ninjaUsed) continue;
+        const mana = state?.mana || [];
+        if(mana.length < (spec.count ?? 0)) continue;
+        if(spec.civ && !mana.some(m => getManaCivs(m).includes(spec.civ))) continue;
         out.push({ card, kind, cost: null });
       }else if(kind === "attackChance"){
         // アタック・チャンス:「自分の指定のクリーチャーが攻撃する時」。

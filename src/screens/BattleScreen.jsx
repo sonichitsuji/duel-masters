@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, attackDenyReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -212,6 +212,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // シールドゾーンの中身を監視している shieldLeave / Zラッシュの検出からは除く
   const shieldAddReplacedRef=useRef(new Set());
   const [attackedThisTurn,setAttackedThisTurn]=useState(false);
+  // ニンジャ・ストライクは「その攻撃中に1度だけ」。攻撃を宣言するたびに false に戻す。
+  // 盤面ではなく進行の状態なので state ではなく ref で持つ（誘発の中から読み書きする）
+  const ninjaUsedThisAttackRef=useRef(false);
   const [hyperUnlockModal,setHyperUnlockModal]=useState(null);
   const [blockerModal,setBlockerModal]=useState(null);
   // 「各ターンに一度」「ゲーム中に一度」の使用済みキー（`${uid}#a${i}` 起動型 / `${uid}#t${i}` 誘発型）
@@ -831,15 +834,17 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 条件を満たす手札があれば pending へ積み、リゾルバに順番を任せる。
   // 「〜してもよい」なので必ず見送れる。複数枚あれば1枚ずつ、解決のたびに再提示する。
   const offerHandPlays=(event,ev)=>{
+    // ニンジャ・ストライクの「その攻撃中に使っていないこと」は進行の状態なので、ここで載せる
+    const ev2={...ev,ninjaUsed:ninjaUsedThisAttackRef.current};
     ["p1","p2"].forEach(pid=>{
       const oPid=pid==="p1"?"p2":"p1";
-      const plays=findHandPlays(stateRef.current[pid],stateRef.current[oPid],event,ev,pid);
+      const plays=findHandPlays(stateRef.current[pid],stateRef.current[oPid],event,ev2,pid);
       // priority 2 = 誘発（0/1）より後。先に誘発を解決しきってから「使うかどうか」を聞く。
       // （プレイした後に再提示するので、これが先に来ると誘発が後回しになり続けてしまう）
       if(plays.length) enqueueEffectRef.current({
         kind:"handPlay", effect:{ label:"手札からのプレイ" }, ownerPid:pid,
         sourceName:handPlayLabel(plays[0].kind), priority:2,
-        plays:plays.map(p=>({...p,card:{...p.card}})), srcEvent:{event,ev},
+        plays:plays.map(p=>({...p,card:{...p.card}})), srcEvent:{event,ev:ev2},
       });
     });
   };
@@ -857,6 +862,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     addLog(`[${label}] ${pid}: 「${face.name}」を${paid?"コストを支払って":"コストを支払わずに"}${isCreature?"召喚":"唱える"}`);
     showCutIn({title:`${label}！`,cardName:face.name,civ});
     const payMana=st=>paid?tapManaByUids(st.mana,paidManaUids):st.mana;
+    // ニンジャ・ストライクは「その攻撃中に1度だけ」使える。使ったので印を付ける
+    if(kind==="ninjaStrike") ninjaUsedThisAttackRef.current=true;
     if(isCreature){
       // 進化元は state を見て取り除くので、setSelf の更新関数の中で組み立てる
       const spec=evolutionSpec(card);
@@ -867,6 +874,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           battle:[...st.battle,{...put,evolutionBase:bases}]};
       });
       maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
+      // ニンジャ・ストライク:「そのターンの終わりに、このシノビを自分の山札の一番下に置く」。
+      // 予約しておいて endOfTurnResolution で処理する（pendingRevive と同じ流儀）
+      if(kind==="ninjaStrike"){
+        setSelf(s=>({...s,pendingDeckBottom:[...(s.pendingDeckBottom||[]),put.uid]}));
+        addLog(`[${label}] ${pid}: 「${face.name}」はこのターンの終わりに山札の一番下へ（予約）`);
+      }
       // cip は triggers なので fireTrigger が拾う
       setTimeout(()=>putCreatureBzRef.current(pid,put,"summon"),0);
     }else{
@@ -1238,6 +1251,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(!attacker) return;
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:true}:c)}));
     addLog(`${active}: ${attacker.name} 攻撃宣言（${ATTACK_INTENT_LABEL[intent.kind]}）`);
+    ninjaUsedThisAttackRef.current=false;   // 新しい攻撃なのでニンジャ・ストライクを使い直せる
     // 革命チェンジが使えるなら先に聞く。使えないならそのまま「攻撃する時」の誘発へ
     if(revolutionChangeCandidates(attacker,activeState).length) setRevChangeModal({attacker,intent});
     else fireAttackTriggers(attacker,intent);
@@ -1291,7 +1305,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // どちらも使わなければ intent をそのまま実行する。
   const defenderHas=(c,kw)=>
     hasKeyword(c,kw)||computeGrantedKeywords(c,otherState.battle,otherState).includes(kw);
-  const readyDefenders=kw=>otherState.battle.filter(c=>!c.tapped&&isCreatureSide(c)&&defenderHas(c,kw));
+  // 「ブロックできない」（denyAttackBlock）で縛られているクリーチャーはブロック候補に出さない
+  const readyDefenders=kw=>otherState.battle.filter(c=>!c.tapped&&isCreatureSide(c)&&defenderHas(c,kw)
+    &&!(kw==="blocker"&&attackDenyReason(c,otherState,"block")));
   const blockersFor=()=>readyDefenders("blocker");
   // ガードマン: 攻撃先が「自分の他のクリーチャー」の時だけ、攻撃先を自分に変更できる。
   // シールド／プレイヤーへの攻撃や、自分自身が攻撃先の場合は使えない。
@@ -1588,6 +1604,21 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         });
       });
     });
+    // 遅延効果: ニンジャ・ストライクで出したシノビを、このターンの終わりに山札の一番下へ。
+    // バトルゾーンに残っているものだけが対象（先に離れていれば何も起きない）
+    [{pid:"p1",st:p1,set:setP1},{pid:"p2",st:p2,set:setP2}].forEach(({pid,st,set})=>{
+      const due=st.pendingDeckBottom||[];
+      if(!due.length) return;
+      const back=st.battle.filter(c=>due.includes(c.uid));
+      back.forEach(c=>addLog(`[ニンジャ・ストライク] ${pid.toUpperCase()}: ${c.name} を山札の一番下へ`));
+      set(s=>{
+        const {newBattle,extracted}=due.reduce((acc,uid)=>{
+          const r=extractFromBattle(acc.newBattle,uid);
+          return {newBattle:r.newBattle,extracted:[...acc.extracted,...r.extracted]};
+        },{newBattle:s.battle,extracted:[]});
+        return {...s,battle:newBattle,deck:[...s.deck,...extracted.map(c=>({...c,tapped:false,faceUp:false}))],pendingDeckBottom:[]};
+      });
+    });
     // 遅延効果: pendingRevive（チェスト等）をこのターンの終わりに墓地→BZ
     [{st:p1,set:setP1},{st:p2,set:setP2}].forEach(({st,set})=>{
       if(st.pendingRevive&&st.pendingRevive.length){
@@ -1647,6 +1678,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(activeState.spellDeny?.length){
       setActiveState(s=>({...s,spellDeny:[]}));
       addLog(`${active}: 呪文を唱えられない効果が切れた`);
+    }
+    // 「攻撃もブロックもできない」も同じ規則で切れる
+    if(activeState.attackDeny?.length){
+      setActiveState(s=>({...s,attackDeny:[]}));
+      addLog(`${active}: 攻撃／ブロックできない効果が切れた`);
     }
     // 「能力を無視する」も同じ規則で切れる（無視されている側のターンが終わる
     // ＝ 効果を使った側の「次の自分のターンのはじめ」）
@@ -1827,6 +1863,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           if(!attacker||!blocker){setMessage("攻撃対象を選択");return;}
           setOtherState(s=>({...s,battle:s.battle.map(c=>c.uid===blockerUid?{...c,tapped:true}:c)}));
           addLog(`[BLOCK] ${otherPid.toUpperCase()}: ${blocker.name} でブロック！`);
+          // 「相手のクリーチャーが攻撃**または**ブロックした時」（ニンジャ・ストライク）
+          setTimeout(()=>fireTrigger("block",{sourcePid:otherPid,subjectCard:blocker}),0);
           resolveAttackCreature(attacker,blocker);
         }}
         onGuard={guardUid=>{
