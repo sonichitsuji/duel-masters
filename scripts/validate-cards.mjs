@@ -334,9 +334,12 @@ function checkTrigger(tr, where) {
   if (tr.method && !["summon","cast","put"].includes(tr.method)) errors.push(`${where}(${tr.on}): 未知のmethod "${tr.method}"`);
   if (tr.method === "cast" && tr.on !== "castSpell") errors.push(`${where}(${tr.on}): method:"cast" は on:"castSpell" でのみ使えます`);
   if (["summon","put"].includes(tr.method) && tr.on !== "creaturePutBz") errors.push(`${where}(${tr.on}): method:"${tr.method}" は on:"creaturePutBz" でのみ使えます`);
-  if (tr.paid != null) {
-    if (typeof tr.paid !== "boolean") errors.push(`${where}(${tr.on}): paid は真偽値`);
-    if (!["creaturePutBz","castSpell"].includes(tr.on)) errors.push(`${where}(${tr.on}): paid は on:"creaturePutBz" / "castSpell" でのみ使えます`);
+  // paid（コストを支払ったか）と manaTapped（マナゾーンのカードを実際にタップしたか）も別物。
+  // コスト0のカードを普通にプレイすると paid:true / manaTapped:false になる
+  for (const k of ["paid", "manaTapped"]) {
+    if (tr[k] == null) continue;
+    if (typeof tr[k] !== "boolean") errors.push(`${where}(${tr.on}): ${k} は真偽値`);
+    if (!["creaturePutBz","castSpell"].includes(tr.on)) errors.push(`${where}(${tr.on}): ${k} は on:"creaturePutBz" / "castSpell" でのみ使えます`);
   }
   if (tr.effect) errors.push(`${where}(${tr.on}): 旧記法 effect（effects へ）`);
   if (tr.oncePerTurn != null && typeof tr.oncePerTurn !== "boolean") errors.push(`${where}(${tr.on}): oncePerTurn は真偽値`);

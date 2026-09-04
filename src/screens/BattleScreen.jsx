@@ -23,10 +23,14 @@ import { StepIndicator } from "../components/BoardWidgets";
 // 誘発の宣言と発生イベントのマッチング
 // tr.on: イベント名 / tr.target: "this"(このカード自身) | "self"(自分の) | "opponent"(相手の) | "both"
 // tr.filter: 主体カードの条件（効果と同じ filter 語彙）
-// プレイの出自は2つの軸で持つ。どちらも「書かなければどちらでも誘発する」
-//   tr.method … どうやって出したか  "summon"(召喚) / "cast"(唱えた) / "put"(効果で出した)
-//   tr.paid   … コストを支払ったか  true / false
-// ev: { sourcePid, subjectCard?, method?, paid?, firstThisTurn? }
+// プレイの出自は3つの軸で持つ。どれも「書かなければどちらでも誘発する」
+//   tr.method     … どうやって出したか      "summon"(召喚) / "cast"(唱えた) / "put"(効果で出した)
+//   tr.paid       … コストを支払ったか      true / false
+//   tr.manaTapped … マナゾーンのカードを実際にタップしたか  true / false
+// paid と manaTapped は別物。コスト0のカードや軽減で0になったカードを普通にプレイすると
+// 「コストは支払ったが、マナは1枚もタップしていない」（paid:true / manaTapped:false）になる。
+// ev の manaTapped は**枚数**（数値）で持つ。誘発側は真偽値で「タップしたか」だけを見る
+// ev: { sourcePid, subjectCard?, method?, paid?, manaTapped?, firstThisTurn? }
 const DEFAULT_TRIGGER_SCOPE = {
   creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this", attackEnd:"this",
   battleWin:"this",
@@ -64,6 +68,8 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   // paid:「コストを支払って」／「コストを支払わずに」。S・トリガーや効果で出したものは false、
   // D・D・D や通常のプレイは true。イベント側が持っていない時は絞らない（method と同じ流儀）
   if(tr.paid != null && ev.paid != null && !!tr.paid !== !!ev.paid) return false;
+  // manaTapped: ev 側は枚数（数値）。「1枚でもタップしたか」で真偽値と突き合わせる
+  if(tr.manaTapped != null && ev.manaTapped != null && !!tr.manaTapped !== (ev.manaTapped > 0)) return false;
   // fromZone: どこから唱えた呪文か。「自分の手札から呪文を唱えた時」用（castSpell）
   if(tr.fromZone && (ev.fromZone || "hand") !== tr.fromZone) return false;
   // turnOf: 誰のターンに起きたイベントか。「相手のターンにこのクリーチャーが出た時」用
@@ -363,7 +369,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // ここでは何もしない。
       if (updatedCtx.castSpell) {
         const { card: castFace, origCard, ownerPid: castOwnerPid, fromZone: castFrom,
-                afterCast, afterCastSource, paid: castPaid } = updatedCtx.castSpell;
+                afterCast, afterCastSource, paid: castPaid, manaTapped: castManaTapped } = updatedCtx.castSpell;
         delete updatedCtx.castSpell;
         const castCard = origCard || castFace;   // ゾーンを動かすのは元のカード
         const castMain = spellMainEffect(castFace);
@@ -378,7 +384,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             fromZone: castFrom || "hand", to: isCharger ? "mana" : "grave", afterId,
             afterCast, afterCastSource });
         }, 0);
-        setTimeout(() => fireTriggerRef.current("castSpell", { sourcePid:castOwnerPid, subjectCard:castCard, fromZone:castFrom || "hand", method:"cast", paid: !!castPaid }), 0);
+        setTimeout(() => fireTriggerRef.current("castSpell", { sourcePid:castOwnerPid, subjectCard:castCard, fromZone:castFrom || "hand", method:"cast", paid: !!castPaid, manaTapped: castManaTapped || 0 }), 0);
       }
       // 効果でカードを引いた時（lastCard = 引いた結果その山札が0枚になったか）
       if (updatedCtx.drewCards && updatedCtx.drewCards.length) {
@@ -395,7 +401,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         // ここは fireTrigger に任せるだけでよい（自分自身のぶんも他カードの反応もまとめて拾う）
         list.forEach(e => {
           if (isCreatureSide(e.card)) {
-            setTimeout(() => putCreatureBzRef.current(e.ownerPid, e.card, e.method, { paid: !!e.paid }), 0);
+            setTimeout(() => putCreatureBzRef.current(e.ownerPid, e.card, e.method, { paid: !!e.paid, manaTapped: e.manaTapped || 0 }), 0);
           }
         });
       }
@@ -622,8 +628,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 「出なかったこと」にできる。
   // paid:「コストを支払って出したか」。method（召喚か、効果で出したか）とは独立した軸で、
   // 「S・トリガー＝召喚だが未払い」「D・D・D＝召喚で支払い済み」のように組み合わさる
-  const putCreatureBz=(ownerPid,card,method,{fromHyper=false, paid=false}={})=>{
-    const fire=()=>fireTriggerRef.current("creaturePutBz", { sourcePid:ownerPid, subjectCard:card, method, paid });
+  // manaTapped は実際にタップしたマナゾーンのカードの枚数（コスト0や軽減で0枚のこともある）
+  const putCreatureBz=(ownerPid,card,method,{fromHyper=false, paid=false, manaTapped=0}={})=>{
+    const fire=()=>fireTriggerRef.current("creaturePutBz", { sourcePid:ownerPid, subjectCard:card, method, paid, manaTapped });
     // 超次元ゾーンから出したものは置換しない（そうしないと永久に出られない）
     if(fromHyper){ fire(); return; }
     const hit=findEnterReplacement(card,ownerPid,stateRef.current,active);
@@ -867,7 +874,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const isCreature=isCreatureSide(face);
     const civ=Array.isArray(face.civ)?face.civ[0]:face.civ;
     const label=handPlayLabel(kind);
-    const paid=paidManaUids?.length>0;
+    // ここでコストを払うのは D・D・D だけ。支払う＝必ずマナをタップするので、この枠組みでは
+    // paid と manaTapped が一致する（コスト0の D・D・D は無いため）
+    const manaTapped=paidManaUids?.length||0;
+    const paid=manaTapped>0;
     addLog(`[${label}] ${pid}: 「${face.name}」を${paid?"コストを支払って":"コストを支払わずに"}${isCreature?"召喚":"唱える"}`);
     showCutIn({title:`${label}！`,cardName:face.name,civ});
     const payMana=st=>paid?tapManaByUids(st.mana,paidManaUids):st.mana;
@@ -892,7 +902,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       // cip は triggers なので fireTrigger が拾う。
       // 支払うのは D・D・D だけで、鬼エンド / S・トリガー / アタック・チャンス /
       // ニンジャ・ストライクは「コストを支払わずに」なので paid:false になる
-      setTimeout(()=>putCreatureBzRef.current(pid, put, "summon", { paid }), 0);
+      setTimeout(()=>putCreatureBzRef.current(pid, put, "summon", { paid, manaTapped }), 0);
     }else{
       // 唱えている間はどのゾーンにも置かない。手札から取り除くだけにして、
       // 解決しきった時に墓地（チャージャーならマナ）へ置く
@@ -901,7 +911,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const main=spellMainEffect(face);
       const afterId=main?enqueueEffect({kind:"spell",effect:main,ownerPid:pid,srcCard:face,sourceName:face.name}):null;
       queueSpellAfterCast({pid,card,face,fromZone:"hand",to:isCharger?"mana":"grave",afterId});
-      setTimeout(()=>fireTriggerRef.current("castSpell", { sourcePid:pid, subjectCard:card, fromZone:"hand", method:"cast", paid }), 0);
+      setTimeout(()=>fireTriggerRef.current("castSpell", { sourcePid:pid, subjectCard:card, fromZone:"hand", method:"cast", paid, manaTapped }), 0);
     }
     // 宣言した残りは pending に積んであるので、リゾルバが改めて選ばせる
   };
@@ -1120,6 +1130,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const deny=spellDenyReason({...card,...(twinpactSide==="spell"?card.spellSide:{}),side:"spell"},activeState,otherState);
       if(deny){addLog(`${active}: ${deny}`);setMessage(deny);return false;}
     }
+    // 実際にタップしたマナゾーンのカードの枚数。paid とは別の軸で、コスト0のカードや
+    // 軽減でコストが0になったカードを普通にプレイすると paid:true / manaTapped:0 になる
+    const manaTapped=selectedManaUids?.length||0;
     let newMana=tapManaByUids(activeState.mana,selectedManaUids);
     let newHand=activeState.hand;
     let newGrave=activeState.grave;
@@ -1171,7 +1184,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       if(isCreature) maybeFlagCantAttack([newCreature.uid],setActiveState,otherState.battle);
       // 汎用トリガー: クリーチャーが出た時（自分/相手の監視カードへ）。
       // 自分自身の cip も triggers なので、クリーチャーならこれ1本で足りる
-      if(isCreature) setTimeout(()=>putCreatureBzRef.current(active, newCreature, "summon", { paid }), 0);
+      if(isCreature) setTimeout(()=>putCreatureBzRef.current(active, newCreature, "summon", { paid, manaTapped }), 0);
       // タマシード／フィールドは「クリーチャーが出た時」ではないので上の経路を通らない。
       // 自分自身の「出た時」だけを直接積む
       else selfPutTriggers(card).forEach(tr=>triggerEffect(tr,active,{...activeState,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle},setActiveState,otherState,setOtherState,card.name,{...card,uid:newCreature.uid,srcCardUid:newCreature.uid}));
@@ -1194,7 +1207,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         to:isCharger?"mana":"grave",afterId,
         afterCast:isRecycleCast?{to:"deckBottom"}:null,afterCastSource:isRecycleCast?{...card,name:"リサイクル"}:null});
       // 汎用トリガー: 呪文を唱えた時
-      setTimeout(()=>fireTrigger("castSpell", { sourcePid:active, subjectCard:card, fromZone:isRecycleCast?"grave":"hand", method:"cast", paid }), 0);
+      setTimeout(()=>fireTrigger("castSpell", { sourcePid:active, subjectCard:card, fromZone:isRecycleCast?"grave":"hand", method:"cast", paid, manaTapped }), 0);
     }
     return true;
   };

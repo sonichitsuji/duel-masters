@@ -574,6 +574,7 @@
 | `filter` | 主体カードの条件（効果と同じ filter 語彙）。例 `{"raceContains":"ドラゴン"}` |
 | `method` | **どうやって出したか**。`"summon"` / `"put"`（`creaturePutBz` 専用）／ `"cast"`（`castSpell` 専用）→ **§7.6.5** |
 | `paid` | **コストを支払ったか**（`creaturePutBz` / `castSpell`）。`true` / `false` → **§7.6.5** |
+| `manaTapped` | **マナゾーンのカードを実際にタップしたか**（`creaturePutBz` / `castSpell`）。`paid` とは別物 → **§7.6.5** |
 | `firstEachTurn` | `attack` 等で「各ターン最初の1回のみ」 |
 | `optional` | 「〜してもよい」 |
 | `hyperOnly` | ハイパーモード時のみ発火 |
@@ -682,10 +683,10 @@
 - `oncePerTurn` はターン終了時にリセット、`oncePerGame` はゲーム中リセットされません。
 - `ssx.activated` に書けば、下に敷かれたクリーチャーの起動型能力として上のクリーチャーも使えます。
 
-## 7.6.5. プレイの出自 —「どうやって出したか」（`method`）と「支払ったか」（`paid`）
+## 7.6.5. プレイの出自 — `method` / `paid` / `manaTapped`
 
 クリーチャーが出た時（`creaturePutBz`）と呪文を唱えた時（`castSpell`）のイベントは、
-**独立した2つの軸**を持っています。誘発側で片方だけ、あるいは両方を指定して絞れます。
+**独立した3つの軸**を持っています。誘発側で好きな軸だけを指定して絞れます。
 
 | 軸 | 値 | 意味 |
 |---|---|---|
@@ -694,20 +695,27 @@
 | | `"put"` | **効果で出された**（`graveToBz` / `manaToBz` / `handToBz` / ファイナル革命 等） |
 | `paid` | `true` | **コストを支払った**。通常のプレイ、D・D・D、リサイクル |
 | | `false` | **コストを支払っていない**。S・トリガー、鬼エンド、アタック・チャンス、ニンジャ・ストライク、G・ゼロ、`freeCast`、革命チェンジ、「出す」効果すべて |
+| `manaTapped` | `true` | **マナゾーンのカードを1枚以上タップした** |
+| | `false` | **1枚もタップしていない** |
 
-**どちらも書かなければ絞りません**（従来どおり、出し方を問わず誘発します）。
+**書かなかった軸では絞りません**（従来どおり、出し方を問わず誘発します）。
 
-代表的な組み合わせ:
+### `paid` と `manaTapped` は別物
 
-| プレイ | `method` | `paid` |
-|---|---|---|
-| 手札から普通に召喚／唱える | `summon` / `cast` | `true` |
-| D・D・D | `summon` / `cast` | `true` |
-| S・トリガー | `summon` / `cast` | `false` |
-| 鬼エンド／アタック・チャンス／ニンジャ・ストライク | `summon` / `cast` | `false` |
-| G・ゼロ／`freeCast`／革命チェンジ | `summon` | `false` |
-| `graveToBz` などの「出す」効果 | `put` | `false` |
-| `playFromHand`（効果で唱える／召喚する） | `cast` / `summon` | `free:true` なら `false` |
+**コスト0のカードや、軽減でコストが0になったカードを普通にプレイした時**が両者の分かれ目です。
+「支払った額が0」であって「支払わなかった」わけではないので `paid:true`、
+でもマナゾーンは1枚もタップしていないので `manaTapped:false` になります。
+
+| プレイ | `method` | `paid` | `manaTapped` |
+|---|---|---|---|
+| 手札から普通に召喚／唱える | `summon` / `cast` | `true` | `true` |
+| **コスト0（または軽減で0）を普通にプレイ** | `summon` / `cast` | **`true`** | **`false`** |
+| D・D・D | `summon` / `cast` | `true` | `true` |
+| S・トリガー | `summon` / `cast` | `false` | `false` |
+| 鬼エンド／アタック・チャンス／ニンジャ・ストライク | `summon` / `cast` | `false` | `false` |
+| G・ゼロ／`freeCast`／革命チェンジ | `summon` | `false` | `false` |
+| `graveToBz` などの「出す」効果 | `put` | `false` | `false` |
+| `playFromHand`（効果で唱える／召喚する） | `cast` / `summon` | `free:true` なら `false` | `false` |
 
 ```jsonc
 // 「相手がコストを支払わずに呪文を唱えた時」
@@ -715,13 +723,17 @@
 
 // 「このクリーチャーがコストを支払わずに召喚された時」（効果で出された場合は誘発しない）
 { "on":"creaturePutBz", "method":"summon", "paid":false, "effects":[ … ] }
+
+// 「自分がマナを1枚もタップせずにクリーチャーを出した時」（コスト0も、S・トリガーも含む）
+{ "on":"creaturePutBz", "target":"self", "manaTapped":false, "effects":[ … ] }
 ```
 
-> **コスト0のカードを普通にプレイするのは `paid:true` です。**「支払った額が0」であって
-> 「支払わなかった」わけではないので、タップしたマナの枚数では判定していません。
+> **内部では枚数（数値）で持っています。** 誘発の `manaTapped` は「1枚以上か」を見る真偽値ですが、
+> イベント側は実際にタップした枚数を持っているので、「マナを2枚以上タップして召喚した時」の
+> ような条件が要るカードが出てきたら、キーを増やすだけで表現できます。
 
 > タマシード／フィールド／城は `creaturePutBz` を通らない（クリーチャーではない）ので、
-> この2軸は付きません。自分自身の「出た時」だけが誘発します。
+> この3軸は付きません。自分自身の「出た時」だけが誘発します。
 
 ## 7.7. 墓地・マナゾーンからの召喚（`summonFrom` / `grantSummonFrom`）
 
