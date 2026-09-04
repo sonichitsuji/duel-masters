@@ -329,7 +329,15 @@ function checkTrigger(tr, where) {
   if (LEGACY_ONS.has(tr.on)) errors.push(`${where}: 旧トリガー名 "${tr.on}"（on＋target 形式へ移行してください）`);
   else if (!TRIGGER_ONS.has(tr.on)) errors.push(`${where}: 未知のtrigger on "${tr.on}"`);
   if (tr.target && !TRIGGER_SCOPES.includes(tr.target)) errors.push(`${where}(${tr.on}): 未知のtarget "${tr.target}"`);
-  if (tr.method && !["summon","put"].includes(tr.method)) errors.push(`${where}(${tr.on}): 未知のmethod "${tr.method}"`);
+  // method（どうやって出したか）と paid（コストを支払ったか）は独立した2つの軸。
+  // どちらも書かなければ絞らない（「S・トリガー＝summon かつ paid:false」のように組み合わさる）
+  if (tr.method && !["summon","cast","put"].includes(tr.method)) errors.push(`${where}(${tr.on}): 未知のmethod "${tr.method}"`);
+  if (tr.method === "cast" && tr.on !== "castSpell") errors.push(`${where}(${tr.on}): method:"cast" は on:"castSpell" でのみ使えます`);
+  if (["summon","put"].includes(tr.method) && tr.on !== "creaturePutBz") errors.push(`${where}(${tr.on}): method:"${tr.method}" は on:"creaturePutBz" でのみ使えます`);
+  if (tr.paid != null) {
+    if (typeof tr.paid !== "boolean") errors.push(`${where}(${tr.on}): paid は真偽値`);
+    if (!["creaturePutBz","castSpell"].includes(tr.on)) errors.push(`${where}(${tr.on}): paid は on:"creaturePutBz" / "castSpell" でのみ使えます`);
+  }
   if (tr.effect) errors.push(`${where}(${tr.on}): 旧記法 effect（effects へ）`);
   if (tr.oncePerTurn != null && typeof tr.oncePerTurn !== "boolean") errors.push(`${where}(${tr.on}): oncePerTurn は真偽値`);
   if (tr.lastCard != null) {

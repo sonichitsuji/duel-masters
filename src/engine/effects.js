@@ -692,7 +692,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             // card = 実際に動かす元のカード（ツインパクトなら本体）、face = 唱えている面
             // afterCast =「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る
             // 一度きりの置換で、カード直下の spellAfterCast（継続能力）とは別物
-            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone,
+            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone, paid: !effect.free,
               afterCast: effect.afterCast || null, afterCastSource: effect.afterCast ? srcCard : null };
           } else if (card.type === "castle") {
             setOf(pidx)(s => { const t = take(s); return { ...t, shields: [...t.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }; });
@@ -702,7 +702,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             setOf(pidx)(s => { const r = withNeoBases(take(s), [card]);
               return { ...r.state, battle: [...r.state.battle, withJustDiver({ ...r.cards[0], tapped: false, enteredThisTurn: true, summonedThisTurn: true })] }; });
             addLog(`${pid}: 「${card.name}」を${zoneLabel}${freeLabel}召喚`);
-            ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
+            // 効果による「召喚」。free:true なら「コストを支払わずに」なので paid:false
+            ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon", paid: !effect.free }];
             ctx.lastPutBz = [{ card, ownerPid: pidx }];
           }
         }

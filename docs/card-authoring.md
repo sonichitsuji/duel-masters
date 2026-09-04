@@ -572,7 +572,8 @@
 | パラメータ | 説明 |
 |---|---|
 | `filter` | 主体カードの条件（効果と同じ filter 語彙）。例 `{"raceContains":"ドラゴン"}` |
-| `method` | `creaturePutBz` 専用。`"summon"`(召喚＝プレイして出た) / `"put"`(効果で出された)。未指定なら両方 |
+| `method` | **どうやって出したか**。`"summon"` / `"put"`（`creaturePutBz` 専用）／ `"cast"`（`castSpell` 専用）→ **§7.6.5** |
+| `paid` | **コストを支払ったか**（`creaturePutBz` / `castSpell`）。`true` / `false` → **§7.6.5** |
 | `firstEachTurn` | `attack` 等で「各ターン最初の1回のみ」 |
 | `optional` | 「〜してもよい」 |
 | `hyperOnly` | ハイパーモード時のみ発火 |
@@ -586,6 +587,9 @@
 ```jsonc
 // 相手が効果でクリーチャーを出した時（召喚は対象外）
 {"on":"creaturePutBz","target":"opponent","method":"put","effects":[ … ]}
+
+// 相手がコストを支払わずにクリーチャーを出した時（S・トリガー、「出す」効果など）
+{"on":"creaturePutBz","target":"opponent","paid":false,"effects":[ … ]}
 
 // 各ターン、はじめて自分のクリーチャーが攻撃する時
 {"on":"attack","target":"self","firstEachTurn":true,"effects":[ … ]}
@@ -677,6 +681,47 @@
 - 有効なゾーンは **バトルゾーン＋表向きのシールド**（継続能力が働く場所）。
 - `oncePerTurn` はターン終了時にリセット、`oncePerGame` はゲーム中リセットされません。
 - `ssx.activated` に書けば、下に敷かれたクリーチャーの起動型能力として上のクリーチャーも使えます。
+
+## 7.6.5. プレイの出自 —「どうやって出したか」（`method`）と「支払ったか」（`paid`）
+
+クリーチャーが出た時（`creaturePutBz`）と呪文を唱えた時（`castSpell`）のイベントは、
+**独立した2つの軸**を持っています。誘発側で片方だけ、あるいは両方を指定して絞れます。
+
+| 軸 | 値 | 意味 |
+|---|---|---|
+| `method` | `"summon"` | **召喚した**（手札・墓地・マナからのプレイ、D・D・D、S・トリガー、鬼エンド等） |
+| | `"cast"` | **唱えた**（呪文。`castSpell` 専用） |
+| | `"put"` | **効果で出された**（`graveToBz` / `manaToBz` / `handToBz` / ファイナル革命 等） |
+| `paid` | `true` | **コストを支払った**。通常のプレイ、D・D・D、リサイクル |
+| | `false` | **コストを支払っていない**。S・トリガー、鬼エンド、アタック・チャンス、ニンジャ・ストライク、G・ゼロ、`freeCast`、革命チェンジ、「出す」効果すべて |
+
+**どちらも書かなければ絞りません**（従来どおり、出し方を問わず誘発します）。
+
+代表的な組み合わせ:
+
+| プレイ | `method` | `paid` |
+|---|---|---|
+| 手札から普通に召喚／唱える | `summon` / `cast` | `true` |
+| D・D・D | `summon` / `cast` | `true` |
+| S・トリガー | `summon` / `cast` | `false` |
+| 鬼エンド／アタック・チャンス／ニンジャ・ストライク | `summon` / `cast` | `false` |
+| G・ゼロ／`freeCast`／革命チェンジ | `summon` | `false` |
+| `graveToBz` などの「出す」効果 | `put` | `false` |
+| `playFromHand`（効果で唱える／召喚する） | `cast` / `summon` | `free:true` なら `false` |
+
+```jsonc
+// 「相手がコストを支払わずに呪文を唱えた時」
+{ "on":"castSpell", "target":"opponent", "paid":false, "effects":[ … ] }
+
+// 「このクリーチャーがコストを支払わずに召喚された時」（効果で出された場合は誘発しない）
+{ "on":"creaturePutBz", "method":"summon", "paid":false, "effects":[ … ] }
+```
+
+> **コスト0のカードを普通にプレイするのは `paid:true` です。**「支払った額が0」であって
+> 「支払わなかった」わけではないので、タップしたマナの枚数では判定していません。
+
+> タマシード／フィールド／城は `creaturePutBz` を通らない（クリーチャーではない）ので、
+> この2軸は付きません。自分自身の「出た時」だけが誘発します。
 
 ## 7.7. 墓地・マナゾーンからの召喚（`summonFrom` / `grantSummonFrom`）
 
