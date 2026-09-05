@@ -362,9 +362,9 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
     cards = zoneCards(null, zone, c2);
   } else {
     const ownerPid = selfState === p1 ? "p1" : "p2";
-    const oppPid = ownerPid === "p1" ? "p2" : "p1";
-    const states = tgt === "opponent" ? [[otherState, oppPid]]
-      : tgt === "both" ? [[selfState, ownerPid], [otherState, oppPid]] : [[selfState, ownerPid]];
+    // 対象プレイヤーの決め方は実行時（executeEffect）と同じ targetPids に任せる。
+    // ここで別に書くと、"eventPlayer" のような値を足した時に候補だけ取り残される
+    const states = targetPids(tgt, ownerPid, c2).map(pidx => [pidx === "p1" ? p1 : p2, pidx]);
     for (const [st, stPid] of states) {
       let got = zoneCards(st, zone, c2);
       if (zone === "bz" || zone === "battle") {

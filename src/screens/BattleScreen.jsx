@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -15,7 +15,6 @@ import { HyperUntapModal, HyperTargetedModal } from "../components/modals/HyperM
 import { ReplacementModal } from "../components/modals/ReplacementModal";
 import { HandPlayModal } from "../components/modals/HandPlayModal";
 import { ManaPayModal } from "../components/modals/ManaPayModal";
-import { AttackTriggerModal } from "../components/modals/AttackTriggerModal";
 import { EvolutionSelectModal } from "../components/modals/EvolutionSelectModal";
 import { PlayerBoard } from "../components/PlayerBoard";
 import { StepIndicator } from "../components/BoardWidgets";
@@ -125,7 +124,6 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // { intent } … intent は withBlockStep と同じ形（shield / creature+targetUid / direct）
   const [pendingAttack,setPendingAttack]=useState(null);
   // 革命チェンジの確認。攻撃先を決めた後に聞くので、PlayerBoard ではなくここで持つ
-  const [revChangeModal,setRevChangeModal]=useState(null);
   const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
   const [message,setMessage]=useState("P1: マナチャージorカードをプレイ");
   const [winner,setWinner]=useState(null);
@@ -282,7 +280,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 順番を最初にまとめて決めないのが肝。解決の途中で出たクリーチャーの cip も、
   // まだ解決していない能力と一緒に並び直して選べる。
   // #2 直列化: 解決系・対話系モーダルが1つでも開いていれば次を始めない。
-  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||revChangeModal||enterReplaceQueue.length||shieldAddQueue.length||handoff||winner;
+  const resolverBusy = activeSteps||templateChoiceModal||triggerOrderModal||replacementModal||gStrikeModal||finalRevModal||hyperUntapModal||hyperTargetedModal||hyperUnlockModal||blockerModal||activatedModal||handPlayModal||handPlayPayModal||handPlayEvoModal||leaveReplaceModal||neoPutModal||enterReplaceQueue.length||shieldAddQueue.length||handoff||winner;
   // 直列化の判定を timer の中から読むための写し。effect の closure に固まった resolverBusy は、
   // 「この timer を張った後に始まった解決」を知らない。別々のレンダーで積まれた更新は
   // 別々のバッチで反映されるので、張り直しの clearTimeout が間に合わず、
@@ -870,7 +868,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     const ev2={...ev,ninjaUsed:ninjaUsedThisAttackRef.current};
     ["p1","p2"].forEach(pid=>{
       const oPid=pid==="p1"?"p2":"p1";
-      const plays=findHandPlays(stateRef.current[pid],stateRef.current[oPid],event,ev2,pid);
+      // handPlayKinds が載っていれば、その種類だけを提示する（→ fireAttackTriggers の swapped）
+      const plays=findHandPlays(stateRef.current[pid],stateRef.current[oPid],event,ev2,pid)
+        .filter(p=>!ev2.handPlayKinds||ev2.handPlayKinds.includes(p.kind));
       // priority 2 = 誘発（0/1）より後。先に誘発を解決しきってから「使うかどうか」を聞く。
       // （プレイした後に再提示するので、これが先に来ると誘発が後回しになり続けてしまう）
       if(plays.length) enqueueEffectRef.current({
@@ -885,6 +885,16 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 「何を実行するか」は face、「どのカードを手札から動かすか」は card で見る。
   const playFromHandDeclared=(pid,play,srcEvent,paidManaUids)=>{
     const {card,kind}=play;
+    // 革命チェンジは「出す」のではなく攻撃クリーチャーとの入れ替えなので、専用の処理へ回す。
+    // 攻撃先（intent）は攻撃宣言の時に預けてあるものを使う
+    if(kind==="revolutionChange"){
+      const atkUid=srcEvent?.ev?.subjectCard?.uid;
+      const attacker=stateRef.current[pid].battle.find(c=>c.uid===atkUid);
+      const intent=pendingAttackRef.current?.intent;
+      if(!attacker||!intent){ addLog(`[革命チェンジ] ${pid}: 攻撃中のクリーチャーがいないため中止`); return; }
+      handleRevChangeExec(card,attacker,intent);
+      return;
+    }
     const face=play.face||card;
     const setSelf=pid==="p1"?setP1:setP2;
     const isCreature=isCreatureSide(face);
@@ -1260,8 +1270,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       triggerEffect(handCard.finalRevolution,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,handCard);
     }
     setAttackingUid(handCard.uid);
-    // 入れ替わった後のクリーチャーで「攻撃する時」が誘発する
-    fireAttackTriggers(newBattle.find(c=>c.uid===handCard.uid),intent);
+    // 入れ替わった後のクリーチャーで「攻撃する時」が誘発する。
+    // 攻撃の回数と、鬼エンドなどの宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
+    fireAttackTriggers(newBattle.find(c=>c.uid===handCard.uid),intent,{ swapped:true });
   };
   const handleFinalRevConfirm=selected=>{
     setUsedFinalRevThisTurn(true);
@@ -1308,13 +1319,17 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:true}:c)}));
     addLog(`${active}: ${attacker.name} 攻撃宣言（${ATTACK_INTENT_LABEL[intent.kind]}）`);
     ninjaUsedThisAttackRef.current=false;   // 新しい攻撃なのでニンジャ・ストライクを使い直せる
-    // 革命チェンジが使えるなら先に聞く。使えないならそのまま「攻撃する時」の誘発へ
-    if(revolutionChangeCandidates(attacker,activeState).length) setRevChangeModal({attacker,intent});
-    else fireAttackTriggers(attacker,intent);
+    // 革命チェンジも「攻撃する時に手札から宣言するプレイ」なので、鬼エンドなどと同じ経路で
+    // 一緒に提示する（先に聞いてしまうと、革命チェンジを使った時点で他を宣言できなくなる）
+    fireAttackTriggers(attacker,intent);
   };
   // 「攻撃する時」の誘発。革命チェンジで入れ替わった場合は新しいクリーチャーで誘発する。
   // 攻撃先は誘発を積んでから預ける。先に預けるとリゾルバが誘発の前に攻撃を進めてしまう。
-  const fireAttackTriggers=(attacker,intent)=>{
+  // swapped:true は革命チェンジで入れ替わった後の再発火。
+  //  ・攻撃の回数はすでに数えているので数え直さない
+  //  ・「クリーチャーが攻撃する時」の宣言型プレイ（鬼エンド等）は1回の攻撃につき一度なので
+  //    二度提示しない。ただし革命チェンジ自身は続けてチェンジできるので提示する
+  const fireAttackTriggers=(attacker,intent,{swapped=false}={})=>{
     if(!attacker){ pendingAttackRef.current={intent}; setPendingAttack({intent}); return; }
     // ハイパーモード攻撃時効果：自分の他クリーチャーを1体アンタップ
     const atkHyper=attacker.hyperMode?effectiveCard(attacker).hyperOnAttack:null;
@@ -1324,10 +1339,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     }
     // 攻撃とブロックは「このターンの行動」として合算して数える（回数制限 limitAttackBlock 用）。
     // 「そのターン最初の攻撃か」も同じカウンタから導くので、boolean を別に持つ必要はない
-    const firstThisTurn=!(stateRef.current[active].attackBlockThisTurn||0);
-    setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
+    const firstThisTurn=swapped?false:!(stateRef.current[active].attackBlockThisTurn||0);
+    if(!swapped) setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
     setTimeout(()=>{
-      fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn});
+      fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn,
+        handPlayKinds:swapped?["revolutionChange"]:null});
       pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
@@ -1777,7 +1793,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     pendingAttackRef.current=null;setPendingAttack(null);
     setActiveSteps(null);setTemplateChoiceModal(null);setTriggerOrderModal(null);
     setReplacementModal(null);setEnterReplaceQueue([]);setShieldAddQueue([]);
-    setLeaveReplaceModal(null);setNeoPutModal(null);setRevChangeModal(null);
+    setLeaveReplaceModal(null);setNeoPutModal(null);
     setHandPlayModal(null);setHandPlayPayModal(null);setHandPlayEvoModal(null);
     setActivatedModal(null);setBlockerModal(null);setGStrikeModal(null);
     setFinalRevModal(false);setHyperUntapModal(null);setHyperTargetedModal(null);setHyperUnlockModal(null);
@@ -1868,12 +1884,6 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           onConfirm={uids=>{setHandPlayPayModal(null);playFromHandDeclared(pid,play,srcEvent,uids);}}
           onCancel={()=>{setHandPlayPayModal(null);addLog(`[${handPlayLabel(play.kind)}] ${pid}: 支払いを取りやめ`);}}/>
       );})()}
-      {revChangeModal&&(()=>{const{attacker,intent}=revChangeModal;const st=stateRef.current[active];
-        const done=(handCard)=>{setRevChangeModal(null);
-          if(handCard) handleRevChangeExec(handCard,attacker,intent);
-          else fireAttackTriggers(st.battle.find(c=>c.uid===attacker.uid)||attacker,intent);};
-        return <AttackTriggerModal attacker={attacker} ownerState={st}
-          onRevChange={c=>done(c)} onSkip={()=>done(null)}/>;})()}
       {enterReplaceQueue.length>0&&(()=>{const{ownerPid,card,hit,fire}=enterReplaceQueue[0];
         const zl=ENTER_TO_LABELS[hit.rule.to||"hyper"];
         const done=(apply)=>{setEnterReplaceQueue(q=>q.slice(1));
