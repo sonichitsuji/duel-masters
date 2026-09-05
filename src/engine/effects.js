@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionCard, withJustDiver, spellDenyReason, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionCard, withJustDiver, spellDenyReason, addRestriction, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -104,12 +104,16 @@ export function matchFilter(card, filter, ctx) {
   const civs = getCardCivs(card);
   if (f.civ && !anyOf(f.civ, x => civs.includes(x))) return false;
   if (f.civNot && anyOf(f.civNot, x => civs.includes(x))) return false;
-  if (f.raceContains && !anyOf(f.raceContains, x => !!card.race?.includes(x))) return false;
+  if (f.raceContains && !anyOf(f.raceContains, x => cardHasRace(card, x))) return false;
   if (f.nameContains && !anyOf(f.nameContains, x => !!card.name?.includes(x))) return false;
   if (f.notNameSelf && ctx?.srcName && card.name === ctx.srcName) return false;
+  // notSelf:「自分の**他の**〜」。この効果の持ち主（srcCardUid）自身を候補から除く
+  if (f.notSelf && ctx?.srcCardUid && card.uid === ctx.srcCardUid) return false;
   if (f.keyword && !anyOf(f.keyword, x => hasKeyword(card, x))) return false;
   if (f.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
   if (f.element && !isElement(card)) return false;
+  // uid:「今選んだそのカード」。選択の結果を保存する側（restrictions 等）が焼き込む
+  if (f.uid && !anyOf(f.uid, u => u === card.uid)) return false;
   if (f.creatureOnly && !isCreatureSide(card)) return false;
   if (f.tapped != null && !!card.tapped !== !!f.tapped) return false;
   if (f.cost != null && card.cost !== resolveAmount(ctx, f.cost, f.cost)) return false;
@@ -132,7 +136,12 @@ export function matchFilter(card, filter, ctx) {
 
 // ---- ゾーン取得 ----
 // ゾーン名 → プレイヤー状態のキー（カードを取り除く時に使う）
-const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper" };
+// eventCards は「その誘発の元になった出来事のカード」という疑似ゾーン（revealed / lastMoved と同じ枠）。
+// 今この形で誘発するのは discard（捨てた直後なので実体は墓地にある）だけなので、
+// 実際に取り除くゾーンは墓地。他の出来事に広げる時はここを見直すこと
+// 盤面のゾーンではなく ctx から候補を取る疑似ゾーン
+const PSEUDO_ZONES = new Set(["revealed", "lastMoved", "eventCards"]);
+const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper", eventCards: "grave" };
 
 function zoneCards(state, zone, ctx) {
   switch (zone) {
@@ -145,6 +154,8 @@ function zoneCards(state, zone, ctx) {
     case "hyper": return state?.hyper || [];
     case "revealed": return ctx?.revealed || [];
     case "lastMoved": return ctx?.lastMoved || [];
+    // その誘発の元になった出来事のカード（「捨てたその呪文」など）
+    case "eventCards": return ctx?.subjectCards || [];
     // メテオバーン用。スナップショットではなく「今バトルゾーンにいる」カードの下を見る。
     // 革命チェンジ等で入れ替わっていれば空 = 不発になる。
     case "under": return (state?.battle || []).find(c => c.uid === ctx?.srcCardUid)?.evolutionBase || [];
@@ -170,8 +181,32 @@ function noteShieldAdd(ctx, ownerPid, cards) {
 function entersSick(effect) { return effect.summoningSickness !== false; }
 
 // target("self"|"opponent"|"both") を pid の配列へ
-function targetPids(target, ownerPid) {
+// 付与された種族（grantRace）をカードに載せた写しを返す。付与が無ければそのまま返す
+function withGrantedRaces(card, ownerState) {
+  const races = computeGrantedRaces(card, ownerState?.battle, ownerState);
+  return races.length ? { ...card, grantedRaces: races } : card;
+}
+
+// 「〜できない」系の効果名 → restrictions の kind（→ gameLogic の restrictions）
+const RESTRICTION_KIND = { denySpell: "spell", denyAttackBlock: "attackBlock", limitAttackBlock: "actionLimit" };
+// 制限のログ文。どれも「いつまで／誰が／何をできない」という同じ形なので1か所で組む
+function restrictionLog(rule, tgt) {
+  const who = tgt === "self" ? "自分" : "相手";
+  const cost = rule.filter?.cost != null ? `コスト${rule.filter.cost}の` : "";
+  if (rule.kind === "spell") return `次の相手のターンの終わりまで、${who}は${cost}呪文を唱えられない`;
+  if (rule.kind === "attackBlock") {
+    const what = rule.mode === "attack" ? "攻撃" : rule.mode === "block" ? "ブロック" : "攻撃もブロックも";
+    return `次の自分のターンのはじめまで、${cost}${who}のクリーチャーは${what}できない`;
+  }
+  return `次の自分のターンのはじめまで、${who}は各ターンに${rule.max}回しか、クリーチャーで攻撃もブロックもできない`;
+}
+
+// eventPlayer:「そのプレイヤー」＝この誘発を起こした側（百発人形マグナム）。
+// target:"both" で誘発しつつ、効果は起こした側にだけ効かせたい時に使う。
+// イベントの主体が分からない場合は能力の持ち主に落とす。
+function targetPids(target, ownerPid, ctx) {
   const opp = ownerPid === "p1" ? "p2" : "p1";
+  if (target === "eventPlayer") return [ctx?.eventPid || ownerPid];
   if (target === "opponent") return [opp];
   if (target === "both") return [ownerPid, opp];
   return [ownerPid];
@@ -192,6 +227,9 @@ const SOURCE = {
   bzToHand:       { zone: "bz",       target: "opponent" },
   bzToShield:     { zone: "bz",       target: "opponent" },
   destroy:        { zone: "bz",       target: "opponent" },
+  // 「相手のクリーチャーを1体選ぶ。そのクリーチャーは〜できない」。
+  // all:true なら filter に一致するすべて（＝選ばない）。destroy 等と同じ all の規約に乗せてある
+  denyAttackBlock: { zone: "bz",      target: "opponent" },
   tap:            { zone: "bz",       target: "opponent" },
   untap:          { zone: "bz",       target: "self" },
   tapToggle:      { zone: "bz",       target: "both" },
@@ -217,7 +255,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","winGame","shuffleDeck"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck"]);
 // 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
 const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
 
@@ -243,7 +281,7 @@ export function leavingBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
   // destroy の self:true は「このクリーチャーを破壊する」＝能力の持ち主のものを見る
   const pids = type === "destroy" && effect.self ? [ownerPid]
     : effect.choosePlayer ? (ctx?.chosenPlayer ? [ctx.chosenPlayer] : [])
-    : targetPids(effect.target || SOURCE[type]?.target || "self", ownerPid);
+    : targetPids(effect.target || SOURCE[type]?.target || "self", ownerPid, ctx);
   const out = [];
   for (const pidx of pids) {
     const pool = stateOf(pidx)?.battle || [];
@@ -277,6 +315,11 @@ export function enteringBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
 // ===========================
 // 候補算出（選択UI用）
 // ===========================
+// そのステップが「カードを選ぶ」ものかどうか。
+// getEffectCandidates の isAuto は「候補が0」でも true になるため、
+// 「対象が居ないから行えない」の判定にはこちらを併せて使う（置換を提示してよいかの判定など）。
+export const stepSelectsCards = type => !!SOURCE[type];
+
 export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, srcCard) {
   const type = effect.type;
   const c2 = { ...ctx, srcName: srcCard?.name };
@@ -315,7 +358,7 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
       for (const c of got) owners[c.uid] = ownerPid;
       cards.push(...got);
     }
-  } else if (zone === "revealed" || zone === "lastMoved") {
+  } else if (PSEUDO_ZONES.has(zone)) {
     cards = zoneCards(null, zone, c2);
   } else {
     const ownerPid = selfState === p1 ? "p1" : "p2";
@@ -324,9 +367,12 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
       : tgt === "both" ? [[selfState, ownerPid], [otherState, oppPid]] : [[selfState, ownerPid]];
     for (const [st, stPid] of states) {
       let got = zoneCards(st, zone, c2);
-      // 相手のバトルゾーンから「選ぶ」時だけ、「相手に選ばれない」カードを候補から外す
-      if (selects && st === otherState && (zone === "bz" || zone === "battle")) {
-        got = got.filter(c => !isUnselectableByOpponent(c, st));
+      if (zone === "bz" || zone === "battle") {
+        // 相手のバトルゾーンから「選ぶ」時だけ、「相手に選ばれない」カードを候補から外す
+        if (selects && st === otherState) got = got.filter(c => !isUnselectableByOpponent(c, st));
+        // 他のカードから足された種族（grantRace）を載せる。filter.raceContains は盤面を
+        // 受け取らないので、候補を集めるここで実効の種族にしておく（→ cardHasRace）
+        got = got.map(c => withGrantedRaces(c, st));
       }
       for (const c of got) owners[c.uid] = stPid;
       cards.push(...got);
@@ -415,7 +461,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   // 誰も選ばれていなければ何もしない（all と併用するので、両者が対象になる事故を防ぐ）
   const pids = effect.choosePlayer
     ? (ctx.chosenPlayer ? [ctx.chosenPlayer] : [])
-    : targetPids(tgt, ownerPid);
+    : targetPids(tgt, ownerPid, ctx);
   // 選ばれたカードを対象プレイヤーごとにまとめる。
   // all:true なら選択の代わりに filter 一致すべてを対象にする（「すべて〜する」）。
   const pickSelected = (zone) => {
@@ -485,7 +531,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "count": {
       const zone = effect.zone || "bz";
       let n = 0;
-      if (zone === "revealed" || zone === "lastMoved") n = zoneCards(null, zone, ctx).filter(c => matchFilter(c, effect.filter, ctx)).length;
+      if (PSEUDO_ZONES.has(zone)) n = zoneCards(null, zone, ctx).filter(c => matchFilter(c, effect.filter, ctx)).length;
       else for (const pidx of pids) n += zoneCards(stateOf(pidx), zone, ctx).filter(c => matchFilter(c, effect.filter, ctx)).length;
       ctx.vars[effect.as || "count"] = n;
       addLog(`${pid}: ${effect.label || "カウント"} = ${n}`);
@@ -502,12 +548,19 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     // ---------- ドロー / 山札 ----------
     case "drawCards": {
-      const n = Math.min(amount, selfState.deck.length);
-      if (n > 0) setSelf(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
-      addLog(`${pid}: ${n}枚ドロー`);
-      // 効果によるドローでも draw トリガーを誘発させる（lastCard は山札が0枚になったか）
-      if (n > 0) ctx.drewCards = [...(ctx.drewCards || []), { pid: ownerPid, lastCard: selfState.deck.length - n === 0 }];
-      ctx.stepDone = n > 0;
+      // target を書かなければ自分（既定）。「相手はカードを5枚引く」も同じステップで書ける
+      let drew = 0;
+      for (const pidx of pids) {
+        const st = stateOf(pidx);
+        const n = Math.min(amount, st.deck.length);
+        if (n <= 0) continue;
+        drew += n;
+        setOf(pidx)(s => ({ ...s, hand: [...s.hand, ...s.deck.slice(0, n)], deck: s.deck.slice(n) }));
+        addLog(`${pidx === ownerPid ? pid : (pidx === "p1" ? "P1" : "P2")}: ${n}枚ドロー`);
+        // 効果によるドローでも draw トリガーを誘発させる（lastCard は山札が0枚になったか）
+        ctx.drewCards = [...(ctx.drewCards || []), { pid: pidx, lastCard: st.deck.length - n === 0 }];
+      }
+      ctx.stepDone = drew > 0;
       break;
     }
     case "reveal": {
@@ -659,7 +712,11 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => ({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)), grave: [...s.grave, ...cards] }));
         addLog(`${pid}: ${pidx === ownerPid ? "自分" : "相手"}の手札を${effect.random ? `${cards.length}枚（見ないで）` : cards.map(c => c.name).join(", ")}捨てた`);
-        ctx.discardedBy = [...(ctx.discardedBy || []), pidx];
+        // asCost:「捨てたカードと同じコスト」を控える（destroy の asCost と同じ規約）
+        if (effect.asCost) ctx.vars[effect.asCost] = Math.max(...cards.map(c => c.cost || 0));
+        // 捨てたカード自体を誘発に渡す（「捨てたその呪文を唱える」用）。
+        // カードはこの時点で墓地にあるので、zone:"eventCards" から取り出せる
+        ctx.discardedBy = [...(ctx.discardedBy || []), { pid: pidx, cards }];
       }
       break;
     }
@@ -683,7 +740,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             // card = 実際に動かす元のカード（ツインパクトなら本体）、face = 唱えている面
             // afterCast =「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る
             // 一度きりの置換で、カード直下の spellAfterCast（継続能力）とは別物
-            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone,
+            // 効果で唱えるぶんはマナゾーンを一切タップしない（manaTapped は常に 0）
+            ctx.castSpell = { card: face, origCard: card, ownerPid: pidx, fromZone, paid: !effect.free, manaTapped: 0,
               afterCast: effect.afterCast || null, afterCastSource: effect.afterCast ? srcCard : null };
           } else if (card.type === "castle") {
             setOf(pidx)(s => { const t = take(s); return { ...t, shields: [...t.shields, { ...card, tapped: false, faceUp: true }], shieldAddedThisTurn: true }; });
@@ -693,7 +751,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             setOf(pidx)(s => { const r = withNeoBases(take(s), [card]);
               return { ...r.state, battle: [...r.state.battle, withJustDiver({ ...r.cards[0], tapped: false, enteredThisTurn: true, summonedThisTurn: true })] }; });
             addLog(`${pid}: 「${card.name}」を${zoneLabel}${freeLabel}召喚`);
-            ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon" }];
+            // 効果による「召喚」。free:true なら「コストを支払わずに」なので paid:false。
+            // どちらにせよマナゾーンはタップしない（manaTapped は常に 0）
+            ctx.creatureEnteredBz = [...(ctx.creatureEnteredBz || []), { card, ownerPid: pidx, method: "summon", paid: !effect.free, manaTapped: 0 }];
             ctx.lastPutBz = [{ card, ownerPid: pidx }];
           }
         }
@@ -821,14 +881,28 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       addLog(`${pid}: マナゾーンをすべてアンタップ`);
       break;
     }
-    // 「次の、相手のターンの終わりまで、相手は呪文を唱えられない」（例: ラフルル・ラブ）
-    // 期限の管理は BattleScreen の handleEndTurn 側（対象プレイヤーのターンが終わると切れる）。
-    case "denySpell": {
+    // 「〜できない」系の期限付き制限（→ gameLogic の restrictions）。
+    //   denySpell        「次の、相手のターンの終わりまで、相手は呪文を唱えられない」（ラフルル・ラブ）
+    //   denyAttackBlock  「次の自分のターンのはじめまで、〜のクリーチャーは攻撃もブロックもできない」
+    //   limitAttackBlock 「各ターンに一度しか、クリーチャーで攻撃もブロックもできない」
+    // どれも「縛られる側のプレイヤー状態に積み、その側のターンが終わると切れる」同じ形なので、
+    // 積む処理は1か所にまとめてある（期限の管理も BattleScreen の advanceToNextTurn 1か所）。
+    case "denySpell":
+    case "denyAttackBlock":
+    case "limitAttackBlock": {
       // filter は状態に保存され、あとで matchCardFilter（ctx 無し）で評価されるので、
       // {var} 参照はここで数値に固めておく（「選んだ数字と同じコストの呪文」用）
-      const rule = { until: effect.until || "endOfNextTurn", filter: freezeFilter(effect.filter, ctx), label: effect.label };
-      for (const pidx of pids) setOf(pidx)(s => ({ ...s, spellDeny: [...(s.spellDeny || []), rule] }));
-      addLog(`${pid}: 次の相手のターンの終わりまで、${tgt === "self" ? "自分" : "相手"}は${rule.filter?.cost != null ? `コスト${rule.filter.cost}の` : ""}呪文を唱えられない`);
+      const rule = { kind: RESTRICTION_KIND[type], filter: freezeFilter(effect.filter, ctx), label: effect.label };
+      if (type === "denyAttackBlock") {
+        rule.mode = effect.mode || "both";
+        // 「1体選ぶ」形（all を書かない）は、選んだカードを uid で焼き込む。
+        // filter は保存されてから matchCardFilter で評価されるので、ここで固めておくのは
+        // {var} を数値にするのと同じ理屈（→ freezeFilter）
+        if (!effect.all) rule.filter = { ...rule.filter, uid: selectedUids };
+      }
+      if (type === "limitAttackBlock") rule.max = effect.maxPerTurn ?? 1;
+      for (const pidx of pids) setOf(pidx)(s => addRestriction(s, rule));
+      addLog(`${pid}: ${restrictionLog(rule, tgt)}`);
       break;
     }
     // 「そのエレメントの能力を無視する」。バトルゾーンのカードに印を付けるだけで、

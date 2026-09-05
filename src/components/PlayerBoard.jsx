@@ -103,6 +103,9 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   // 出す前に進化元を選ぶ必要があるカードか。NEO は type が "creature" のままなので evolution を見る
   const needsEvolutionSelect=card=>card.type==="evo_creature"||!!evolutionSpec(card);
 
+  // G・ゼロ / freeCast の「コストを支払わないプレイ」。マナを1枚もタップせず、paid:false で出す
+  // （コスト0のカードを普通にプレイするのは「0を支払った」なので、こちらは通さない）
+  const playWithoutPaying=(idx,side=null,baseUids=null)=>onPlayCard(idx, [], side, baseUids, "hand", null, false, false);
   const handleHandClick=i=>{if(!isActive)return;setSelBattle(null);setSelHand(selHand===i?null:i);};
   const handleBattleClick=card=>{if(attackingUid&&!isActive){onAttackCreature(card.uid);return;}setSelHand(null);setSelBattle(selBattle===card.uid?null:card.uid);};
   const handleCharge=()=>{if(selHand===null)return;onChargeMana(selHand);setSelHand(null);};
@@ -143,7 +146,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     if(needsEvolutionSelect(card)){
       if(!openEvolutionSelect({handIdx:selHand,card,gZero:true}))return;
     }else{
-      const ok=onPlayCard(selHand,[],null,null);
+      const ok=playWithoutPaying(selHand);
       if(ok!==false)setSelHand(null);
     }
   };
@@ -155,7 +158,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
     if(needsEvolutionSelect(card)){
       if(!openEvolutionSelect({handIdx:selHand,card,freeCast:true}))return;
     }else{
-      const ok=onPlayCard(selHand,[],freeCastSide,null);
+      const ok=playWithoutPaying(selHand,freeCastSide);
       if(ok!==false)setSelHand(null);
     }
   };
@@ -203,7 +206,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
             setEvolutionSelectModal(null);
             // G・ゼロ / コストを支払わないプレイはマナを1枚もタップしないので支払いUIを挟まない
             if(gZero||freeCast){
-              const ok=onPlayCard(handIdx,[],freeCast?freeCastSide:null,baseUids);
+              const ok=playWithoutPaying(handIdx,freeCast?freeCastSide:null,baseUids);
               if(ok!==false)setSelHand(null);
             }else{
               setManaPayModal({handIdx,card,evolutionBaseUids:baseUids,zone,permKey});

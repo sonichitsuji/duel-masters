@@ -5081,5 +5081,355 @@
       }
     ],
     "id": 133
+  },
+  {
+    "name": "裏斬隠 テンサイ・ハート",
+    "type": "creature",
+    "civ": "water",
+    "race": "サイバー・ウイルス/グレートメカオー/シノビ",
+    "cost": 3,
+    "power": 3000,
+    "keywords": [],
+    "effect": "ウラ・ニンジャ・ストライク3（水）（相手のクリーチャーが攻撃またはブロックした時、自分のマナゾーンにカードが3枚以上で水文明があり、その攻撃中に「ニンジャ・ストライク」能力を使っていなかった場合、このシノビをコストを支払わずに召喚してもよい。そのターンの終わりに、このシノビを自分の山札の一番下に置く）\nこのクリーチャーが出た時、カードを2枚引き、自分の手札を1枚捨てる。次の自分のターンのはじめまで、その捨てたカードと同じコストの相手のクリーチャーはすべて、攻撃もブロックもできない。",
+    "ninjaStrike": {
+      "count": 3,
+      "civ": "water"
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "カードを2枚引く",
+            "type": "drawCards",
+            "amount": 2
+          },
+          {
+            "label": "自分の手札を1枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 1,
+            "asCost": "discardedCost"
+          },
+          {
+            "label": "次の自分のターンのはじめまで、その捨てたカードと同じコストの相手のクリーチャーは攻撃もブロックもできない",
+            "type": "denyAttackBlock",
+            "target": "opponent",
+            "mode": "both",
+            "all": true,
+            "filter": {
+              "creatureOnly": true,
+              "cost": {
+                "var": "discardedCost"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "id": 134
+  },
+  {
+    "name": "氷柱と炎弧の決断",
+    "type": "spell",
+    "civ": [
+      "water",
+      "fire"
+    ],
+    "race": null,
+    "cost": 3,
+    "power": 0,
+    "keywords": [],
+    "effect": "自分の墓地に呪文が2枚以上あれば、自分のシールドゾーンにあるこの呪文に「S・トリガー」を与える。\n次の中から2回選ぶ。同じものを選んでもよい。\n▶相手のクリーチャーを1体選ぶ。次の自分のターンのはじめまで、そのクリーチャーは攻撃もブロックもできない。\n▶自分の手札を1枚捨て、カードを2枚引く。\n▶コスト2以下のエレメントを1つ、自分の手札から出す。",
+    "grantSelfSTrigger": {
+      "condition": {
+        "type": "cardCount",
+        "who": "self",
+        "zone": "grave",
+        "filter": {
+          "type": "spell"
+        },
+        "min": 2
+      }
+    },
+    "triggers": [
+      {
+        "on": "cast",
+        "type": "chooseTimes",
+        "count": 2,
+        "templates": [
+          {
+            "label": "相手のクリーチャーを1体選ぶ。次の自分のターンのはじめまで、そのクリーチャーは攻撃もブロックもできない",
+            "effects": [
+              {
+                "type": "denyAttackBlock",
+                "target": "opponent",
+                "amount": 1,
+                "mode": "both",
+                "filter": {
+                  "creatureOnly": true
+                }
+              }
+            ]
+          },
+          {
+            "label": "自分の手札を1枚捨て、カードを2枚引く",
+            "effects": [
+              {
+                "label": "自分の手札を1枚捨てる",
+                "type": "handToGrave",
+                "target": "self",
+                "amount": 1
+              },
+              {
+                "label": "カードを2枚引く",
+                "type": "drawCards",
+                "amount": 2
+              }
+            ]
+          },
+          {
+            "label": "コスト2以下のエレメントを1つ、自分の手札から出す",
+            "effects": [
+              {
+                "type": "handToBz",
+                "target": "self",
+                "amount": 1,
+                "filter": {
+                  "element": true,
+                  "maxCost": 2
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "id": 135
+  },
+  {
+    "name": "龍装艦 チェンジザ",
+    "type": "twinpact",
+    "civ": "water",
+    "race": "ドラゴンギルド/ムートピア",
+    "cost": 6,
+    "power": 6000,
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "W・ブレイカー\nこのクリーチャーが出た時または攻撃する時、カードを2枚引き、自分の手札を1枚捨てる。\n各ターン、はじめて自分の手札からコスト5以下の呪文を捨てた時、その呪文をコストを支払わずに唱えてもよい。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "カードを2枚引く",
+            "type": "drawCards",
+            "amount": 2
+          },
+          {
+            "label": "自分の手札を1枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 1
+          }
+        ]
+      },
+      {
+        "on": "attack",
+        "effects": [
+          {
+            "label": "カードを2枚引く",
+            "type": "drawCards",
+            "amount": 2
+          },
+          {
+            "label": "自分の手札を1枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 1
+          }
+        ]
+      },
+      {
+        "on": "discard",
+        "target": "self",
+        "oncePerTurn": true,
+        "filter": {
+          "type": "spell",
+          "maxCost": 5
+        },
+        "effects": [
+          {
+            "label": "その呪文をコストを支払わずに唱えてもよい",
+            "optional": true,
+            "type": "playFromHand",
+            "zone": "eventCards",
+            "free": true,
+            "amount": 1,
+            "filter": {
+              "type": "spell",
+              "maxCost": 5
+            }
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "六奇怪の四 〜土を割る逆瀧〜",
+      "cost": 4,
+      "civ": "water",
+      "keywords": [],
+      "effect": "次の自分のターンのはじめまで、相手は各ターンに一度しか、クリーチャーで攻撃もブロックもできない。",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "次の自分のターンのはじめまで、相手は各ターンに一度しか、クリーチャーで攻撃もブロックもできない",
+              "type": "limitAttackBlock",
+              "target": "opponent",
+              "maxPerTurn": 1
+            }
+          ]
+        }
+      ]
+    },
+    "id": 136
+  },
+  {
+    "name": "我竜塔第八層 バルザーク",
+    "type": "castle",
+    "civ": "fire",
+    "race": null,
+    "cost": 2,
+    "keywords": [],
+    "faceUpLeaveTo": "grave",
+    "effect": "（G城は実行したら、表向きでシールド化される。このカードが表向きで自分のシールドゾーンを離れる時、かわりに墓地に置く）\n各ターン、はじめて自分の手札を捨てた時、カードを1枚引いてもよい。\nこのシールドが表向きで離れた時、自分の手札を1枚捨て、カードを2枚引く。",
+    "triggers": [
+      {
+        "on": "discard",
+        "target": "self",
+        "oncePerTurn": true,
+        "effects": [
+          {
+            "label": "カードを1枚引いてもよい",
+            "optional": true,
+            "type": "drawCards",
+            "amount": 1
+          }
+        ]
+      },
+      {
+        "on": "shieldLeave",
+        "target": "this",
+        "effects": [
+          {
+            "label": "自分の手札を1枚捨てる",
+            "type": "handToGrave",
+            "target": "self",
+            "amount": 1
+          },
+          {
+            "label": "カードを2枚引く",
+            "type": "drawCards",
+            "amount": 2
+          }
+        ]
+      }
+    ],
+    "id": 137
+  },
+  {
+    "name": "百発人形マグナム",
+    "type": "creature",
+    "civ": "darkness",
+    "race": "デスパペット",
+    "cost": 4,
+    "power": 4000,
+    "keywords": [],
+    "effect": "いずれかのプレイヤーが、マナゾーンのカードをタップせずに、クリーチャーを出した時または呪文を唱えた時、そのプレイヤーは自身のクリーチャーを1体選んで破壊する。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "target": "both",
+        "manaTapped": false,
+        "effects": [
+          {
+            "label": "そのプレイヤーは自身のクリーチャーを1体選んで破壊する",
+            "type": "destroy",
+            "target": "eventPlayer",
+            "amount": 1,
+            "filter": {
+              "creatureOnly": true
+            }
+          }
+        ]
+      },
+      {
+        "on": "castSpell",
+        "target": "both",
+        "manaTapped": false,
+        "effects": [
+          {
+            "label": "そのプレイヤーは自身のクリーチャーを1体選んで破壊する",
+            "type": "destroy",
+            "target": "eventPlayer",
+            "amount": 1,
+            "filter": {
+              "creatureOnly": true
+            }
+          }
+        ]
+      }
+    ],
+    "id": 138
+  },
+  {
+    "name": "宇宙 タコンチュ",
+    "type": "creature",
+    "civ": "water",
+    "race": "マジック・コマンド/侵略者",
+    "cost": 5,
+    "power": 5000,
+    "powerPlus": true,
+    "keywords": [],
+    "effect": "自分の水のクリーチャーはすべて、種族にマジック・コマンドを追加する。\n相手のターン中に、このクリーチャーが破壊される時、かわりに相手はカードを5枚引き、そのターン、このクリーチャーのパワーを+5000する。",
+    "grantRace": [
+      {
+        "race": "マジック・コマンド",
+        "filter": {
+          "creatureOnly": true,
+          "civ": "water"
+        }
+      }
+    ],
+    "replaceLeave": [
+      {
+        "from": "destroy",
+        "to": "effect",
+        "turnOf": "opponent",
+        "filter": {
+          "self": true
+        },
+        "effects": [
+          {
+            "label": "相手はカードを5枚引く",
+            "type": "drawCards",
+            "target": "opponent",
+            "amount": 5
+          },
+          {
+            "label": "そのターン、このクリーチャーのパワーを+5000する",
+            "type": "powerBuff",
+            "target": "self",
+            "subject": true,
+            "amount": 5000,
+            "expires": "endOfTurn"
+          }
+        ]
+      }
+    ],
+    "id": 139
   }
 ]

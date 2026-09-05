@@ -126,6 +126,12 @@ export function collectCostReduceSources(source) {
 // civ / raceContains / nameContains / keyword / type は配列で書くと「いずれか」(OR) になる
 const anyOf = (v, test) => (Array.isArray(v) ? v.some(test) : test(v));
 
+// 種族の判定。印刷された race に加えて、他のカードから足された種族（grantRace）も見る。
+// 付与ぶんは盤面が要るので、候補を集める時点で card.grantedRaces に載せてある
+// （→ engine/effects の getEffectCandidates）。engine 側の matchFilter と同じ語彙。
+export const cardHasRace = (card, race) =>
+  !!card.race?.includes(race) || !!card.grantedRaces?.includes(race);
+
 // ツインパクトは「クリーチャーであり呪文でもある」。どちらの特性も参照できるので、
 // 「墓地からクリーチャーを手札に戻す」でも「墓地から呪文を唱える」でも対象になる。
 // ただしプレイ中はどちらの面かが確定するので、その時は card.side("creature"/"spell") を見る。
@@ -159,7 +165,9 @@ export function matchCardFilter(card, filter) {
   if (!filter) return true;
   // side: ツインパクトのどちらの面としてプレイしているか（"creature" / "spell"）
   if (filter.side && card.side !== filter.side) return false;
-  if (filter.raceContains && !anyOf(filter.raceContains, x => !!card.race?.includes(x))) return false;
+  // uid:「今選んだそのカード」。matchFilter と同じ語彙（選択の結果を保存する側が焼き込む）
+  if (filter.uid && !anyOf(filter.uid, u => u === card.uid)) return false;
+  if (filter.raceContains && !anyOf(filter.raceContains, x => cardHasRace(card, x))) return false;
   if (filter.nameContains && !anyOf(filter.nameContains, x => !!card.name?.includes(x))) return false;
   if (filter.civ && !anyOf(filter.civ, x => getCardCivs(card).includes(x))) return false;
   if (filter.keyword && !anyOf(filter.keyword, x => hasKeyword(card, x))) return false;
@@ -305,7 +313,7 @@ const IDENTITY_KEYS = new Set(["id","uid","name","cost","power","civ","type","ra
 // evolutionBase は能力ではなくカードの構成なので残す（進化クリーチャーであることは変わらない）。
 const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "summonFrom","freeCast","replaceLose","replaceLeave","spellAfterCast","staticDeny",
-  "costReduce","condPower","grantKeywords","grantPowerBoost","grantPowerBoostGrave",
+  "costReduce","condPower","grantKeywords","grantRace","grantPowerBoost","grantPowerBoostGrave",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
   "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
@@ -402,11 +410,34 @@ export function getBreakCount(card, effPower, extraKeywords = []) {
 // ===========================
 export const LOSE_CAUSES = ["deckOut"];
 
+// 置換元の共通の条件判定。replaceLeave / replaceEnter / replaceShieldAdd が同じ語彙を使う。
+//   filter      … 出来事の対象になるカードの条件
+//   filter.self … 「このカード自身が〜する時」＝置換元自身にだけ効く（エターナル・Ω）
+//   who         … 出来事の当事者（対象カードの持ち主）。"self" / "opponent" / "both"（既定）
+//   turnOf      … 誰のターンに起きた出来事か。"self" / "opponent" / "both"（既定）
+// who / turnOf はどちらも「置換元のカードの持ち主（srcPid）」から見た関係。
+function replacementMatches(rule, { card, srcCard, ownerPid, srcPid, activePid }) {
+  const isSelf = ownerPid === srcPid;
+  const who = rule.who || "both";
+  if (who === "self" && !isSelf) return false;
+  if (who === "opponent" && isSelf) return false;
+  if (activePid) {
+    const ownTurn = activePid === srcPid;
+    const turnOf = rule.turnOf || "both";
+    if (turnOf === "self" && !ownTurn) return false;
+    if (turnOf === "opponent" && ownTurn) return false;
+  }
+  if (rule.filter?.self && srcCard?.uid !== card.uid) return false;
+  if (rule.filter && !matchCardFilter(card, rule.filter)) return false;
+  return true;
+}
+
 // 「自分のクリーチャーが離れる時、かわりに〜する」の置換元を探す。
 // 有効なゾーンはバトルゾーン＋表向きシールド（replaceLose と同じ）。
-//   replaceLeave: { to:"mana"|"hand"|"shield"|"deck", filter?, optional? }
+//   replaceLeave: { from?, to:"mana"|"hand"|"shield"|"deck"|"effect", turnOf?, filter?, effects? }
+// 探すのは持ち主自身のゾーンだけなので、who は常に「自分」（＝ srcPid は ownerPid と同じ）。
 // 置換は §0 のとおり必ず例外処理で中止できる形で提示すること。
-export function findLeaveReplacement(ownerState, card, to) {
+export function findLeaveReplacement(ownerState, card, to, { ownerPid, activePid } = {}) {
   if (!ownerState || !card) return null;
   const sources = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
   for (const c of sources) {
@@ -415,9 +446,7 @@ export function findLeaveReplacement(ownerState, card, to) {
     for (const rule of (Array.isArray(rules) ? rules : [rules])) {
       // from:"destroy"「破壊される時」= 墓地へ送られる時だけ。書かなければ離れ方を問わない
       if (rule.from === "destroy" && to !== "grave") continue;
-      // filter.self:「このクリーチャーが離れる時」= 置換元自身にだけ効く（エターナル・Ω）
-      if (rule.filter?.self && c.uid !== card.uid) continue;
-      if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
+      if (!replacementMatches(rule, { card, srcCard: c, ownerPid, srcPid: ownerPid, activePid })) continue;
       return { card: c, rule };
     }
   }
@@ -433,13 +462,10 @@ export const SPELL_AFTER_CAST_TO = ["deckBottom", "deckTop", "hand", "mana", "sh
 // 「〜に置かれる時、かわりに〜に置く」系の置換元を探す共通処理。
 // 有効なのはバトルゾーン＋表向きシールド（replaceLeave / spellAfterCast と同じ流儀）。
 // 共通のデータ形: { who?, turnOf?, to, filter?, costOver? }
-//   who     … 出来事の当事者（置かれるカードの持ち主）。"self" / "opponent" / "both"（既定）
-//   turnOf  … 誰のターンに起きた出来事か。"self" / "opponent" / "both"（既定）
+//   who / turnOf / filter … replacementMatches が共通に判定する
 //   to      … かわりに置く先
-//   filter  … 置かれるカードの条件
 //   costOver… 「あるゾーンのカードの枚数よりコストが大きい」（{zone, filter?, of?}）。
 //             of は数えるゾーンの持ち主で、既定は置かれるカードの持ち主（＝カードの「自身の」）
-// who / turnOf はどちらも「置換元のカードの持ち主」から見た関係。
 // 置換は §0 のとおり必ず例外処理で中止できる形で提示すること。
 function findPlacementReplacement(field, card, ownerPid, states, activePid) {
   if (!card) return null;
@@ -450,19 +476,11 @@ function findPlacementReplacement(field, card, ownerPid, states, activePid) {
     for (const c of sources) {
       const rule = effectiveCard(c)[field];
       if (!rule) continue;
-      const isSelf = ownerPid === srcPid;
-      const who = rule.who || "both";
-      if (who === "self" && !isSelf) continue;
-      if (who === "opponent" && isSelf) continue;
-      const ownTurn = activePid === srcPid;
-      const turnOf = rule.turnOf || "both";
-      if (turnOf === "self" && !ownTurn) continue;
-      if (turnOf === "opponent" && ownTurn) continue;
       if (rule.costOver) {
         const cntSt = states?.[rule.costOver.of === "source" ? srcPid : ownerPid];
         if (!((card.cost || 0) > countCardsInZone(cntSt, rule.costOver))) continue;
       }
-      if (rule.filter && !matchCardFilter(card, rule.filter)) continue;
+      if (!replacementMatches(rule, { card, srcCard: c, ownerPid, srcPid, activePid })) continue;
       return { card: c, sourcePid: srcPid, rule };
     }
   }
@@ -485,16 +503,31 @@ export function findShieldAddReplacement(card, ownerPid, states, activePid) {
 }
 
 // ===========================
-// 呪文を唱えられない（ラフルル・ラブ等）
+// 期限付きのプレイヤー制限（restrictions）
 // ===========================
+// 「〜できない」系はどれも「縛られる側のプレイヤー状態に積み、その側のターンが終わると切れる」
+// という同じ形なので、1つの配列にまとめてある。
+//   restrictions: [{ kind, filter?, label?, mode?, max? }]
+//     kind:"spell"       … 呪文を唱えられない            （効果 denySpell）
+//     kind:"attackBlock" … 攻撃／ブロックできない        （効果 denyAttackBlock。mode: "both"(既定)/"attack"/"block"）
+//     kind:"actionLimit" … 各ターンに max 回しか攻撃／ブロックできない（効果 limitAttackBlock）
+// 期限はどれも同じ（縛られた側のターンが終わる＝使った側の「次の自分のターンのはじめ」）なので、
+// advanceToNextTurn で restrictions を空にするだけで全部まとめて切れる。
+export function addRestriction(state, rule) {
+  return { ...state, restrictions: [...(state.restrictions || []), rule] };
+}
+const restrictionsOf = (ownerState, kind) => (ownerState?.restrictions || []).filter(r => r.kind === kind);
+const MODE_LABEL = { attack: "攻撃", block: "ブロック", both: "攻撃もブロックも" };
+
+// 呪文を唱えられない（ラフルル・ラブ等）。
 // 2通りある。どちらも「唱えようとする側」から見て理由を1つ返す（唱えられるなら null）。
-//   - 期限付き: プレイヤー状態の spellDeny（効果 denySpell が積み、ターン終了時に切れる）
+//   - 期限付き: restrictions の kind:"spell"（効果 denySpell が積む）
 //   - 常在型  : 相手のバトルゾーン／表向きシールドの staticDeny:{ type:"cantCastSpell", filter? }
 // ツインパクトは面が確定して初めて呪文になるので、判定は side:"spell" か type:"spell" の時だけ。
 export function spellDenyReason(card, ownerState, otherState) {
   if (!card) return null;
   if (!(card.side === "spell" || card.type === "spell")) return null;
-  for (const d of ownerState?.spellDeny || []) {
+  for (const d of restrictionsOf(ownerState, "spell")) {
     if (d.filter && !matchCardFilter(card, d.filter)) continue;
     return d.label || "相手の効果により呪文を唱えられない";
   }
@@ -507,6 +540,25 @@ export function spellDenyReason(card, ownerState, otherState) {
   }
   return null;
 }
+// 攻撃／ブロックができない理由（できるなら null）。mode: "attack" / "block"。
+// 「攻撃もブロックもできない」と「各ターンに一度しか〜できない」は、呼ぶ側から見れば
+// 「今このクリーチャーで攻撃（ブロック）できるか」という同じ問いなので1本にまとめてある。
+export function attackBlockReason(card, ownerState, mode = "attack") {
+  if (!card) return null;
+  for (const d of restrictionsOf(ownerState, "attackBlock")) {
+    if ((d.mode || "both") !== "both" && d.mode !== mode) continue;
+    if (d.filter && !matchCardFilter(card, d.filter)) continue;
+    return d.label || `相手の効果により${MODE_LABEL[mode]}できない`;
+  }
+  // 回数制限は「クリーチャーで攻撃もブロックも」の合算。このターン何回行動したかで見る
+  const done = ownerState?.attackBlockThisTurn || 0;
+  for (const d of restrictionsOf(ownerState, "actionLimit")) {
+    const max = d.max ?? 1;
+    if (done >= max) return d.label || `各ターン${max}回しか攻撃・ブロックできない`;
+  }
+  return null;
+}
+
 export function findSpellAfterCast(ownerState, card, fromZone = "hand") {
   return findSpellAfterCastAll(ownerState, card, fromZone)[0] || null;
 }
@@ -763,17 +815,21 @@ export function manaHasAll(state, filters){
 // 違いは ①提示の条件 ②コストを払うかどうか の2つだけなので、1つの枠組みにまとめてある。
 //   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
 //   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
-export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance"];
+export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike"];
 // sTrigger は誘発で手札を探す能力ではないが、「手札のカードをコストを支払わずにプレイしてよいか
 // 聞く」点が同じなので、同じ枠組み（HandPlayModal / playFromHandDeclared）に乗せている。
-const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", sTrigger: "S・トリガー" };
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", sTrigger: "S・トリガー" };
 export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
 
 // 誘発の on / target がこのイベントに合うか（両方の能力で共通）
 function handPlayMatchesEvent(spec, event, ev, ownerPid, kind){
-  if((spec.on || "attack") !== event) return false;
-  // アタック・チャンスは「**自分の**指定のクリーチャーが攻撃する時」なので既定が self
-  const scope = spec.target || (kind === "attackChance" ? "self" : "both");
+  // ニンジャ・ストライクは「攻撃**または**ブロックした時」の2つが契機
+  if(kind === "ninjaStrike"){
+    if(event !== "attack" && event !== "block") return false;
+  }else if((spec.on || "attack") !== event) return false;
+  // アタック・チャンスは「**自分の**指定のクリーチャーが攻撃する時」なので既定が self、
+  // ニンジャ・ストライクは「**相手の**クリーチャーが〜した時」なので既定が opponent
+  const scope = spec.target || (kind === "attackChance" ? "self" : kind === "ninjaStrike" ? "opponent" : "both");
   if(scope === "self" && ev.sourcePid !== ownerPid) return false;
   if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
   return true;
@@ -794,6 +850,16 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
         // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
         if(!oniEndActive(state, otherState)) continue;
         if(!manaHasAll(state, spec.manaHas)) continue;
+        out.push({ card, kind, cost: null });
+      }else if(kind === "ninjaStrike"){
+        // ニンジャ・ストライクN（X）: 自分のマナゾーンにカードがN枚以上で、X文明があること。
+        // マナはタップしない（支払いではなく条件）。
+        // 「その攻撃中に『ニンジャ・ストライク』能力を使っていなかった場合」は
+        // 盤面ではなく進行の状態なので、呼び出し側から ev.ninjaUsed で渡してもらう
+        if(ev.ninjaUsed) continue;
+        const mana = state?.mana || [];
+        if(mana.length < (spec.count ?? 0)) continue;
+        if(spec.civ && !mana.some(m => getManaCivs(m).includes(spec.civ))) continue;
         out.push({ card, kind, cost: null });
       }else if(kind === "attackChance"){
         // アタック・チャンス:「自分の指定のクリーチャーが攻撃する時」。
@@ -913,29 +979,54 @@ export function getEffectivePower(card, ownerState, allOwnBattle, opts = {}) {
 
 // ownerState を渡すと condition(civicCount等) と表向きシールドの付与源も評価できる。
 // 後方互換: battleZone のみでも動作（その場合 condition は battle だけで評価、表向きシールド源は無し）。
-export function computeGrantedKeywords(card, battleZone, ownerState) {
+// 付与ルールの条件判定。grantKeywords（能力を与える）と grantRace（種族を足す）で共通。
+// matchCardFilter とは別に持っているのは、付与元自身との関係（notSelf / self）を見るため。
+function grantRuleMatches(rule, { card, evalCard, granter, evalState }) {
+  if (rule.condition && !checkGrantCondition(rule.condition, evalState, granter)) return false;
+  const f = rule.filter;
+  if (!f) return true;
+  if (f.raceContains && !evalCard.race?.includes(f.raceContains)) return false;
+  if (f.civ && !getCardCivs(card).includes(f.civ)) return false;
+  if (f.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) return false;
+  if (f.notSelf && granter.uid === card.uid) return false;
+  // self:「このクリーチャーに〜を与える」。同名の2体目に配らないよう uid で見る
+  if (f.self && granter.uid !== card.uid) return false;
+  if (f.nameContains && !card.name?.includes(f.nameContains)) return false;
+  if (f.creatureOnly && !isCreatureSide(card)) return false;
+  if (f.elementOnly && !isElement(card)) return false;
+  return true;
+}
+
+// 他のカードから継続的に付与されているものを集める。
+// 「能力を与える」（grantKeywords）と「種族を足す」（grantRace）は、与えるものが違うだけで
+// 付与源の集め方も条件判定も同じなので、1つのループでまとめて集める。
+export function computeGranted(card, battleZone, ownerState) {
   const evalCard = effectiveCard(card);
-  const granted = [...(evalCard.tempBuff?.keywords || []), ...ssxKeywords(card)];
+  const keywords = [...(evalCard.tempBuff?.keywords || []), ...ssxKeywords(card)];
+  const races = [];
   const zone = battleZone || ownerState?.battle;
-  if (!zone) return granted;
+  if (!zone) return { keywords, races };
   const evalState = ownerState || { battle: zone, shields: [] };
   // 付与源: バトルゾーンの全カード＋シールドゾーンの表向きカード（種別非依存で faceUp を見る）
   const granters = [...zone, ...((ownerState?.shields || []).filter(s => s.faceUp))].map(effectiveCard);
   for (const granter of granters) {
-    if (!granter.grantKeywords) continue;
-    for (const rule of granter.grantKeywords) {
-      if (rule.condition && !checkGrantCondition(rule.condition, evalState, granter)) continue;
-      if (rule.filter?.raceContains && !evalCard.race?.includes(rule.filter.raceContains)) continue;
-      if (rule.filter?.multiColor && !(Array.isArray(card.civ) && card.civ.length >= 2)) continue;
-      if (rule.filter?.notSelf && granter.uid === card.uid) continue;
-      // self:「このクリーチャーに〜を与える」。同名の2体目に配らないよう uid で見る
-      if (rule.filter?.self && granter.uid !== card.uid) continue;
-      if (rule.filter?.nameContains && !card.name?.includes(rule.filter.nameContains)) continue;
-      if (rule.filter?.elementOnly && !isElement(card)) continue;
-      if (!granted.includes(rule.keyword)) granted.push(rule.keyword);
+    for (const [field, out, key] of [["grantKeywords", keywords, "keyword"], ["grantRace", races, "race"]]) {
+      for (const rule of granter[field] || []) {
+        if (!grantRuleMatches(rule, { card, evalCard, granter, evalState })) continue;
+        if (!out.includes(rule[key])) out.push(rule[key]);
+      }
     }
   }
-  return granted;
+  return { keywords, races };
+}
+export function computeGrantedKeywords(card, battleZone, ownerState) {
+  return computeGranted(card, battleZone, ownerState).keywords;
+}
+// 「自分の水のクリーチャーはすべて、種族にマジック・コマンドを追加する」（宇宙 タコンチュ）。
+// 反映するのは効果の対象選択（filter.raceContains）と表示まで。
+// 進化元・革命チェンジ・grantPowerBoost の判定は印刷された種族のまま。
+export function computeGrantedRaces(card, battleZone, ownerState) {
+  return computeGranted(card, battleZone, ownerState).races;
 }
 
 // ===========================
