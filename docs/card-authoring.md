@@ -238,6 +238,24 @@
 
 ---
 
+### 「その枚数と同じ数だけ〜」（`any` ＋ `as`）
+
+> 自分の手札から**好きな枚数**を選び、自分の墓地に置く。その後、**その枚数と同じ数**の
+> 自分のクリーチャーをバトルゾーンから選ぶ。このターン、選ばれたクリーチャーは
+> 「W・ブレイカー」を得る。（メガ・ブラスター）
+
+```jsonc
+[ { "type": "handToGrave", "target": "self", "any": true, "as": "discarded" },
+  { "type": "grant", "target": "self", "count": { "var": "discarded" },
+    "onlyIf": { "count": "discarded", "min": 1 },
+    "filter": { "creatureOnly": true }, "keywords": ["wBreaker"], "expires": "endOfTurn" } ]
+```
+
+- `any:true` は「好きな枚数」。**0枚も選べる**ので、書けば自動的に任意扱いになります
+- `as` は**動かした枚数**を控えます（コストを控える `asCost` とは別物）
+- **`onlyIf` を忘れないでください。** 選ぶ枚数は最低1体に丸められるので、0枚だった時に
+  1体選べてしまいます。`{ "count": "変数名", "min": 1 }` でそのステップごと飛ばします
+
 ### 変数に足し引きする（`{ var, plus }`）
 
 `amount` と `filter` のコスト・パワー指定には、変数そのものではなく**足し引きした値**を書けます。
@@ -318,7 +336,9 @@
   `order:"choose"` で**好きな順序**（先に選んだものが上）
 - `handToHyper {target,amount,all,filter}` — **超次元ゾーン**へ置く（ゲーム外の公開領域。戻ってこない）
 - `handToShield {amount}` — シールド化
-- `handToGrave {target,amount,all,random,asCost}` — 捨てる（`random`=見ないで選ぶ）
+- `handToGrave {target,amount,any,all,random,as,asCost}` — 捨てる（`random`=見ないで選ぶ）
+  - `any:true` … **「好きな枚数」**（0枚も選べるので必ず任意扱い）
+  - `as:"変数名"` … **捨てた枚数**を変数に控える（`manaToGrave` の `as` と同じ規約）
   - `asCost:"変数名"` … 捨てたカードのコストを変数に控える（`destroy` の `asCost` と同じ規約）
 - `playFromHand {free,filter,zone,side,subject}` — **実行**（呪文=唱える／クリーチャー=召喚／城=表向きシールド化）
   - `zone`: 唱える（出す）元のゾーン。`"hand"`（既定）/ `"grave"` → **§5.2**

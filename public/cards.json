@@ -5431,5 +5431,49 @@
       }
     ],
     "id": 139
+  },
+  {
+    "name": "メガ・ブラスター",
+    "type": "spell",
+    "civ": "fire",
+    "race": null,
+    "cost": 2,
+    "power": 0,
+    "keywords": [],
+    "effect": "自分の手札から好きな枚数を選び、自分の墓地に置く。その後、その枚数と同じ数の自分のクリーチャーをバトルゾーンから選ぶ。このターン、選ばれたクリーチャーは「W・ブレイカー」を得る。",
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "自分の手札から好きな枚数を選び、自分の墓地に置く",
+            "type": "handToGrave",
+            "target": "self",
+            "any": true,
+            "as": "discarded"
+          },
+          {
+            "label": "その枚数と同じ数の自分のクリーチャーを選ぶ。このターン、W・ブレイカーを得る",
+            "type": "grant",
+            "target": "self",
+            "count": {
+              "var": "discarded"
+            },
+            "onlyIf": {
+              "count": "discarded",
+              "min": 1
+            },
+            "filter": {
+              "creatureOnly": true
+            },
+            "keywords": [
+              "wBreaker"
+            ],
+            "expires": "endOfTurn"
+          }
+        ]
+      }
+    ],
+    "id": 140
   }
 ]

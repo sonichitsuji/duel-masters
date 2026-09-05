@@ -487,6 +487,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   // all:true の全体除去でも効くように、選択の有無に関わらずここで除く。
   const leaveExempt = new Set(ctx.leaveExempt || []);
   const notExempt = list => (leaveExempt.size ? list.filter(c => !leaveExempt.has(c.uid)) : list);
+  // as:「この効果で動かした枚数」を控える。後続ステップの amount / count から
+  // {"var":"…"} で参照できる（「その枚数と同じ数の〜」）。枚数を数える効果で共通に使う
+  const noteAs = n => { if (effect.as) ctx.vars[effect.as] = n; };
   // 効果でバトルゾーンに出す時に選んだ NEO進化の進化元（{ カードのuid: 進化元のuid[] }）
   const neoBases = ctx.neoBases || null;
   // 出すカードに NEO進化の進化元を重ねる。重ねた進化元はそのゾーンから取り除かれるので、
@@ -699,6 +702,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "handToGrave": {
+      let discarded = 0;
       for (const pidx of pids) {
         const st = stateOf(pidx);
         let cards;
@@ -717,7 +721,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         // 捨てたカード自体を誘発に渡す（「捨てたその呪文を唱える」用）。
         // カードはこの時点で墓地にあるので、zone:"eventCards" から取り出せる
         ctx.discardedBy = [...(ctx.discardedBy || []), { pid: pidx, cards }];
+        discarded += cards.length;
       }
+      noteAs(discarded);
       break;
     }
     case "playFromHand": {
@@ -792,8 +798,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         ctx.lastMoved = cards;
         moved += cards.length;
       }
-      // as で枚数を控えておくと、後続ステップの amount から名前で参照できる（「同じ枚数」）
-      if (effect.as) ctx.vars[effect.as] = moved;
+      noteAs(moved);
       ctx.stepDone = moved > 0;
       break;
     }
