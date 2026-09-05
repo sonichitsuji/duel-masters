@@ -57,7 +57,7 @@
 |---|---|
 | `label` | モーダルに出す説明文 |
 | `optional` | 「〜してもよい」（スキップ可） |
-| `target` | **`"self"` / `"opponent"` / `"both"`**（どちらも） |
+| `target` | **`"self"` / `"opponent"` / `"both"`**（どちらも） / `"eventPlayer"`（その出来事を起こした側 → §7.6.6） |
 | `amount` | 数値、**または変数名の文字列**（例 `"count"`）。選択枚数の上限にもなる |
 | `filter` | 対象条件（下記） |
 | `zone` | 対象ゾーン（`hand` `bz` `mana` `grave` `shield` `deck` `hyper` `revealed` `lastMoved` `under` `stack`） |
@@ -302,7 +302,7 @@
 - `skipRestOfTurn` — **「ターンの残りをとばす」** → **§7.30**
 
 **ドロー / 山札**
-- `drawCards {amount}` — ○枚引く
+- `drawCards {target,amount}` — ○枚引く（`target` 省略で自分。`"opponent"` なら「相手はカードを○枚引く」）
 - `reveal {amount}` — 山札の上を公開（以降 `revealed*` の対象になる）
 - `search {destination,amount,takeAll,filter}` — 山札から探す。`destination`: `hand`/`deckTop`/`bz`/`mana`（実行後シャッフル）
 - `topToGrave {amount}` / `topToMana {amount,tapped}` / `topToShield {amount}` — 山札の上を各ゾーンへ
@@ -402,8 +402,12 @@
 
 **制限**（どれも「縛られている側のターンが終わると切れる」期限付き）
 - `denySpell {target,until,filter,label}` — 呪文を唱えられない → **§7.23**
-- `denyAttackBlock {target,mode,filter,label}` — 攻撃／ブロックできない → **§7.28.7**
+- `denyAttackBlock {target,mode,all,amount,filter,label}` — 攻撃／ブロックできない → **§7.28.7**
+- `limitAttackBlock {target,maxPerTurn,label}` — 各ターンに一度しか攻撃／ブロックできない → **§7.28.7**
 - `ignoreAbilities {target,all,filter}` — 能力を無視する → **§7.27**
+
+> この3つ（`denySpell` / `denyAttackBlock` / `limitAttackBlock`）は、内部では
+> **`state.restrictions` という1つの配列**に `kind` 違いで積まれます。期限の管理も1か所です。
 
 ### 5.1. 「プレイヤーを1人選ぶ」（`choosePlayer`）
 
@@ -490,6 +494,11 @@
 
 **type**: `creature` / `evo_creature` / `spell` / `twinpact` / `tamaseed` / `castle`(G城・表向きシールド) / `field`(フィールド)
 
+> **G城（`castle`）は「表向きのシールドが1つ増える」モデルです。** 本来の要塞化（自分のシールド1つに
+> 重ねる）は未実装なので、**城の下にカードはありません**。`power` は不要で、
+> `faceUpLeaveTo:"grave"`（表向きで離れる時、かわりに墓地へ）を書きます。
+> 「このシールドが離れた時」は `{"on":"shieldLeave","target":"this"}` で書けます。
+
 **エレメント**: `creature` `evo_creature` `tamaseed` `field` とツインパクトのクリーチャー面。
 `filter` の `"element": true` や `"type": "element"` で指定できます。
 
@@ -534,8 +543,8 @@
 | `battleDestroy` | バトルで破壊された時 |
 | `battleWin` | **バトルに勝った時**（相手を破壊して自分は生き残った時。相打ちは勝ちではない）。攻撃によるバトルと `battle` 効果の両方で誘発 |
 | `draw` | カードを引いた時。`"lastCard": true` で「**それが最後の1枚だったら**」（引いた結果、山札が0枚になった時）に限定できる |
-| `discard` | 手札を捨てた時 |
-| `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時。`shieldLeave` はシールドゾーンの中身を監視して検出するので、**ブレイク・効果・エスケープ・置換など離れ方と行き先を問わず**誘発する（`target` でどちらのシールドかを指定） |
+| `discard` | 手札を捨てた時。**捨てたカードを持っている**ので `filter` で絞れ、`zone:"eventCards"` でそのカードを対象にできる（→ §7.6.6） |
+| `shieldAdded` / `shieldLeave` | シールドが置かれた/離れた時。`shieldLeave` はシールドゾーンの中身を監視して検出するので、**ブレイク・効果・エスケープ・置換など離れ方と行き先を問わず**誘発する。**シールド1枚ごとに誘発**し、離れたカードを持っているので `target:"this"`（「**この**シールドが離れた時」）も書ける |
 | `startOfTurn` | ターンのはじめ（アンタップ後・ドロー前）。`target` で**誰のターンか**を指定（`self`=自分のターン(既定) / `opponent`=相手のターン / `both`=各ターン） |
 | `endOfTurn` | ターンの終わり。`target` で**誰のターンか**を指定（`self`=自分のターン(既定) / `opponent`=相手のターン / `both`=各ターン） |
 
@@ -734,6 +743,52 @@
 
 > タマシード／フィールド／城は `creaturePutBz` を通らない（クリーチャーではない）ので、
 > この3軸は付きません。自分自身の「出た時」だけが誘発します。
+
+## 7.6.6. 「その出来事のカード」を対象にする（`zone:"eventCards"` / `target:"eventPlayer"`）
+
+誘発は「何に起きたか」と「誰が起こしたか」を持っています。効果からそれを指すための2つの語彙です。
+
+### `zone:"eventCards"` — その誘発の元になったカード
+
+> 各ターン、はじめて自分の手札からコスト5以下の呪文を捨てた時、
+> **その呪文を**コストを支払わずに唱えてもよい。（龍装艦 チェンジザ）
+
+```jsonc
+{ "on": "discard", "target": "self", "oncePerTurn": true,
+  "filter": { "type": "spell", "maxCost": 5 },
+  "effects": [ { "optional": true, "type": "playFromHand", "zone": "eventCards",
+                 "free": true, "amount": 1, "filter": { "type": "spell", "maxCost": 5 } } ] }
+```
+
+`revealed` / `lastMoved` と同じ**疑似ゾーン**で、盤面のゾーンではなく誘発から渡されたカードを候補にします。
+
+- **複数枚まとめて捨てた時は、その中から選べます**（トリガーの `filter` は「どれか1枚が一致すれば誘発」）
+- 捨てた直後なので実体は墓地にあり、唱えると墓地から取り除かれます
+- 今この形で誘発するのは `discard` だけです
+
+### `target:"eventPlayer"` — その出来事を起こしたプレイヤー
+
+> いずれかのプレイヤーが、マナゾーンのカードをタップせずにクリーチャーを出した時または呪文を唱えた時、
+> **そのプレイヤーは**自身のクリーチャーを1体選んで破壊する。（百発人形マグナム）
+
+```jsonc
+{ "on": "creaturePutBz", "target": "both", "manaTapped": false,
+  "effects": [ { "type": "destroy", "target": "eventPlayer", "amount": 1,
+                 "filter": { "creatureOnly": true } } ] }
+```
+
+トリガーを `target:"both"`（いずれかのプレイヤー）で誘発させつつ、効果は**起こした側だけ**に効かせます。
+`self` / `opponent` は能力の持ち主から見た関係なので、`target:"both"` の誘発では区別できません。
+
+> 「そのプレイヤーが**自分で**選ぶ」という選択権の概念は engine にありません（1画面で遊ぶため）。
+> 実質「そのプレイヤーのクリーチャーを1体選んで破壊する」と同じ扱いになります。
+
+### 「各ターン、はじめて〜した時」
+
+`firstEachTurn` が使えるのは `attack` だけです。それ以外は **`oncePerTurn`** で表します。
+
+> `oncePerTurn` は「実際に解決した時だけ消費」なので、「〜してもよい」を**辞退すると
+> 同じターンにもう一度誘発しえます**。本来は辞退しても打ち止めですが、この差は許容しています。
 
 ## 7.7. 墓地・マナゾーンからの召喚（`summonFrom` / `grantSummonFrom`）
 
@@ -960,7 +1015,11 @@
 |---|---|
 | `to` | `"mana"`(既定) / `"hand"` / `"shield"` / `"deck"`（**山札の下**） / `"effect"`（下記） |
 | `from` | `"destroy"` と書くと**破壊される時だけ**に限定する（省略すると離れ方を問わない） |
+| `turnOf` | **誰のターンに起きた時か**。`"self"` / `"opponent"` / `"both"`（既定）。持ち主から見た関係 |
 | `filter` | どのカードに適用するか（省略で全部） |
+
+> `turnOf` は `replaceEnter` / `replaceShieldAdd`（→ §7.29）と同じ語彙で、判定も同じ関数を通ります。
+> 「**相手のターン中に**、このクリーチャーが破壊される時」（宇宙 タコンチュ）は `turnOf:"opponent"`。
 
 > **「このクリーチャーが破壊される時、墓地に置くかわりにマナゾーンに置く」**（キャディ・ビートル）は
 > `from:"destroy"` と `filter.self` を組み合わせて書きます。
@@ -995,6 +1054,17 @@
 
 - `effects` は `to:"effect"` の時だけ書けます（1つ以上必要）
 - **`filter.notSelf` が「自分の“他の”」**にあたります。置換元自身を候補から外します
+- **`subject: true` で「このクリーチャー」を指せます。** 離れようとしていたカードが対象になります
+  ```jsonc
+  // 相手のターン中に、このクリーチャーが破壊される時、かわりに相手はカードを5枚引き、
+  // そのターン、このクリーチャーのパワーを+5000する（宇宙 タコンチュ）
+  "replaceLeave": [
+    { "from": "destroy", "to": "effect", "turnOf": "opponent", "filter": { "self": true },
+      "effects": [
+        { "type": "drawCards", "target": "opponent", "amount": 5 },
+        { "type": "powerBuff", "target": "self", "subject": true, "amount": 5000, "expires": "endOfTurn" }
+      ] } ]
+  ```
 - **行えない時は提示しません。** 上の例で他にクリーチャーがいなければ、
   置換モーダルが出ずに通常どおり離れます（身代わりが居ないのに生き延びるのを防ぐため）
 - 「〜してもよい」は、置換モーダルの「例外処理で中止」がそのまま担います（§0）
@@ -1567,17 +1637,53 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 |---|---|
 | `target` | 縛るプレイヤー。`self` / `opponent` / `both` |
 | `mode` | `"both"`（既定）＝攻撃もブロックも／ `"attack"` ＝攻撃だけ／ `"block"` ＝ブロックだけ |
-| `filter` | 縛るクリーチャーの条件（省略すると全部）。`{"var":…}` が使える |
+| `all` | `true` で **`filter` に一致するすべて**（「〜はすべて」）。省略すると選択式 |
+| `amount` | 選ぶ体数（`all` を書かない時。既定1） |
+| `filter` | 縛るクリーチャーの条件。`{"var":…}` が使える |
 | `label` | 弾いた時にUIに出す理由（省略時は既定文言） |
+
+### 「すべて」と「1体選ぶ」
+
+`destroy` などと**同じ `all` の規約**です。
+
+```jsonc
+// 相手のクリーチャーを1体選ぶ。そのクリーチャーは攻撃もブロックもできない（氷柱と炎弧の決断）
+{ "type": "denyAttackBlock", "target": "opponent", "amount": 1, "mode": "both",
+  "filter": { "creatureOnly": true } }
+```
+
+選択式の時は、選んだカードが `filter.uid` として焼き込まれます（`{var}` を数値に固めるのと
+同じ理屈）。**`uid` はデータに直接書けません** — validator がエラーにします。
+
+### 各ターンの回数制限（`limitAttackBlock`）
+
+> 次の自分のターンのはじめまで、相手は各ターンに一度しか、クリーチャーで攻撃もブロックもできない。
+> （六奇怪の四 〜土を割る逆瀧〜）
+
+```jsonc
+{ "type": "limitAttackBlock", "target": "opponent", "maxPerTurn": 1 }
+```
+
+| キー | 説明 |
+|---|---|
+| `target` | 縛るプレイヤー。`self` / `opponent` / `both` |
+| `maxPerTurn` | 各ターンに行える回数（既定1）。`grantSummonFrom` の同名キーと同じ意味 |
+| `label` | 弾いた時にUIに出す理由 |
+
+> **攻撃とブロックは合算して数えます。** 「一度しか攻撃もブロックもできない」は
+> 1回ぶんの許可枠なので、攻撃に使えばそのターンはもうブロックできません。
+
+### 期限と反映先（3つに共通）
 
 **期限は `denySpell`（→ §7.23）と同じ規則です** — 縛られている側のターンが終わると切れます
 （＝この効果を使った側から見て「次の自分のターンのはじめまで」）。
+内部では `denySpell` と同じ `state.restrictions` に積まれ、期限切れも同じ1か所で処理されます。
 
-`denySpell` と同じくプレイヤー状態に積まれるので、`filter` の `{var}` は**積む時点で数値に
-固まります**（→ §7.27「保存される `filter` に `{var}` を書くとき」）。
+プレイヤー状態に保存されるので、`filter` の `{var}` は**積む時点で数値に固まります**
+（→ §7.27「保存される `filter` に `{var}` を書くとき」）。
 `ignoreAbilities` と違い、**あとから出たクリーチャーにも掛かります**（条件で見るため）。
 
-- 攻撃側: クリーチャーの詳細パネルで ATTACK が押せなくなり、理由が出ます
+- 攻撃側: クリーチャーの詳細パネルで ATTACK が押せなくなり、攻撃宣言も弾かれます
 - ブロック側: **ブロック候補に出てきません**（見せてから弾くのではなく先に外す）
 
 ## 7.30. リサイクルと「ターンの残りをとばす」
@@ -1726,7 +1832,15 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 - `activated`: 起動型能力 → **§7.6**
 - `summonFrom`: 墓地・マナからの召喚許可 → **§7.7**
 - `replaceLose`: `[{from,to,label}]` — 敗北の置換 → **§7.10**
-- `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `self,notSelf,raceContains,multiColor,nameContains,elementOnly`）
+- `grantKeywords`: `[{keyword,filter?,condition?}]`（filter: `self,notSelf,raceContains,civ,creatureOnly,multiColor,nameContains,elementOnly`）
+- `grantRace`: `[{race,filter?,condition?}]` — **種族を足す**。`grantKeywords` と同じ形・同じ filter で、
+  与えるものが能力か種族かの違いだけ（収集は同じ1つの処理を通る）
+  ```jsonc
+  // 自分の水のクリーチャーはすべて、種族にマジック・コマンドを追加する（宇宙 タコンチュ）
+  "grantRace": [ { "race": "マジック・コマンド", "filter": { "creatureOnly": true, "civ": "water" } } ]
+  ```
+  > **反映されるのは「効果の対象選択（`filter.raceContains`）」と「カード詳細の表示」までです。**
+  > 進化元の条件・革命チェンジ・`grantPowerBoost` は**印刷された種族のまま**判定します。
   - **`self:true`** =「**この**クリーチャーに与える」（自分だけ。同名の2体目には配らない）→ **§7.25**
 - `grantPowerBoost` / `grantPowerBoostGrave` / `selfPowerBoostGrave` / `condPower:[{condition,amount}]`
 - `powerAttacker`: `N` — パワーアタッカー+N（**攻撃中のみ**パワー+N）
