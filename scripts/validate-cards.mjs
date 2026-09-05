@@ -40,7 +40,7 @@ const EFFECT_TYPES = new Set([
   // 墓地・シールド
   "graveToBz","zonesToBz","graveToHand","graveToDeck","graveToDeckBottom","shieldToHand","shieldToGrave","breakShield",
   // 呪文封じ／攻撃・ブロック封じ
-  "denySpell","denyAttackBlock",
+  "denySpell","denyAttackBlock","limitAttackBlock",
   // 山札操作
   "shuffleDeck",
   // 進化元を動かすコスト / 特殊勝利
@@ -63,7 +63,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 
 // 能力フィールド（カード直下にも ssx 内にも書ける）。ssx はこの集合だけを許可する。
 const ABILITY_KEYS = new Set([
-  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","replaceShieldAdd","recycle","costReduce","condPower","grantKeywords","grantPowerBoost",
+  "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","replaceShieldAdd","recycle","costReduce","condPower","grantKeywords","grantRace","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
@@ -102,7 +102,10 @@ const COST_OVER_OF = ["owner","source"];
 const ENTER_RELEASE = new Set(["startOfOwnerTurn"]);
 const ENTER_WHO = ["self","opponent","both"];
 // playFromHand で唱えられる（＝出せる）元のゾーン
-const PLAY_FROM_ZONES = new Set(["hand","grave"]);
+// on:"castSpell" の fromZone（どこから唱えた呪文か）
+const CAST_FROM_ZONES = new Set(["hand","grave"]);
+// playFromHand の zone。eventCards は「その誘発の元になった出来事のカード」（捨てたその呪文 等）
+const PLAY_FROM_ZONES = new Set(["hand","grave","eventCards"]);
 // spellAfterCast: 唱えた後、墓地のかわりに置く場所と、その対象になる「唱えたゾーン」
 const SPELL_AFTER_CAST_TO = new Set(["deckBottom","deckTop","hand","mana","shield"]);
 const SPELL_AFTER_CAST_FROM = new Set(["hand","grave","any"]);
@@ -125,7 +128,7 @@ const EFFECT_KEYS = new Set([
 const FILTER_KEYS = new Set([
   "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
   "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self","psychic","evolution",
-  "cost","maxCost","minCost","maxPower","minPower","not",
+  "cost","maxCost","minCost","maxPower","minPower","not","uid",
 ]);
 // costOver:「あるゾーンのカードの枚数よりコストが大きい」（キャディ・ビートル）
 function checkCostOver(spec, where) {
@@ -190,7 +193,8 @@ function checkOne(e, where) {
   if (e.type === "chooseMode") checkTemplates(e, where);
   if (LEGACY_TYPES.has(e.type)) errors.push(`${where}: 旧記法の効果 "${e.type}"（新語彙へ移行してください）`);
   else if (!EFFECT_TYPES.has(e.type)) errors.push(`${where}: 未知の効果type "${e.type}"`);
-  if (e.target && !["self","opponent","both"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
+  // eventPlayer:「そのプレイヤー」＝この誘発を起こした側（target:"both" の誘発と組で使う）
+  if (e.target && !["self","opponent","both","eventPlayer"].includes(e.target)) errors.push(`${where}: 未知のtarget "${e.target}"`);
   if (e.type === "grantSummonFrom" && !SUMMON_ZONES.has(e.zone)) errors.push(`${where}: grantSummonFrom の zone は ${[...SUMMON_ZONES].join("/")}`);
   if (e.order && !["shuffle", "choose"].includes(e.order)) errors.push(`${where}: order は "shuffle" か "choose"`);
   if (e.onlyIf != null) {
@@ -205,6 +209,14 @@ function checkOne(e, where) {
   if (e.asCost != null && !["destroy", "handToGrave"].includes(e.type)) {
     errors.push(`${where}: asCost は type:"destroy" / "handToGrave" でのみ使えます`);
   }
+  // 「〜できない」系の期限付き制限（→ gameLogic の restrictions）
+  if (e.mode != null && e.type !== "denyAttackBlock") errors.push(`${where}: mode は type:"denyAttackBlock" でのみ使えます`);
+  if (e.mode != null && !["both","attack","block"].includes(e.mode)) errors.push(`${where}: mode は both/attack/block`);
+  if (e.type === "limitAttackBlock" && e.maxPerTurn != null && typeof e.maxPerTurn !== "number") {
+    errors.push(`${where}: limitAttackBlock の maxPerTurn は数値`);
+  }
+  // filter.uid は engine が選択の結果を焼き込むためのもの。データに直接書くものではない
+  if (e.filter?.uid != null) errors.push(`${where}.filter: uid はデータに書けません（選択の結果を engine が焼き込むためのキー）`);
   // afterCast:「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る置換
   if (e.afterCast != null) {
     if (e.type !== "playFromHand") errors.push(`${where}: afterCast は type:"playFromHand" でのみ使えます`);
@@ -350,7 +362,7 @@ function checkTrigger(tr, where) {
   if (tr.oncePerGame != null && typeof tr.oncePerGame !== "boolean") errors.push(`${where}(${tr.on}): oncePerGame は真偽値`);
   if (tr.fromZone != null) {
     if (tr.on !== "castSpell") errors.push(`${where}(${tr.on}): fromZone は on:"castSpell" でのみ使えます`);
-    else if (!PLAY_FROM_ZONES.has(tr.fromZone)) errors.push(`${where}(${tr.on}): fromZone は ${[...PLAY_FROM_ZONES].join("/")}`);
+    else if (!CAST_FROM_ZONES.has(tr.fromZone)) errors.push(`${where}(${tr.on}): fromZone は ${[...CAST_FROM_ZONES].join("/")}`);
   }
   // on:"cast" は「この呪文を唱えた時の効果」＝呪文の本体。誘発型能力ではないので
   // target や condition で絞るものではない（唱えたら必ず起きる）
@@ -402,16 +414,25 @@ function checkAbilityFields(obj, where) {
     if (typeof cp.amount !== "number") errors.push(`${where}.condPower: amount(数値) が必要です`);
     checkCondition(cp.condition, `${where}.condPower`);
   }
-  for (const rule of obj.grantKeywords || []) {
-    if (!KEYWORDS.has(rule.keyword)) errors.push(`${where}.grantKeywords: 未知のkeyword "${rule.keyword}"`);
-    checkCondition(rule.condition, `${where}.grantKeywords`);
+  // grantKeywords（能力を与える）と grantRace（種族を足す）は、与えるものが違うだけで
+  // ルールの形は同じ（→ gameLogic の computeGranted）
+  for (const [field, key] of [["grantKeywords", "keyword"], ["grantRace", "race"]]) {
+    for (const rule of obj[field] || []) {
+      if (field === "grantKeywords" && !KEYWORDS.has(rule.keyword)) errors.push(`${where}.grantKeywords: 未知のkeyword "${rule.keyword}"`);
+      if (typeof rule[key] !== "string" || !rule[key]) errors.push(`${where}.${field}: ${key}（文字列）が必要です`);
+      for (const k of Object.keys(rule)) {
+        if (![key, "filter", "condition"].includes(k)) errors.push(`${where}.${field}: 未知のキー "${k}"（綴り違い？）`);
+      }
+      checkFilterKeys(rule.filter, `${where}.${field}`);
+      checkCondition(rule.condition, `${where}.${field}`);
+    }
   }
   // replaceLeave: 「離れる時、かわりに〜へ置く」
   const rls = obj.replaceLeave == null ? [] : (Array.isArray(obj.replaceLeave) ? obj.replaceLeave : [obj.replaceLeave]);
   for (const rl of rls) {
     if (typeof rl !== "object" || rl == null) { errors.push(`${where}.replaceLeave: オブジェクトで書いてください`); continue; }
     for (const k of Object.keys(rl)) {
-      if (!["from","to","filter","effects"].includes(k)) errors.push(`${where}.replaceLeave: 未知のキー "${k}"（綴り違い？）`);
+      if (!["from","to","turnOf","filter","effects"].includes(k)) errors.push(`${where}.replaceLeave: 未知のキー "${k}"（綴り違い？）`);
     }
     // to:"effect" は「かわりに行う効果」が本体なので effects が要る。逆に他の to では書けない
     if (rl.to === "effect") {

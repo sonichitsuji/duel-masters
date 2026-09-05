@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, ssxKeywords, isCreatureSide, cardDisplayName, displayPower, isSummoningSick, effectiveCard, attackDenyReason } from "../gameLogic";
+import { getCardCivs, ssxKeywords, isCreatureSide, cardDisplayName, displayPower, isSummoningSick, effectiveCard, attackBlockReason, computeGrantedRaces } from "../gameLogic";
 import { CardEffectText } from "./EffectText";
 import { CardFace } from "./CardFace";
 
@@ -20,8 +20,11 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
   // 召喚酔いの判定は isSummoningSick に集約してある。スピードアタッカーとマッハファイターで
   // 酔わないこと（§7.15）に加え、進化かどうか（NEO は進化元が0枚になると酔いが復活する）も見る
   const sick=isSummoningSick(card,ownerState,battleZone);
-  // 「攻撃できない」（denyAttackBlock）で縛られているか
-  const denied=attackDenyReason(card,ownerState,"attack");
+  // 他のカードから足された種族（grantRace）も並べて見せる
+  const grantedRaces=computeGrantedRaces(card,battleZone,ownerState).filter(r=>!card.race?.includes(r));
+  const raceText=[card.race,...grantedRaces].filter(Boolean).join("/");
+  // 「攻撃できない」（denyAttackBlock / limitAttackBlock）で縛られているか
+  const denied=attackBlockReason(card,ownerState,"attack");
   const canAtk=isCreature&&isActive&&drewThisTurn&&!card.tapped&&!ownKw.includes("cantAttack")&&!sick&&!card.cantAttackThisTurn&&!card.cantAttackUntilMyTurn&&!denied;
   const reason=!isActive?null:!isCreature?"攻撃できない":card.tapped?"攻撃済み":ownKw.includes("cantAttack")?"攻撃不可":sick?"召喚酔い":card.cantAttackThisTurn?"G・ストライクで攻撃不可":card.cantAttackUntilMyTurn?"相手の効果で攻撃不可":denied?denied:!drewThisTurn?"ドロー前":null;
 
@@ -48,7 +51,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
               {/* Name */}
               <div style={{fontWeight:900,color:"#fff",fontSize:15,lineHeight:1.2,textShadow:`0 0 8px ${c.glow}`}}>{cardDisplayName(card)}</div>
               {/* Race */}
-              {card.race&&<div style={{fontSize:11,color:c.textColor,marginTop:2,fontStyle:"italic"}}>{card.race}</div>}
+              {raceText&&<div style={{fontSize:11,color:c.textColor,marginTop:2,fontStyle:"italic"}}>{raceText}</div>}
             </div>
             {/* Civ icons */}
             <div style={{display:"flex",gap:4}}>{civs.map(cv=>{const cv_=CIV[cv];return cv_?<span key={cv} style={{fontSize:14,fontWeight:900,color:cv_.textColor,background:`${cv_.color}33`,border:`1px solid ${cv_.color}66`,borderRadius:4,padding:"2px 8px",fontFamily:"'Noto Sans JP',sans-serif",textShadow:`0 0 8px ${cv_.glow}`}}>{cv_.label}</span>:null;})}</div>

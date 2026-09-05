@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, attackDenyReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, revolutionChangeCandidates, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -53,12 +53,18 @@ const SHIELD_ADD_TO_LABELS={ grave:"墓地", hand:"手札", mana:"マナゾー�
 // deck は山札の「下」に入るので、上下が分かるように ZONE_LABELS とは別に持つ
 const LEAVE_TO_LABELS={ mana:"マナゾーン", hand:"手札", shield:"シールドゾーン", deck:"山札の下" };
 
+// このイベントで「何が起きたカード」たち。1枚のイベントは subjectCard、
+// 複数枚まとめて起きるイベント（手札を2枚捨てた等）は subjectCards で持つ。
+// どちらの形でも同じ1つの規約で扱えるよう、ここで配列に均す
+const eventCards = ev => ev?.subjectCards || (ev?.subjectCard ? [ev.subjectCard] : []);
+
 function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   if(tr.on !== event) return false;
   const scope = triggerScope(tr, event);
-  const subj = ev.subjectCard;
+  const subjects = eventCards(ev);
   if(scope === "this"){
-    if(!subj || !watcherCard || subj.uid !== watcherCard.uid) return false;
+    // 「このカード自身に起きた時」。複数枚のイベントなら、その中に自分がいれば誘発する
+    if(!watcherCard || !subjects.some(c => c.uid === watcherCard.uid)) return false;
   } else if(scope === "self"){
     if(ev.sourcePid !== watcherPid) return false;
   } else if(scope === "opponent"){
@@ -79,7 +85,8 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
     if(tr.turnOf === "opponent" && onOwnTurn) return false;
   }
   if(tr.firstEachTurn && !ev.firstThisTurn) return false;
-  if(tr.filter && subj && !matchFilter(subj, tr.filter, {})) return false;
+  // filter は「起きたカード」に掛かる。複数枚のイベントなら1枚でも一致すれば誘発する
+  if(tr.filter && subjects.length && !subjects.some(c => matchFilter(c, tr.filter, {}))) return false;
   return true;
 }
 
@@ -223,7 +230,6 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 置換でシールドゾーンから移したカードの uid。「置かれなかったこと」にするので、
   // シールドゾーンの中身を監視している shieldLeave / Zラッシュの検出からは除く
   const shieldAddReplacedRef=useRef(new Set());
-  const [attackedThisTurn,setAttackedThisTurn]=useState(false);
   // ニンジャ・ストライクは「その攻撃中に1度だけ」。攻撃を宣言するたびに false に戻す。
   // 盤面ではなく進行の状態なので state ではなく ref で持つ（誘発の中から読み書きする）
   const ninjaUsedThisAttackRef=useRef(false);
@@ -255,7 +261,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // pending から取り出したエントリを実際に解決開始する
   const resolveEntry=(entry)=>{
-    const {effect,ownerPid,srcCard,subjectCard,sourceName}=entry;
+    const {effect,ownerPid,srcCard,subjectCard,subjectCards,eventPid,sourceName}=entry;
     // 鬼エンドは「唱えるかどうか」を先に聞く。カット演出は唱えると決めてから出す
     if(entry.kind==="handPlay"){ setHandPlayModal({pid:ownerPid,plays:entry.plays,srcEvent:entry.srcEvent}); return; }
     // 宣言済みの手札プレイ1枚ぶん。演出はプレイの中で出すのでここでは出さない
@@ -265,7 +271,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(effect.type==="chooseTimes"){
       setTemplateChoiceModal({count:effect.count,templates:effect.templates,ownerPid,srcCard});
     } else if(effect.effects?.length){
-      setActiveSteps({ steps:effect.effects, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid, subjectCard, vars:{} } });
+      setActiveSteps({ steps:effect.effects, stepIdx:0, ownerPid, srcCard, context:{ srcCardUid:srcCard?.uid, subjectCard, subjectCards, eventPid, vars:{} } });
     }
   };
 
@@ -361,9 +367,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       }
       // ステップ内で手札が捨てられた時の opponentDiscard を発火（不死の黄昏司祭等）
       if (updatedCtx.discardedBy && updatedCtx.discardedBy.length) {
-        const pids = updatedCtx.discardedBy;
+        const discards = updatedCtx.discardedBy;
         delete updatedCtx.discardedBy;
-        pids.forEach(pid => setTimeout(() => fireTriggerRef.current("discard",{sourcePid:pid}), 0));
+        // 何枚まとめて捨てても、プレイヤーごとに1回の出来事として誘発させる。
+        // 捨てたカードは subjectCards で渡すので、誘発側はその中から選べる
+        discards.forEach(d => setTimeout(() =>
+          fireTriggerRef.current("discard",{ sourcePid: d.pid, subjectCards: d.cards }), 0));
       }
       // シールドが離れた時（zRush 解放と shieldLeave）はシールドゾーンを監視する状況起因処理で拾うので、
       // ここでは何もしない。
@@ -505,14 +514,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         message:`${card.name} はバトルゾーンを離れます。\nかわりに下のカードすべてを${ZONE_LABELS[to]||"墓地"}に置いてもよい。`,
         applyLabel:`かわりに下のカードを${ZONE_LABELS[to]||"墓地"}へ`, cancelLabel:"例外処理で中止（通常どおり離れる）" };
     }
-    const lr=findLeaveReplacement(st,live,to);
+    const lr=findLeaveReplacement(st,live,to,{ ownerPid, activePid: active });
     if(lr&&!seen("replaceLeave")){
       const leaveText=`${card.name} は${lr.rule.from==="destroy"?"破壊されます":"バトルゾーンを離れます"}。`;
       // to:"effect" =「かわりに〜する」。ゾーンへ動かすのではなく、書かれた効果を行う。
       // 本体はバトルゾーンに残る（エスケープと同じ流儀）
       if(lr.rule.to==="effect"){
         // 行えない置換は提示しない（他にクリーチャーがいないのに身代わりで生き延びるのを防ぐ）
-        if(!canRunLeaveEffect(lr,ownerPid)) return null;
+        if(!canRunLeaveEffect(lr,ownerPid,live)) return null;
         const what=lr.rule.effects?.[0]?.label||"かわりの効果";
         return { kind:"replaceLeave", to:"effect", rule:lr.rule, src:lr.card, title:`${lr.card.name}（置換効果）`,
           message:`${leaveText}\nかわりに「${what}」を行ってもよい。`,
@@ -528,13 +537,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
 
   // to:"effect" の置換が実際に行えるか。1つ目のステップに対象があるかだけを見る
   //（選択の要らない自動ステップなら常に行える）
-  const canRunLeaveEffect=(lr,ownerPid)=>{
+  const canRunLeaveEffect=(lr,ownerPid,card)=>{
     const step=lr.rule.effects?.[0];
     if(!step) return false;
     const oPid=ownerPid==="p1"?"p2":"p1";
     const selfSt=stateRef.current[ownerPid], otherSt=stateRef.current[oPid];
-    // notSelf（「自分の**他の**〜」）が置換元自身を除けるよう srcCardUid を渡す
-    const ctx={ vars:{}, srcCardUid:lr.card.uid };
+    // notSelf（「自分の**他の**〜」）が置換元自身を除けるよう srcCardUid を渡す。
+    // subjectCard は applyLeaveEffect と揃える（subject:true のステップが空振りしないように）
+    const ctx={ vars:{}, srcCardUid:lr.card.uid, subjectCard:card };
     const cand=getEffectCandidates(step,selfSt,otherSt,ctx,
       ownerPid==="p1"?selfSt:otherSt, ownerPid==="p1"?otherSt:selfSt, lr.card);
     // 対象を選ぶステップなら候補が1つ以上要る（候補0でも isAuto が立つので併せて見る）
@@ -544,8 +554,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // to:"effect" の置換を適用する。本体は動かさず、書かれた効果を解決待ちに積むだけ
   const applyLeaveEffect=(card,ownerPid,rep)=>{
     addLog(`[置換] ${card.name} は離れるかわりに「${rep.rule.effects?.[0]?.label||"効果"}」`);
+    // 離れようとしていたカードを subjectCard として渡す。これで置換の効果の中から
+    // 「このクリーチャーの〜」を subject:true で指せる（例: パワーを+5000する）
     enqueueEffectRef.current({ kind:"trigger", effect:{ effects:rep.rule.effects },
-      ownerPid, srcCard:rep.src, sourceName:rep.src?.name });
+      ownerPid, srcCard:rep.src, subjectCard:card, sourceName:rep.src?.name });
   };
 
   // 効果を実行する前の割り込み。決めた内容を extra に載せて runStep へ渡す。
@@ -724,8 +736,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // ev: { sourcePid, subjectCard?, method?("summon"|"put"), firstThisTurn? }
   const fireTrigger=(event,evIn={})=>{
     const cur=stateRef.current;
-    // turnOf 判定用に「今どちらのターンか」を載せる
-    const ev={...evIn, activePid: evIn.activePid || active};
+    // turnOf 判定用に「今どちらのターンか」を載せる。
+    // 複数枚のイベント（subjectCards）でも subjectCard を先頭に揃えておき、
+    // 「このカード自身に起きた時」の経路が単数・複数のどちらでも同じに書けるようにする
+    const ev={...evIn, activePid: evIn.activePid || active,
+      subjectCard: evIn.subjectCard || evIn.subjectCards?.[0]};
     const runOne=(card,ownerPid,tr,subject)=>{
       if(tr.hyperOnly&&!card.hyperMode) return;
       if(tr.condition&&!checkGrantCondition(tr.condition,stateRef.current[ownerPid],card,stateRef.current[ownerPid==="p1"?"p2":"p1"])) return;
@@ -734,7 +749,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const onceKey=(tr.oncePerTurn||tr.oncePerGame)?`${card.uid}#t${idx}`:null;
       if(onceKey&&isAbilityUsed(tr,onceKey)) return;
       // 誘発を pending キューへ。同一tickに積まれた分が「同時誘発」としてまとめてリゾルバで順序選択される。
-      enqueueEffect({ kind:"trigger", effect:tr, ownerPid, srcCard:{...card}, subjectCard:subject, sourceName:card.name,
+      enqueueEffect({ kind:"trigger", effect:tr, ownerPid, srcCard:{...card}, subjectCard:subject, subjectCards:eventCards(ev),
+        eventPid:ev.sourcePid, sourceName:card.name,
         onceKey, onceLabel: tr.oncePerGame?"ゲーム中に一度":tr.oncePerTurn?"各ターンに一度":null });
     };
     const subj=ev.subjectCard;
@@ -994,7 +1010,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   //   タップやめくりで配列が作り直されても uid は変わらないので誤検出しない）
   const shieldUidsRef=useRef(null);
   useEffect(()=>{
-    const next={ p1: new Set(p1.shields.map(c=>c.uid)), p2: new Set(p2.shields.map(c=>c.uid)) };
+    // 「どのカードが離れたか」を誘発に渡せるよう、uid だけでなくカードの実体を控える
+    const toMap=list=>new Map(list.map(c=>[c.uid,c]));
+    const next={ p1: toMap(p1.shields), p2: toMap(p2.shields) };
     const prev=shieldUidsRef.current;
     shieldUidsRef.current=next;
     if(!prev) return;   // 初期配置は「離れた」ではない
@@ -1002,7 +1020,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     // シールドゾーンに置かれるかわりに他ゾーンへ送られたぶんは「置かれなかったこと」なので、
     // 消えたように見えても「離れた」ではない
     const replaced=shieldAddReplacedRef.current;
-    const leftPids=["p1","p2"].filter(pid=>[...prev[pid]].some(uid=>!next[pid].has(uid)&&!replaced.has(uid)));
+    const leftCards=Object.fromEntries(["p1","p2"].map(pid=>
+      [pid,[...prev[pid].values()].filter(c=>!next[pid].has(c.uid)&&!replaced.has(c.uid))]));
+    const leftPids=["p1","p2"].filter(pid=>leftCards[pid].length);
     [...replaced].forEach(uid=>{ if(!next.p1.has(uid)&&!next.p2.has(uid)) replaced.delete(uid); });
     if(!leftPids.length) return;
     // Zラッシュ：誰のシールドが離れても、バトルゾーンにいる全てのZラッシュが解放される
@@ -1019,7 +1039,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       released.forEach(c=>addLog(`[ZR] Zラッシュ: ${c.name} ハイパーモード解放！（${who} のシールドが離れた）`));
       setHyperModeCutIn(released[0]);
     }
-    leftPids.forEach(pid=>setTimeout(()=>fireTriggerRef.current("shieldLeave",{sourcePid:pid}),0));
+    // 「シールドが離れた時」はシールド1枚ごとの出来事なので、離れた枚数ぶん誘発する。
+    // subjectCard を載せているので「**この**シールドが離れた時」（target:"this"）も書ける
+    leftPids.forEach(pid=>leftCards[pid].forEach(card=>
+      setTimeout(()=>fireTriggerRef.current("shieldLeave",{ sourcePid: pid, subjectCard: card }),0)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[p1.shields,p2.shields,winner]);
 
@@ -1278,6 +1301,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   const declareAttackTarget=(intent)=>{
     const attacker=activeState.battle.find(c=>c.uid===attackingUid);
     if(!attacker) return;
+    // 「攻撃できない」（denyAttackBlock / limitAttackBlock）。詳細パネルの ATTACK ボタンでも
+    // 弾いているが、進行ロジック側でも見ておく（ブロック側は readyDefenders で先に外している）
+    const denied=attackBlockReason(attacker,activeState,"attack");
+    if(denied){ addLog(`${active}: ${attacker.name} は${denied}`); setMessage(denied); return; }
     setActiveState(s=>({...s,battle:s.battle.map(c=>c.uid===attacker.uid?{...c,tapped:true}:c)}));
     addLog(`${active}: ${attacker.name} 攻撃宣言（${ATTACK_INTENT_LABEL[intent.kind]}）`);
     ninjaUsedThisAttackRef.current=false;   // 新しい攻撃なのでニンジャ・ストライクを使い直せる
@@ -1295,8 +1322,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const allies=stateRef.current[active].battle.filter(c=>c.uid!==attacker.uid);
       if(allies.length>0) setHyperUntapModal({attackerUid:attacker.uid,allies});
     }
-    const firstThisTurn=!attackedThisTurn;
-    if(firstThisTurn) setAttackedThisTurn(true);
+    // 攻撃とブロックは「このターンの行動」として合算して数える（回数制限 limitAttackBlock 用）。
+    // 「そのターン最初の攻撃か」も同じカウンタから導くので、boolean を別に持つ必要はない
+    const firstThisTurn=!(stateRef.current[active].attackBlockThisTurn||0);
+    setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn});
       pendingAttackRef.current={intent};
@@ -1336,7 +1365,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     hasKeyword(c,kw)||computeGrantedKeywords(c,otherState.battle,otherState).includes(kw);
   // 「ブロックできない」（denyAttackBlock）で縛られているクリーチャーはブロック候補に出さない
   const readyDefenders=kw=>otherState.battle.filter(c=>!c.tapped&&isCreatureSide(c)&&defenderHas(c,kw)
-    &&!(kw==="blocker"&&attackDenyReason(c,otherState,"block")));
+    &&!(kw==="blocker"&&attackBlockReason(c,otherState,"block")));
   const blockersFor=()=>readyDefenders("blocker");
   // ガードマン: 攻撃先が「自分の他のクリーチャー」の時だけ、攻撃先を自分に変更できる。
   // シールド／プレイヤーへの攻撃や、自分自身が攻撃先の場合は使えない。
@@ -1702,16 +1731,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       const affected=otherState.battle.filter(c=>tappedOtherUids.has(c.uid));
       if(affected.length>0) addLog(`[反応] ${reactiveCreature.name}: アンタップした${affected.map(c=>c.name).join("、")}は次の自分のターンまで攻撃できない`);
     }
-    // 「次の、そのプレイヤーのターンの終わりまで、呪文を唱えられない」の期限切れ。
-    // 縛られている側のターンが終わったところで解除する
-    if(activeState.spellDeny?.length){
-      setActiveState(s=>({...s,spellDeny:[]}));
-      addLog(`${active}: 呪文を唱えられない効果が切れた`);
-    }
-    // 「攻撃もブロックもできない」も同じ規則で切れる
-    if(activeState.attackDeny?.length){
-      setActiveState(s=>({...s,attackDeny:[]}));
-      addLog(`${active}: 攻撃／ブロックできない効果が切れた`);
+    // 期限付きのプレイヤー制限（呪文を唱えられない／攻撃・ブロックできない／回数制限）の期限切れ。
+    // どれも「縛られている側のターンが終わると切れる」ので、restrictions ごと空にする1か所で済む
+    if(activeState.restrictions?.length){
+      setActiveState(s=>({ ...s, restrictions: [] }));
+      addLog(`${active}: 相手の効果による制限が切れた`);
     }
     // 「能力を無視する」も同じ規則で切れる（無視されている側のターンが終わる
     // ＝ 効果を使った側の「次の自分のターンのはじめ」）
@@ -1722,7 +1746,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       })}));
       addLog(`${active}: 能力を無視する効果が切れた`);
     }
-    setAttackingUid(null);setUsedFinalRevThisTurn(false);setAttackedThisTurn(false);setUsedThisTurn(new Set());
+    setAttackingUid(null);setUsedFinalRevThisTurn(false);setUsedThisTurn(new Set());
+    // 攻撃／ブロックの行動回数は各ターンで数え直す。相手のターン中もブロックで増えるので両者ぶん戻す
+    setP1(s=>s.attackBlockThisTurn?{ ...s, attackBlockThisTurn: 0 }:s);
+    setP2(s=>s.attackBlockThisTurn?{ ...s, attackBlockThisTurn: 0 }:s);
     // 「そのターン限り」の召喚許可と使用回数をリセット
     setSummonUsed({});setP1(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);setP2(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
@@ -1890,7 +1917,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
           const blocker=otherState.battle.find(c=>c.uid===blockerUid);
           setBlockerModal(null);
           if(!attacker||!blocker){setMessage("攻撃対象を選択");return;}
-          setOtherState(s=>({...s,battle:s.battle.map(c=>c.uid===blockerUid?{...c,tapped:true}:c)}));
+          // ブロックも攻撃と同じ「このターンの行動」として数える（→ fireAttackTriggers と同じカウンタ）
+          setOtherState(s=>({ ...s, battle: s.battle.map(c => c.uid === blockerUid ? { ...c, tapped: true } : c),
+            attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
           addLog(`[BLOCK] ${otherPid.toUpperCase()}: ${blocker.name} でブロック！`);
           // 「相手のクリーチャーが攻撃**または**ブロックした時」（ニンジャ・ストライク）
           setTimeout(()=>fireTrigger("block",{sourcePid:otherPid,subjectCard:blocker}),0);
