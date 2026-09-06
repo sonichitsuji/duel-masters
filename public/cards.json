@@ -5475,5 +5475,49 @@
       }
     ],
     "id": 140
+  },
+  {
+    "name": "龍素記号Sr スペルサイクリカ",
+    "type": "creature",
+    "civ": "water",
+    "race": "クリスタル・コマンド・ドラゴン",
+    "cost": 7,
+    "power": 6000,
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "W・ブレイカー\nこのクリーチャーが出た時、コスト7以下の呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい。そうしたら、唱えた後、墓地に置くかわりに手札に加える。\nこのクリーチャーが破壊される時、かわりに山札の下に置く。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "コスト7以下の呪文を1枚、自分の墓地からコストを支払わずに唱えてもよい",
+            "type": "playFromHand",
+            "zone": "grave",
+            "target": "self",
+            "free": true,
+            "optional": true,
+            "filter": {
+              "type": "spell",
+              "maxCost": 7
+            },
+            "afterCast": {
+              "to": "hand"
+            }
+          }
+        ]
+      }
+    ],
+    "replaceLeave": [
+      {
+        "from": "destroy",
+        "to": "deck",
+        "filter": {
+          "self": true
+        }
+      }
+    ],
+    "id": 141
   }
 ]
