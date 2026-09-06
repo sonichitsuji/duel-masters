@@ -269,26 +269,30 @@ export function selfSTriggerGranted(card, ownerState) {
 // 革命チェンジ:「自分の指定のクリーチャーが攻撃する時、そのクリーチャーと
 // 手札にあるこのクリーチャーを入れ替えてもよい」。入れ替えられる手札のカードを返す。
 //   revolutionChangeCond: { civs?, race?/races?, minCost?, minPower?, multiColor?, nameContains? }
-export function revolutionChangeCandidates(attacker, ownerState) {
-  if (!attacker || !ownerState) return [];
+// 手札の1枚が、その攻撃クリーチャーと入れ替われるか。
+// 候補の一覧（revolutionChangeCandidates）と、宣言型プレイの提示（findHandPlays）が
+// 同じ条件を見るので、判定はこの1本にまとめてある。
+export function revolutionChangeMatches(card, attacker, ownerState) {
+  if (!card || !attacker || !ownerState) return false;
+  if (!hasKeyword(card, "revolutionChange") || !card.revolutionChangeCond) return false;
   // 入れ替える効果は、そのクリーチャーを構成するカードがすべて手札に戻らない状況では実行されない。
   // G-NEO進化クリーチャーは離れる時に下のカードが身代わりになるので、革命チェンジできない
   // （進化元が0枚なら G-NEOクリーチャー扱いで、この制限はかからない）
-  if (isGNeoEvolution(attacker)) return [];
-  const attackerCivs = getCardCivs(attacker);
-  const attackerPower = getEffectivePower(attacker, ownerState, ownerState.battle);
-  return (ownerState.hand || []).filter(c => {
-    if (!hasKeyword(c, "revolutionChange") || !c.revolutionChangeCond) return false;
-    const cond = c.revolutionChangeCond;
-    if (cond.civs?.length && !cond.civs.some(cv => attackerCivs.includes(cv))) return false;
-    if (cond.races ? !cond.races.some(r => attacker.race?.includes(r))
-                   : cond.race && !attacker.race?.includes(cond.race)) return false;
-    if (cond.minCost && !(attacker.cost >= cond.minCost)) return false;
-    if (cond.minPower && !(attackerPower >= cond.minPower)) return false;
-    if (cond.nameContains && !attacker.name?.includes(cond.nameContains)) return false;
-    if (cond.multiColor && !(Array.isArray(attacker.civ) && attacker.civ.length >= 2)) return false;
-    return true;
-  });
+  if (isGNeoEvolution(attacker)) return false;
+  const cond = card.revolutionChangeCond;
+  if (cond.civs?.length && !cond.civs.some(cv => getCardCivs(attacker).includes(cv))) return false;
+  if (cond.races ? !cond.races.some(r => attacker.race?.includes(r))
+                 : cond.race && !attacker.race?.includes(cond.race)) return false;
+  if (cond.minCost && !(attacker.cost >= cond.minCost)) return false;
+  if (cond.minPower && !(getEffectivePower(attacker, ownerState, ownerState.battle) >= cond.minPower)) return false;
+  if (cond.nameContains && !attacker.name?.includes(cond.nameContains)) return false;
+  if (cond.multiColor && !(Array.isArray(attacker.civ) && attacker.civ.length >= 2)) return false;
+  return true;
+}
+
+export function revolutionChangeCandidates(attacker, ownerState) {
+  if (!attacker || !ownerState) return [];
+  return (ownerState.hand || []).filter(c => revolutionChangeMatches(c, attacker, ownerState));
 }
 
 // 「エレメント」= クリーチャー(進化・ツインパクトのクリーチャー面を含む)またはタマシード
@@ -815,10 +819,12 @@ export function manaHasAll(state, filters){
 // 違いは ①提示の条件 ②コストを払うかどうか の2つだけなので、1つの枠組みにまとめてある。
 //   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
 //   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
-export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike"];
+export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike", "revolutionChange"];
+// 能力の中身が入っているフィールド名。既定は kind と同じ名前
+const HAND_PLAY_SPEC_FIELD = { revolutionChange: "revolutionChangeCond" };
 // sTrigger は誘発で手札を探す能力ではないが、「手札のカードをコストを支払わずにプレイしてよいか
 // 聞く」点が同じなので、同じ枠組み（HandPlayModal / playFromHandDeclared）に乗せている。
-const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", sTrigger: "S・トリガー" };
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", revolutionChange: "革命チェンジ", sTrigger: "S・トリガー" };
 export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
 
 // 誘発の on / target がこのイベントに合うか（両方の能力で共通）
@@ -826,10 +832,15 @@ function handPlayMatchesEvent(spec, event, ev, ownerPid, kind){
   // ニンジャ・ストライクは「攻撃**または**ブロックした時」の2つが契機
   if(kind === "ninjaStrike"){
     if(event !== "attack" && event !== "block") return false;
+  }else if(kind === "revolutionChange"){
+    // 革命チェンジは「自分のクリーチャーが攻撃する時」で固定（spec は入れ替えの条件）
+    if(event !== "attack") return false;
   }else if((spec.on || "attack") !== event) return false;
-  // アタック・チャンスは「**自分の**指定のクリーチャーが攻撃する時」なので既定が self、
+  // アタック・チャンスと革命チェンジは「**自分の**クリーチャーが攻撃する時」なので既定が self、
   // ニンジャ・ストライクは「**相手の**クリーチャーが〜した時」なので既定が opponent
-  const scope = spec.target || (kind === "attackChance" ? "self" : kind === "ninjaStrike" ? "opponent" : "both");
+  const defaultScope = kind === "attackChance" || kind === "revolutionChange" ? "self"
+    : kind === "ninjaStrike" ? "opponent" : "both";
+  const scope = (kind === "revolutionChange" ? null : spec.target) || defaultScope;
   if(scope === "self" && ev.sourcePid !== ownerPid) return false;
   if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
   return true;
@@ -842,7 +853,7 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
   const out = [];
   for(const card of state?.hand || []){
     for(const kind of HAND_PLAY_KINDS){
-      const spec = card[kind];
+      const spec = card[HAND_PLAY_SPEC_FIELD[kind] || kind];
       if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid, kind)) continue;
       // 呪文を唱えられない状態なら呪文は提示しない（ラフルル・ラブ等）
       if(spellDenyReason(card, state, otherState)) continue;
@@ -860,6 +871,11 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
         const mana = state?.mana || [];
         if(mana.length < (spec.count ?? 0)) continue;
         if(spec.civ && !mana.some(m => getManaCivs(m).includes(spec.civ))) continue;
+        out.push({ card, kind, cost: null });
+      }else if(kind === "revolutionChange"){
+        // 革命チェンジ: 攻撃したクリーチャーと入れ替えられること。コストは支払わない。
+        // 鬼エンドなどと同じ枠組みに乗せてあるので、同じ攻撃で一緒に宣言できる
+        if(!revolutionChangeMatches(card, ev.subjectCard, state)) continue;
         out.push({ card, kind, cost: null });
       }else if(kind === "attackChance"){
         // アタック・チャンス:「自分の指定のクリーチャーが攻撃する時」。
