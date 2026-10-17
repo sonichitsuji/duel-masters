@@ -123,6 +123,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 攻撃先を決めてから「攻撃する時」の誘発を解決するので、解決が終わるまで攻撃先を預かる。
   // { intent } … intent は withBlockStep と同じ形（shield / creature+targetUid / direct）
   const [pendingAttack,setPendingAttack]=useState(null);
+  // 「ターンの終わりに」の誘発を解決しきるまで、次のターンへ進むのを預かる。
+  // 攻撃先を預かるのと同じ流儀（pendingAttack）
+  const [pendingEndTurn,setPendingEndTurn]=useState(false);
   // 革命チェンジの確認。攻撃先を決めた後に聞くので、PlayerBoard ではなくここで持つ
   const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
   const [message,setMessage]=useState("P1: マナチャージorカードをプレイ");
@@ -160,6 +163,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 置換効果なので「墓地に置こうとする時」＝その呪文を解決しきった時に判定する（総合ルール604.2）。
   const [pendingSpellAfterCast,setPendingSpellAfterCast]=useState([]);
   const pendingAttackRef=useRef(null);
+  const pendingEndTurnRef=useRef(false);
+  const advanceToNextTurnRef=useRef();
   // 唱えている呪文の後始末。DMでは呪文は「唱え終えた時」に墓地へ置かれるので、
   // 唱えている間はどのゾーンにも置かず、カードの実体をこの列で預かる。
   //   { pid, card, face, fromZone, to, afterId }
@@ -318,6 +323,14 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         setTimeout(()=>proceedAttackRef.current(intent),0);
         return;
       }
+      // 「ターンの終わりに」の誘発を解決しきったら、次のターンへ進む。
+      // ここで待たずに進めてしまうと、相手のターンになってから誘発が解決されてしまう
+      if(pending.length===0&&pendingEndTurn){
+        pendingEndTurnRef.current=false;
+        setPendingEndTurn(false);
+        setTimeout(()=>advanceToNextTurnRef.current(),0);
+        return;
+      }
       if(pending.length===0) return;
       const minP=Math.min(...pending.map(e=>e.priority));
       const group=pending.filter(e=>e.priority===minP);
@@ -337,7 +350,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     },0);
     return ()=>clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[resolverBusy,pendingEffects,pendingAttack,pendingSpellAfterCast]);
+  },[resolverBusy,pendingEffects,pendingAttack,pendingEndTurn,pendingSpellAfterCast]);
 
   // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」「G-NEO の置換」など）。
   // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
@@ -1661,7 +1674,19 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   //   ① endOfTurnResolution … 「ターンの終わりに」の誘発と、終わりに予約された効果
   //   ② advanceToNextTurn   … アンタップ・フラグのリセット・手番の受け渡し（盤面の帳尻合わせ）
   // 「ターンの残りをとばす」（終末の時計 ザ・クロック）は ① を丸ごと飛ばして ② だけ行う。
-  const handleEndTurn=()=>{ endOfTurnResolution(); advanceToNextTurn(); };
+  //
+  // ① と ② の間には**解決の待ち合わせ**が要る。①の誘発は setTimeout で積まれるので、
+  // ここで続けて ② を呼ぶと、相手のターンになってから誘発が解決されてしまう。
+  // 攻撃先を預かるのと同じ流儀で、解決しきったのをリゾルバのアイドルで拾って ② へ進む。
+  const handleEndTurn=()=>{
+    // 解決を待っている間は END TURN がまだ押せるので、二度押しで①を二重に行わないようにする
+    if(pendingEndTurnRef.current) return;
+    pendingEndTurnRef.current=true;
+    endOfTurnResolution();
+    // リゾルバが見るのは state のほう。①の誘発を積む setTimeout より後ろで立てることで、
+    // まだ誘発が積まれていない一瞬を「解決しきった」と見てしまうのを防ぐ
+    setTimeout(()=>setPendingEndTurn(true),0);
+  };
 
   const endOfTurnResolution=()=>{
     // 汎用 endOfTurn トリガー（hyperOnly/condition を現状態で同期評価してから発火）
@@ -1791,6 +1816,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setPending([]);
     spellAfterCastRef.current=[];setPendingSpellAfterCast([]);
     pendingAttackRef.current=null;setPendingAttack(null);
+    // ターンの終わりの待ち合わせも捨てる（この後すぐ自分で advanceToNextTurn を呼ぶので二重に進めない）
+    pendingEndTurnRef.current=false;setPendingEndTurn(false);
     setActiveSteps(null);setTemplateChoiceModal(null);setTriggerOrderModal(null);
     setReplacementModal(null);setEnterReplaceQueue([]);setShieldAddQueue([]);
     setLeaveReplaceModal(null);setNeoPutModal(null);
@@ -1803,6 +1830,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
   const skipRestOfTurnRef=useRef();
   skipRestOfTurnRef.current=skipRestOfTurn;
+  advanceToNextTurnRef.current=advanceToNextTurn;
 
   return(
     <div className="battle-ui" style={{height:"calc(100vh / var(--ui-scale))",overflow:"hidden",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
