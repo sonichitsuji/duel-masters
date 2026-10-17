@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionCard, withJustDiver, spellDenyReason, addRestriction, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionCard, withJustDiver, spellDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -82,9 +82,10 @@ function playSide(effect, card) {
   return card.type === "spell" ? "spell" : "creature";
 }
 // ツインパクトを呪文として唱える時の面。単体の呪文はそのまま返す。
+// 面の被せ方は cardFace（gameLogic）に集約してあるので、ここはその薄いラッパ。
 function spellFace(card) {
   if (card.type !== "twinpact" || !card.spellSide) return card;
-  return { ...card, ...card.spellSide, uid: card.uid, side: "spell" };
+  return cardFace(card, "spell");
 }
 
 function matchesType(card, t) {
@@ -255,7 +256,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck","awaken","unawaken"]);
 // 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
 const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
 
@@ -914,6 +915,28 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     // 能力の読み出し（effectiveCard）がその印を見て能力を落とす。
     // 期限は denySpell と同じ規則で、印を付けられた側のターンが終わると切れる
     // （＝この効果を使った側の「次の自分のターンのはじめ」）。
+    // 覚醒／解除（サイキック・クリーチャー）。このクリーチャーを裏返して別の面にする。
+    // 裏返すのは「バトルゾーンに出す」ことではないので **cip は誘発しない**（ここで
+    // putCreatureBz を通さないのがその担保）。タップ状態はそのまま維持される。
+    // 召喚酔いは、覚醒すると消え、解除すると再び酔う（覚醒後の面で出たものが解除で
+    // 裏返った場合も酔うので、どちらも同じ扱いでよい）。
+    case "awaken":
+    case "unawaken": {
+      const toAwakened = type === "awaken";
+      for (const pidx of pids) {
+        const target = stateOf(pidx).battle.find(c => c.uid === ctx.srcCardUid);
+        if (!target) continue;
+        // 覚醒後の面が無い／既にその面なら何も起きない
+        if (toAwakened ? (target.awakened || !target.awakenSide) : !target.awakened) continue;
+        const before = cardFace(target).name;
+        const after = cardFace({ ...target, awakened: toAwakened }).name;
+        setOf(pidx)(s => ({ ...s, battle: s.battle.map(c => c.uid === target.uid
+          ? { ...c, awakened: toAwakened, summonedThisTurn: !toAwakened } : c) }));
+        addLog(`${pid}: 「${before}」を${toAwakened ? "覚醒" : "解除"}させて裏返した →「${after}」`);
+        ctx.stepDone = true;
+      }
+      break;
+    }
     case "ignoreAbilities": {
       for (const pidx of pids) {
         const st = stateOf(pidx);

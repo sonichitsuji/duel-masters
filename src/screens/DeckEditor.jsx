@@ -16,6 +16,8 @@ const COLS = 8;   // デッキの横列は8枚固定（デッキ全体を一目�
 const GAP = 4;
 const MAX_COPIES = 4;
 const DECK_SIZE = 40;
+// 超次元ゾーンはデッキ40枚の**外**。最大8枚で、同名はデッキと同じく4枚まで
+const HYPER_SIZE = 8;
 
 const CSS = `
 .deck-editor{--ground:#04040e; --panel:#0a0a18; --panel-2:#0d0d1c;
@@ -229,10 +231,15 @@ function DeckCard({card,qty,selected,onClick}){
   );
 }
 
-export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
+export function DeckEditor({cardDb,initialIds,initialHyperIds,initialName,onSave,onCancel}){
   const [name,setName]=useState(initialName||"新しいデッキ");
   const [counts,setCounts]=useState(()=>{
     const c={};(initialIds||[]).forEach(id=>{c[id]=(c[id]||0)+1;});return c;
+  });
+  // 超次元ゾーン（デッキ外）。サイキック・クリーチャーはメインデッキに入らないので、
+  // 入れる先は「そのカードがサイキックかどうか」で自動的に決まる
+  const [hyperCounts,setHyperCounts]=useState(()=>{
+    const c={};(initialHyperIds||[]).forEach(id=>{c[id]=(c[id]||0)+1;});return c;
   });
   const [search,setSearch]=useState("");
   const [pickedId,setPickedId]=useState(()=>(initialIds||[])[0]??null);
@@ -241,17 +248,26 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
 
   const byId={};cardDb.forEach(c=>{byId[c.id]=c;});
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
-  const countOf=id=>counts[id]||0;
+  const hyperTotal=Object.values(hyperCounts).reduce((a,b)=>a+b,0);
+  // サイキックは超次元ゾーン、それ以外はメインデッキ。枠は別々に数える
+  const isPsychic=id=>!!byId[id]?.psychic;
+  const binOf=id=>isPsychic(id)
+    ? {counts:hyperCounts,setCounts:setHyperCounts,total:hyperTotal,max:HYPER_SIZE}
+    : {counts,setCounts,total,max:DECK_SIZE};
+  const countOf=id=>binOf(id).counts[id]||0;
   const add=id=>{
-    if(countOf(id)>=MAX_COPIES||total>=DECK_SIZE)return;
-    setCounts(c=>({...c,[id]:(c[id]||0)+1}));
+    const bin=binOf(id);
+    if(countOf(id)>=MAX_COPIES||bin.total>=bin.max)return;
+    bin.setCounts(c=>({...c,[id]:(c[id]||0)+1}));
   };
   const remove=id=>{
     if(countOf(id)===0)return;
-    setCounts(c=>({...c,[id]:c[id]-1}));
+    binOf(id).setCounts(c=>({...c,[id]:c[id]-1}));
   };
   const deckIds=[];
   Object.entries(counts).forEach(([id,cnt])=>{for(let i=0;i<cnt;i++)deckIds.push(Number(id));});
+  const hyperIds=[];
+  Object.entries(hyperCounts).forEach(([id,cnt])=>{for(let i=0;i<cnt;i++)hyperIds.push(Number(id));});
 
   // デッキ表示は文明順→コスト順→名前順。同じカードは枚数ぶん並べる
   const deckCards=[];
@@ -260,6 +276,14 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
     .sort((a,b)=>CIVS.indexOf(getCardCivs(a)[0])-CIVS.indexOf(getCardCivs(b)[0])
       ||a.cost-b.cost||cardDisplayName(a).localeCompare(cardDisplayName(b),"ja"))
     .forEach(c=>{for(let i=0;i<counts[c.id];i++)deckCards.push(c);});
+
+  // 超次元ゾーンの表示もメインと同じ並べ方（文明順→コスト順→名前順）
+  const hyperCards=[];
+  Object.keys(hyperCounts).map(Number).filter(id=>hyperCounts[id]>0&&byId[id])
+    .map(id=>byId[id])
+    .sort((a,b)=>CIVS.indexOf(getCardCivs(a)[0])-CIVS.indexOf(getCardCivs(b)[0])
+      ||a.cost-b.cost||cardDisplayName(a).localeCompare(cardDisplayName(b),"ja"))
+    .forEach(c=>{for(let i=0;i<hyperCounts[c.id];i++)hyperCards.push(c);});
 
   const q=search.trim();
   const hits=q?cardDb.filter(c=>cardDisplayName(c).includes(q)):cardDb;
@@ -367,9 +391,9 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
         <span className="ttl">デッキ編集</span>
         <input className="namein" value={name} onChange={e=>setName(e.target.value)}
           placeholder="デッキ名" aria-label="デッキ名"/>
-        <button className="act danger" onClick={()=>{if(total>0&&confirm(`デッキの${total}枚をすべて削除します。よろしいですか？`))setCounts({});}}
-          disabled={total===0}>全削除</button>
-        <button className="act save" onClick={()=>onSave({name,ids:deckIds})}
+        <button className="act danger" onClick={()=>{if(total+hyperTotal>0&&confirm(`デッキの${total+hyperTotal}枚をすべて削除します。よろしいですか？`)){setCounts({});setHyperCounts({});}}}
+          disabled={total+hyperTotal===0}>全削除</button>
+        <button className="act save" onClick={()=>onSave({name,ids:deckIds,hyperIds})}
           disabled={total!==DECK_SIZE}>保存</button>
         <button className="act" onClick={onCancel}>キャンセル</button>
       </header>
@@ -378,6 +402,11 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
         <span className="lbl">メイン</span>
         <span className={"num"+(total===DECK_SIZE?" full":"")}>{total}</span>
         <span className="of">/ {DECK_SIZE}</span>
+        {hyperTotal>0&&(<>
+          <span className="lbl" style={{marginLeft:10}}>超次元</span>
+          <span className="num">{hyperTotal}</span>
+          <span className="of">/ {HYPER_SIZE}</span>
+        </>)}
         <div className="civbar">
           {CIVS.filter(cv=>tally[cv]).map(cv=>(
             <span key={cv} className="civchip" style={{
@@ -399,6 +428,20 @@ export function DeckEditor({cardDb,initialIds,initialName,onSave,onCancel}){
                   ))}
                 </div>}
           </div>
+          {/* 超次元ゾーン（デッキ外）。サイキックを入れた時だけ出す */}
+          {hyperCards.length>0&&(
+            <div className="deckzone scroll" style={{marginTop:6,maxHeight:"28%"}}>
+              <div style={{fontSize:11,color:"#8a8aa8",margin:"0 0 4px 2px"}}>
+                超次元ゾーン（デッキ外） {hyperTotal} / {HYPER_SIZE}
+              </div>
+              <div className="grid">
+                {hyperCards.map((c,i)=>(
+                  <DeckCard key={`h-${c.id}-${i}`} card={c} qty={0}
+                    selected={pickedId===c.id} onClick={()=>setPickedId(c.id)}/>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* PCでは右列（上=能力 / 下=一覧＋検索）。スマホでは display:contents で

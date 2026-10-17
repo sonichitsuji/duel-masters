@@ -47,6 +47,8 @@ const EFFECT_TYPES = new Set([
   "meteorBurn","winGame",
   // 召喚元ゾーンの拡張
   "grantSummonFrom",
+  // 覚醒／解除（サイキック・クリーチャーを裏返す）
+  "awaken","unawaken",
   // 遅延
   "scheduleReviveSubjectEndOfTurn",
 ]);
@@ -67,6 +69,8 @@ const ABILITY_KEYS = new Set([
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
   "hyperKeywords","hyperPower",
 ]);
+// 覚醒後の面に書けるキー。カード直下と同じ語彙のうち、面として入れ替わるものだけ
+const AWAKEN_SIDE_KEYS = new Set([...ABILITY_KEYS, "name","cost","power","race","civ","effect"]);
 const SUMMON_ZONES = new Set(["grave","mana"]);
 const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
 // 「〜1枚につき」の数え上げ対象ゾーン（countCardsInZone / count ステップ）
@@ -76,7 +80,9 @@ const AMOUNT_PER_ZONES = new Set([...COUNT_ZONES, "evolutionBase"]);
 const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
 const EVOLUTION_KEYS = new Set(["zone","count","min","neo","filter"]);
 // zonesToBz が候補を集められるゾーン
-const ZONES_TO_BZ_FROM = new Set(["grave","mana","hand"]);
+const ZONES_TO_BZ_FROM = new Set(["grave","mana","hand","hyper"]);
+// 専用の型が無いゾーン（1つだけでも zonesToBz で書いてよい）
+const ZONES_TO_BZ_SOLO_OK = new Set(["hyper"]);
 const METEOR_BURN_TO = new Set(["grave","mana","hand","shield","deck"]);
 // count(数値)を要する condition。
 const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
@@ -270,7 +276,10 @@ function checkOne(e, where) {
   // 「自分の墓地またはマナゾーンから出す」。1ゾーンだけなら graveToBz / manaToBz で書く
   if (e.zones != null && e.type !== "zonesToBz") errors.push(`${where}: zones は type:"zonesToBz" でのみ使えます`);
   if (e.type === "zonesToBz") {
-    if (!Array.isArray(e.zones) || e.zones.length < 2) errors.push(`${where}: zonesToBz の zones は2つ以上のゾーンの配列（1つなら graveToBz / manaToBz を使ってください）`);
+    // 1ゾーンだけなら専用の型（graveToBz / manaToBz / handToBz）を使う。
+    // ただし専用の型が無いゾーン（超次元ゾーン）は1つでも zonesToBz で書く
+    const soloOk = Array.isArray(e.zones) && e.zones.length === 1 && ZONES_TO_BZ_SOLO_OK.has(e.zones[0]);
+    if (!Array.isArray(e.zones) || (e.zones.length < 2 && !soloOk)) errors.push(`${where}: zonesToBz の zones は2つ以上のゾーンの配列（1つなら graveToBz / manaToBz を使ってください。${[...ZONES_TO_BZ_SOLO_OK].join("/")} は1つでも可）`);
     else for (const z of e.zones) if (!ZONES_TO_BZ_FROM.has(z)) errors.push(`${where}: zonesToBz の zones は ${[...ZONES_TO_BZ_FROM].join("/")}`);
   }
 }
@@ -635,7 +644,7 @@ function checkAbilityFields(obj, where) {
 // ここに無いキーはエラーにして、綴り違いが静かに無視されるのを防ぐ。
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","psychic",
-  "evolution","ssx","spellSide","finalRevolution","revolutionChangeCond","gZero",
+  "evolution","ssx","spellSide","awakenSide","finalRevolution","revolutionChangeCond","gZero",
   "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
@@ -712,6 +721,22 @@ for (const c of cards) {
       checkTrigger(tr, `${tag}.spellSide`);
       // 呪文面は「唱えた時の効果」しか持てない（クリーチャー面の能力は card 直下に書く）
       if (tr.on !== "cast") errors.push(`${tag}.spellSide: 呪文面に書けるのは on:"cast" だけです（"${tr.on}" は card 直下へ）`);
+    }
+  }
+  // awakenSide: 覚醒後の面（サイキック・クリーチャー）。両面ともクリーチャーの面なので、
+  // 名前とパワーは必須。裏返すのは awaken / unawaken 効果で行う
+  if (c.awakenSide) {
+    if (!c.psychic) errors.push(`${tag}: awakenSide を書けるのは psychic:true のカードだけです`);
+    if (typeof c.awakenSide !== "object" || Array.isArray(c.awakenSide)) {
+      errors.push(`${tag}.awakenSide: オブジェクトで書いてください`);
+    } else {
+      for (const k of Object.keys(c.awakenSide)) {
+        if (!AWAKEN_SIDE_KEYS.has(k)) errors.push(`${tag}.awakenSide: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (!c.awakenSide.name) errors.push(`${tag}.awakenSide: name が必要です`);
+      if (typeof c.awakenSide.power !== "number") errors.push(`${tag}.awakenSide: power（数値）が必要です`);
+      // keywords / triggers など能力まわりの検査は checkAbilityFields が一括で見る
+      checkAbilityFields(c.awakenSide, `${tag}.awakenSide`);
     }
   }
   checkEffect(c.finalRevolution, `${tag}.finalRevolution`);

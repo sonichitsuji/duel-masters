@@ -33,9 +33,35 @@ export function defaultDeckIds(cardDb) {
   return ids;
 }
 
-export function initPlayerState(deckIds, cardDb) {
+// hyperIds: 超次元ゾーンのカード。デッキ40枚の**外**に用意するので、山札には混ざらない。
+// 超次元ゾーンは公開領域なので最初から表向きで置く。
+export function initPlayerState(deckIds, cardDb, hyperIds = []) {
   const deck=makeDeckFromList(deckIds, cardDb);
-  return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[],hyper:[]};
+  const hyper=makeDeckFromList(hyperIds, cardDb).map(c=>({...c, faceUp:true}));
+  return {deck:deck.slice(10),hand:deck.slice(5,10),shields:deck.slice(0,5),battle:[],mana:[],grave:[],hyper};
+}
+
+// サイキック・クリーチャーは、対戦中はバトルゾーンか超次元ゾーンのどちらかにしか存在できない。
+// どの経路で離れても、一旦その行き先に置かれてから、すぐ超次元ゾーンへ移動する。
+// これは置換ではなく**ルール上の優先処理**なので、例外処理で中止できる形にはしない。
+// 状況起因処理として呼ぶので、移すものが無ければ同じ state をそのまま返す（再描画を増やさない）。
+export const PSYCHIC_STRAY_ZONES = ["grave", "mana", "hand", "shields", "deck"];
+export function returnPsychicsHome(state) {
+  if (!state) return { state, returned: [] };
+  const returned = [];
+  const next = { ...state };
+  for (const z of PSYCHIC_STRAY_ZONES) {
+    const list = state[z] || [];
+    const stay = list.filter(c => { if (c.psychic) { returned.push(c); return false; } return true; });
+    if (stay.length !== list.length) next[z] = stay;
+  }
+  if (!returned.length) return { state, returned };
+  // 超次元ゾーンは公開領域なので表向きで戻す。盤面にいた間の名残は落とす
+  next.hyper = [...(state.hyper || []), ...returned.map(c => ({
+    ...c, tapped: false, faceUp: true, awakened: false,
+    enteredThisTurn: false, summonedThisTurn: false, hyperMode: false, tempBuff: undefined,
+  }))];
+  return { state: next, returned };
 }
 
 // civs: 単色="fire" or 多色=["fire","nature"]
@@ -70,8 +96,10 @@ export function makeCardBg(civs) {
 // ログや nameContains の判定はこれを通さないこと。
 export function cardDisplayName(card){
   if(!card) return "";
-  if(card.type==="twinpact"&&card.spellSide?.name) return `${card.name} / ${card.spellSide.name}`;
-  return card.name || "";
+  // 覚醒しているサイキックは覚醒後の名前を見せる（→ cardFace）
+  const face = cardFace(card);
+  if(card.type==="twinpact"&&card.spellSide?.name) return `${face.name} / ${card.spellSide.name}`;
+  return face.name || "";
 }
 
 // マナゾーンに置かれたカードが供給する文明。
@@ -323,19 +351,37 @@ const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
   "replaceEnter","replaceShieldAdd","recycle"];
 
+// 「今どの面を見せているか」を解決する単一の窓口。
+// このゲームには別の面を見せる仕組みが2つある ―
+//   ツインパクト … side:"spell" を指定された時だけ呪文面（spellSide）を被せる
+//   サイキック   … awakened が立っている間は覚醒後の面（awakenSide）を被せる
+// どちらも「同じ uid のまま、名前・コスト・パワー・種族・能力が入れ替わる」同じ形なので、
+// 被せ方はここ1か所にまとめてある。uid と id は同一性なので必ず元のまま残す。
+export function cardFace(card, side){
+  if(!card) return card;
+  let out = card;
+  // 覚醒（サイキック・クリーチャー）。裏返しても能力と名前が違う「同一のクリーチャー」
+  if(card.awakened && card.awakenSide) out = { ...out, ...card.awakenSide };
+  // ツインパクトは面が確定した時だけ差し替える（side を渡さなければクリーチャー面のまま）
+  if(side === "spell" && card.spellSide) out = { ...out, ...card.spellSide, side: "spell" };
+  return out === card ? card : { ...out, id: card.id, uid: card.uid };
+}
+
 // 自身の通常フィールド + 自身のssx + 下に敷かれたカードのssx をマージした「実効カード」。
 // 能力の読み出しはほぼすべてこの関数を通るので、「能力を無視されている」間は
 // 能力フィールドを落とした形を返すだけで、engine 全体に一度に効く。
+// 覚醒後の面への差し替えも、同じ理由でここ（cardFace）を通す。
 export function effectiveCard(card){
   if(!card) return card;
-  if(card.ignoreAbilities){
-    const out={...card};
+  const faced = cardFace(card);
+  if(faced.ignoreAbilities){
+    const out={...faced};
     for(const k of ABILITY_FIELDS) delete out[k];
     return out;
   }
-  const layers=[card.ssx, ...((card.evolutionBase||[]).map(u=>u.ssx))].filter(Boolean);
-  if(layers.length===0) return card;
-  const out={...card};
+  const layers=[faced.ssx, ...((faced.evolutionBase||[]).map(u=>u.ssx))].filter(Boolean);
+  if(layers.length===0) return faced;
+  const out={...faced};
   for(const layer of layers){
     for(const [k,v] of Object.entries(layer)){
       if(IDENTITY_KEYS.has(k)) continue;
@@ -957,13 +1003,15 @@ export function checkGrantCondition(cond, ownerState, card, otherState){
 export function displayPower(card) {
   if (!card) return "";
   const ec = effectiveCard(card);
-  const base = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
+  // ec は cardFace を通っているので、覚醒していれば覚醒後の面のパワーになっている
+  const base = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (ec.power || 0);
   return `${base + (ec.tempBuff?.power || 0)}${ec.powerPlus ? "+" : ""}`;
 }
 
 export function getEffectivePower(card, ownerState, allOwnBattle, opts = {}) {
   const ec = effectiveCard(card);
-  let power = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (card.power || 0);
+  // ec は cardFace を通っているので、覚醒していれば覚醒後の面のパワーになっている
+  let power = (card.hyperMode && ec.hyperPower != null) ? ec.hyperPower : (ec.power || 0);
   power += ec.tempBuff?.power || 0;
   // パワーアタッカー+N（攻撃中のみ）
   if (opts.attacking && ec.powerAttacker) power += ec.powerAttacker;

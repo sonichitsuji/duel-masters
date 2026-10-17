@@ -23,7 +23,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
 
   if(screen==="cardManager") return <CardManager cardDb={cardDb} setCardDb={setCardDb} onClose={()=>setScreen("main")}/>;
   if(screen==="deckSheet") return <DeckSheetReader cardDb={cardDb} onResult={(ids)=>{setSheetIds(ids);setScreen("deckEdit");}} onCancel={()=>setScreen("deckList")}/>;
-  if(screen==="deckEdit") return <DeckEditor cardDb={cardDb} initialIds={editingDeckIdx!==null?decks[editingDeckIdx]?.ids:sheetIds||[]} initialName={editingDeckIdx!==null?decks[editingDeckIdx]?.name:""} onSave={saveDeck} onCancel={()=>{setSheetIds(null);setScreen("deckList");}}/>;
+  if(screen==="deckEdit") return <DeckEditor cardDb={cardDb} initialIds={editingDeckIdx!==null?decks[editingDeckIdx]?.ids:sheetIds||[]} initialHyperIds={editingDeckIdx!==null?decks[editingDeckIdx]?.hyperIds||[]:[]} initialName={editingDeckIdx!==null?decks[editingDeckIdx]?.name:""} onSave={saveDeck} onCancel={()=>{setSheetIds(null);setScreen("deckList");}}/>;
 
   const canStart=decks.length>0&&p1DeckIdx!==null&&p2DeckIdx!==null;
 
@@ -215,7 +215,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
 
               {/* Start button */}
               <button
-                onClick={()=>canStart&&onStartGame(decks[p1DeckIdx].ids,decks[p2DeckIdx].ids)}
+                onClick={()=>canStart&&onStartGame(decks[p1DeckIdx].ids,decks[p2DeckIdx].ids,decks[p1DeckIdx].hyperIds||[],decks[p2DeckIdx].hyperIds||[])}
                 onMouseEnter={()=>setHoveredBtn("start")}
                 onMouseLeave={()=>setHoveredBtn(null)}
                 style={{

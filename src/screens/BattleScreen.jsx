@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, returnPsychicsHome, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -113,9 +113,9 @@ function checkStaticDeny(state, targetPid, type, fromZone="hand"){
 // ===========================
 // BATTLE SCREEN
 // ===========================
-export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
-  const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb));
-  const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb));
+export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,onBackToMenu}){
+  const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb,p1HyperIds));
+  const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb,p2HyperIds));
   const [active,setActive]=useState("p1");
   const [drewThisTurn,setDrewThisTurn]=useState(true);
   const [chargedThisTurn,setChargedThisTurn]=useState(false);
@@ -1069,6 +1069,25 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[p1.shields,p2.shields,winner]);
 
+  // サイキック・クリーチャーは、対戦中はバトルゾーンか超次元ゾーンのどちらかにしか存在できない。
+  // 破壊・マナ送り・バウンス・シールド送り・山札送りなど**どの経路で離れても**、
+  // 一旦その行き先に置かれてから、すぐ超次元ゾーンへ移動する。
+  // これは置換ではなく**ルール上の優先処理**なので、例外処理で中止できる形にはしない。
+  //
+  // 離脱の経路が多すぎて1か所に差し込めないので、シールドゾーンの監視と同じ流儀の
+  // 状況起因処理にしてある。「一旦その行き先に置かれる」のが先なので、
+  // leave/destroyed の誘発も「山札の下に置かれたこと自体は有効」という裁定も自然に満たせる。
+  useEffect(()=>{
+    if(winner) return;
+    ["p1","p2"].forEach(pid=>{
+      const { returned }=returnPsychicsHome(pid==="p1"?p1:p2);
+      if(!returned.length) return;
+      (pid==="p1"?setP1:setP2)(s=>returnPsychicsHome(s).state);
+      returned.forEach(c=>addLog(`${pid.toUpperCase()}: ${c.name} は超次元ゾーンに戻った`));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[p1.grave,p1.mana,p1.hand,p1.shields,p1.deck,p2.grave,p2.mana,p2.hand,p2.shields,p2.deck,winner]);
+
   const handleTemplateChoose=(tplIdx)=>{
     if(!templateChoiceModal)return;
     const {templates,ownerPid,srcCard,count}=templateChoiceModal;
@@ -1852,7 +1871,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             </>);
           })()}
           <div style={{display:"flex",gap:12,marginTop:32}}>
-            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setWinReason(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
+            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb,p1HyperIds));setP2(initPlayerState(p2DeckIds,cardDb,p2HyperIds));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setWinReason(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
             <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
           </div>
         </div>
