@@ -11,7 +11,7 @@ import { syncCardIdSeed } from "./gameLogic";
 
 // 同梱データ（cards.json / decks.js）を更新したら上げる。
 // 保存済みの版数と違えば、同梱カードとサンプルデッキを取り込み直す。
-const DATA_VERSION = 20;
+const DATA_VERSION = 22;
 
 const SAMPLE_DECKS = [
   { name: "リースボルシャックスタート", ids: DECK_BOLSHACK },
@@ -97,7 +97,9 @@ export default function App() {
   }, [p2DeckIdx]);
 
   if (gameState) {
-    return <BattleScreen p1DeckIds={gameState.p1Ids} p2DeckIds={gameState.p2Ids} cardDb={cardDb} onBackToMenu={() => setGameState(null)}/>;
+    return <BattleScreen p1DeckIds={gameState.p1Ids} p2DeckIds={gameState.p2Ids}
+      p1HyperIds={gameState.p1HyperIds} p2HyperIds={gameState.p2HyperIds}
+      cardDb={cardDb} onBackToMenu={() => setGameState(null)}/>;
   }
   return (
     <MenuScreen
@@ -105,7 +107,7 @@ export default function App() {
       decks={decks} setDecks={setDecks}
       p1DeckIdx={p1DeckIdx} setP1DeckIdx={setP1DeckIdx}
       p2DeckIdx={p2DeckIdx} setP2DeckIdx={setP2DeckIdx}
-      onStartGame={(p1Ids, p2Ids) => setGameState({ p1Ids, p2Ids })}
+      onStartGame={(p1Ids, p2Ids, p1HyperIds, p2HyperIds) => setGameState({ p1Ids, p2Ids, p1HyperIds, p2HyperIds })}
     />
   );
 }

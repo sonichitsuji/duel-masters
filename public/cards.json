@@ -5519,5 +5519,149 @@
       }
     ],
     "id": 141
+  },
+  {
+    "name": "時空の忠剣ハチ公",
+    "type": "creature",
+    "psychic": true,
+    "civ": "fire",
+    "race": "フレイム・コマンド/フレイム・モンスター/ハンター",
+    "cost": 4,
+    "power": 4000,
+    "keywords": [
+      "speedAttacker"
+    ],
+    "effect": "スピードアタッカー\nこのクリーチャーが出た時、自分の山札の上から1枚を表向きにする。それがコマンド・カードなら手札に加え、それ以外なら墓地に置く。\n覚醒：このクリーチャーが攻撃する時、自分の手札が1枚もなければ、このクリーチャーをコストが大きいほうに裏返す。\n（ゲーム開始時、サイキック・クリーチャーは山札には含めず、自身の超次元ゾーンに置き、バトルゾーン以外のゾーンに行った場合、そこに戻す）",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚を表向きにする",
+            "type": "reveal",
+            "amount": 1
+          },
+          {
+            "label": "それがコマンド・カードなら手札に加える",
+            "type": "revealedToHand",
+            "takeAll": true,
+            "filter": {
+              "raceContains": "コマンド"
+            }
+          },
+          {
+            "label": "それ以外なら墓地に置く",
+            "type": "revealedToGrave",
+            "takeAll": true
+          }
+        ]
+      },
+      {
+        "on": "attack",
+        "condition": {
+          "type": "cardCount",
+          "who": "self",
+          "zone": "hand",
+          "max": 0
+        },
+        "effects": [
+          {
+            "label": "このクリーチャーをコストが大きいほうに裏返す（覚醒）",
+            "type": "awaken"
+          }
+        ]
+      }
+    ],
+    "awakenSide": {
+      "name": "義府徒の覚醒者GENJI・XX",
+      "cost": 6,
+      "power": 9000,
+      "race": "アーマード・ドラゴン/フレイム・コマンド/サムライ",
+      "keywords": [
+        "speedAttacker",
+        "wBreaker"
+      ],
+      "effect": "スピードアタッカー\nW・ブレイカー\nこのクリーチャーがバトルする時、カードを1枚引いてもよい。\nこのクリーチャーの各ブレイクの前に、カードを1枚引いてもよい。\n解除（このクリーチャーが離れる時、かわりにコストが小さいほうに裏返す）",
+      "triggers": [
+        {
+          "on": "battle",
+          "effects": [
+            {
+              "label": "カードを1枚引いてもよい",
+              "optional": true,
+              "type": "drawCards",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "on": "break",
+          "effects": [
+            {
+              "label": "カードを1枚引いてもよい",
+              "optional": true,
+              "type": "drawCards",
+              "amount": 1
+            }
+          ]
+        }
+      ],
+      "replaceLeave": [
+        {
+          "to": "effect",
+          "filter": {
+            "self": true
+          },
+          "effects": [
+            {
+              "label": "かわりにコストが小さいほうに裏返す（解除）",
+              "type": "unawaken"
+            }
+          ]
+        }
+      ]
+    },
+    "id": 142
+  },
+  {
+    "name": "超次元シューティング・ホール",
+    "type": "spell",
+    "civ": "fire",
+    "race": null,
+    "cost": 5,
+    "power": 0,
+    "keywords": [],
+    "effect": "相手の「ブロッカー」を持つクリーチャーを1体選び、破壊する。\n火のコスト9以下のサイキック・クリーチャーを1体、自分の超次元ゾーンから出す。",
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "相手の「ブロッカー」を持つクリーチャーを1体選び、破壊する",
+            "type": "destroy",
+            "target": "opponent",
+            "amount": 1,
+            "filter": {
+              "creatureOnly": true,
+              "keyword": "blocker"
+            }
+          },
+          {
+            "label": "火のコスト9以下のサイキック・クリーチャーを1体、自分の超次元ゾーンから出す",
+            "type": "zonesToBz",
+            "zones": [
+              "hyper"
+            ],
+            "amount": 1,
+            "filter": {
+              "psychic": true,
+              "civ": "fire",
+              "maxCost": 9
+            }
+          }
+        ]
+      }
+    ],
+    "id": 143
   }
 ]

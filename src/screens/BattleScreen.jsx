@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, returnPsychicsHome, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -32,13 +32,13 @@ import { StepIndicator } from "../components/BoardWidgets";
 // ev: { sourcePid, subjectCard?, method?, paid?, manaTapped?, firstThisTurn? }
 const DEFAULT_TRIGGER_SCOPE = {
   creaturePutBz:"this", leave:"this", destroyed:"this", battleDestroy:"this", attack:"this", attackEnd:"this",
-  battleWin:"this",
+  battleWin:"this", battle:"this", break:"this",
   castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self",
   startOfTurn:"self", endOfTurn:"self",
 };
 // 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
 // （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
-const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd", "battleWin"]);
+const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd", "battleWin", "battle", "break"]);
 // この誘発が「自分自身に起きた出来事」を見るのか、プレイヤーのイベントを見張るのか
 function triggerScope(tr, event){ return tr.target || DEFAULT_TRIGGER_SCOPE[event] || "self"; }
 
@@ -113,9 +113,9 @@ function checkStaticDeny(state, targetPid, type, fromZone="hand"){
 // ===========================
 // BATTLE SCREEN
 // ===========================
-export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
-  const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb));
-  const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb));
+export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,onBackToMenu}){
+  const [p1,setP1]=useState(()=>initPlayerState(p1DeckIds,cardDb,p1HyperIds));
+  const [p2,setP2]=useState(()=>initPlayerState(p2DeckIds,cardDb,p2HyperIds));
   const [active,setActive]=useState("p1");
   const [drewThisTurn,setDrewThisTurn]=useState(true);
   const [chargedThisTurn,setChargedThisTurn]=useState(false);
@@ -123,9 +123,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 攻撃先を決めてから「攻撃する時」の誘発を解決するので、解決が終わるまで攻撃先を預かる。
   // { intent } … intent は withBlockStep と同じ形（shield / creature+targetUid / direct）
   const [pendingAttack,setPendingAttack]=useState(null);
-  // 「ターンの終わりに」の誘発を解決しきるまで、次のターンへ進むのを預かる。
-  // 攻撃先を預かるのと同じ流儀（pendingAttack）
-  const [pendingEndTurn,setPendingEndTurn]=useState(false);
+  // 「待っている誘発を解決しきってから続きを行う」ための待ち行列。
+  // ターンの終わり・バトル・ブレイクはどれも「誘発を積んでから、解決しきったところで
+  // 続きを行う」同じ形なので、個別の預かり先を並べずにここ1本にまとめてある。
+  // （攻撃先 pendingAttack だけは intent というデータを他からも読むので別に持つ）
+  const [continuationTick,setContinuationTick]=useState(0);
   // 革命チェンジの確認。攻撃先を決めた後に聞くので、PlayerBoard ではなくここで持つ
   const [logs,setLogs]=useState(["ゲーム開始！P1のターンです。"]);
   const [message,setMessage]=useState("P1: マナチャージorカードをプレイ");
@@ -163,7 +165,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 置換効果なので「墓地に置こうとする時」＝その呪文を解決しきった時に判定する（総合ルール604.2）。
   const [pendingSpellAfterCast,setPendingSpellAfterCast]=useState([]);
   const pendingAttackRef=useRef(null);
-  const pendingEndTurnRef=useRef(false);
+  const continuationsRef=useRef([]);
+  // END TURN の二度押し防止（解決待ちの間もボタンは押せるため）
+  const endingTurnRef=useRef(false);
   const advanceToNextTurnRef=useRef();
   // 唱えている呪文の後始末。DMでは呪文は「唱え終えた時」に墓地へ置かれるので、
   // 唱えている間はどのゾーンにも置かず、カードの実体をこの列で預かる。
@@ -254,6 +258,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   };
 
   // 効果を pending キューへ積む（front=true で先頭=LIFO, #6枠組み）
+  // 誘発を積んだあと、それを解決しきってから続きを行いたい時に使う。
+  // 「ターンの終わり」「バトル」「各ブレイクの前」はどれもこの形。
+  const runWhenResolved=(fn)=>{
+    continuationsRef.current=[...continuationsRef.current,{fn}];
+    setContinuationTick(t=>t+1);
+  };
   const enqueueEffect=(entry,{front=false}={})=>{
     if(!entry?.effect) return;
     const e={ id:`pe${++pendingIdRef.current}`, kind:entry.kind||"trigger", priority: entry.priority ?? (entry.ownerPid===active?0:1), ...entry };
@@ -323,12 +333,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
         setTimeout(()=>proceedAttackRef.current(intent),0);
         return;
       }
-      // 「ターンの終わりに」の誘発を解決しきったら、次のターンへ進む。
-      // ここで待たずに進めてしまうと、相手のターンになってから誘発が解決されてしまう
-      if(pending.length===0&&pendingEndTurn){
-        pendingEndTurnRef.current=false;
-        setPendingEndTurn(false);
-        setTimeout(()=>advanceToNextTurnRef.current(),0);
+      // 解決しきるのを待っていた続き（ターンの終わり／バトル／ブレイク）を1件ずつ進める。
+      // ここで待たずに進めると、誘発より先に続きが走ってしまう
+      if(pending.length===0&&continuationsRef.current.length){
+        const [next,...rest]=continuationsRef.current;
+        continuationsRef.current=rest;
+        setContinuationTick(t=>t+1);
+        setTimeout(next.fn,0);
         return;
       }
       if(pending.length===0) return;
@@ -350,7 +361,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     },0);
     return ()=>clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[resolverBusy,pendingEffects,pendingAttack,pendingEndTurn,pendingSpellAfterCast]);
+  },[resolverBusy,pendingEffects,pendingAttack,continuationTick,pendingSpellAfterCast]);
 
   // extra: uid 以外の選択結果（「プレイヤーを1人選ぶ」「G-NEO の置換」など）。
   // selectedUids は「uid の配列」という契約があり、case "battle" が先頭要素を uid とみなしたり
@@ -1069,6 +1080,25 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[p1.shields,p2.shields,winner]);
 
+  // サイキック・クリーチャーは、対戦中はバトルゾーンか超次元ゾーンのどちらかにしか存在できない。
+  // 破壊・マナ送り・バウンス・シールド送り・山札送りなど**どの経路で離れても**、
+  // 一旦その行き先に置かれてから、すぐ超次元ゾーンへ移動する。
+  // これは置換ではなく**ルール上の優先処理**なので、例外処理で中止できる形にはしない。
+  //
+  // 離脱の経路が多すぎて1か所に差し込めないので、シールドゾーンの監視と同じ流儀の
+  // 状況起因処理にしてある。「一旦その行き先に置かれる」のが先なので、
+  // leave/destroyed の誘発も「山札の下に置かれたこと自体は有効」という裁定も自然に満たせる。
+  useEffect(()=>{
+    if(winner) return;
+    ["p1","p2"].forEach(pid=>{
+      const { returned }=returnPsychicsHome(pid==="p1"?p1:p2);
+      if(!returned.length) return;
+      (pid==="p1"?setP1:setP2)(s=>returnPsychicsHome(s).state);
+      returned.forEach(c=>addLog(`${pid.toUpperCase()}: ${c.name} は超次元ゾーンに戻った`));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[p1.grave,p1.mana,p1.hand,p1.shields,p1.deck,p2.grave,p2.mana,p2.hand,p2.shields,p2.deck,winner]);
+
   const handleTemplateChoose=(tplIdx)=>{
     if(!templateChoiceModal)return;
     const {templates,ownerPid,srcCard,count}=templateChoiceModal;
@@ -1509,7 +1539,23 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,[card]),0);
   };
 
+  // 「このクリーチャーがバトルする時」。バトルの勝敗を決める**前**に誘発させ、
+  // 解決しきってから勝敗を出す（パワーを上げる効果が間に合うように）。
+  // バトルは2体の出来事なので、攻撃側・ブロック側の両方で誘発する
   const resolveAttackCreature=(attacker,target)=>{
+    setTimeout(()=>{
+      fireTriggerRef.current("battle",{sourcePid:active,subjectCard:attacker,opponentCard:target});
+      fireTriggerRef.current("battle",{sourcePid:otherPid,subjectCard:target,opponentCard:attacker});
+      runWhenResolved(()=>resolveBattleNow(attacker.uid,target.uid));
+    },0);
+  };
+  // バトルの勝敗。「バトルする時」の誘発を解決しきった後に呼ばれるので、
+  // パワーはその時点の盤面で数え直す
+  const resolveBattleNow=(attackerUid,targetUid)=>{
+    const attacker=stateRef.current[active].battle.find(c=>c.uid===attackerUid);
+    const target=stateRef.current[otherPid].battle.find(c=>c.uid===targetUid);
+    // 誘発の解決中にどちらかが居なくなっていればバトルは起きない
+    if(!attacker||!target){ setAttackingUid(null); setTimeout(()=>fireTriggerRef.current("attackEnd",{sourcePid:active,subjectCard:attacker||{}}),0); return; }
     const aEff=getEffectivePower(attacker,activeState,activeState.battle,{attacking:true});
     const dEff=getEffectivePower(target,otherState,otherState.battle);
     addLog(`[VS] ${attacker.name}(${aEff}) vs ${target.name}(${dEff})`);
@@ -1623,33 +1669,44 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
       setTimeout(()=>fireTrigger("attackEnd",{sourcePid:active,subjectCard:attacker}),0);
     };
 
-    const isBolmetheus=attacker.name.includes("ボルメテウス");
-    const faceUpToGrave=broken.filter(c=>c.faceUp&&c.faceUpLeaveTo==="grave");
-    if(isBolmetheus&&broken.length>0){
-      // 置換効果（§0: 必ず例外処理で中止できる）
-      setReplacementModal({
-        title:"ボルメテウス（置換効果）",
-        card:attacker,
-        message:`ブレイクしたシールド${broken.length}枚を、手札に加える代わりに墓地に置く（その「S・トリガー」は使えない）。`,
-        applyLabel:"墓地に置く（置換）",
-        cancelLabel:"例外処理で中止（通常ブレイク）",
-        onApply:()=>{setReplacementModal(null);finalizeBreak(new Set(broken.map(c=>c.uid)));},
-        onCancel:()=>{setReplacementModal(null);finalizeBreak(null);},
-      });
-    }else if(faceUpToGrave.length>0){
-      // 表向きカードの離脱置換（G城等：表向きで離れる時はかわりに墓地へ）§0で中止可
-      setReplacementModal({
-        title:"表向きシールドの離脱（置換効果）",
-        card:faceUpToGrave[0],
-        message:`表向きの「${faceUpToGrave.map(c=>c.name).join("、")}」は、離れる時にかわりに墓地に置く。`,
-        applyLabel:"墓地に置く（置換）",
-        cancelLabel:"例外処理で中止（通常どおり手札へ）",
-        onApply:()=>{setReplacementModal(null);finalizeBreak(new Set(faceUpToGrave.map(c=>c.uid)));},
-        onCancel:()=>{setReplacementModal(null);finalizeBreak(null);},
-      });
-    }else{
-      finalizeBreak(null);
-    }
+    // 「このクリーチャーの各ブレイクの前に」。ブレイクする枚数ぶん誘発させ、
+    // 解決しきってから実際にブレイクする。どのシールドが割れるかは既に決まっているので、
+    // 1枚ごとに割っては誘発を挟む代わりに、まとめて先に誘発させている
+    const breakFlow=()=>{
+      const isBolmetheus=attacker.name.includes("ボルメテウス");
+      const faceUpToGrave=broken.filter(c=>c.faceUp&&c.faceUpLeaveTo==="grave");
+      if(isBolmetheus&&broken.length>0){
+        // 置換効果（§0: 必ず例外処理で中止できる）
+        setReplacementModal({
+          title:"ボルメテウス（置換効果）",
+          card:attacker,
+          message:`ブレイクしたシールド${broken.length}枚を、手札に加える代わりに墓地に置く（その「S・トリガー」は使えない）。`,
+          applyLabel:"墓地に置く（置換）",
+          cancelLabel:"例外処理で中止（通常ブレイク）",
+          onApply:()=>{setReplacementModal(null);finalizeBreak(new Set(broken.map(c=>c.uid)));},
+          onCancel:()=>{setReplacementModal(null);finalizeBreak(null);},
+        });
+      }else if(faceUpToGrave.length>0){
+        // 表向きカードの離脱置換（G城等：表向きで離れる時はかわりに墓地へ）§0で中止可
+        setReplacementModal({
+          title:"表向きシールドの離脱（置換効果）",
+          card:faceUpToGrave[0],
+          message:`表向きの「${faceUpToGrave.map(c=>c.name).join("、")}」は、離れる時にかわりに墓地に置く。`,
+          applyLabel:"墓地に置く（置換）",
+          cancelLabel:"例外処理で中止（通常どおり手札へ）",
+          onApply:()=>{setReplacementModal(null);finalizeBreak(new Set(faceUpToGrave.map(c=>c.uid)));},
+          onCancel:()=>{setReplacementModal(null);finalizeBreak(null);},
+        });
+      }else{
+        finalizeBreak(null);
+      }
+    };
+    if(broken.length>0){
+      setTimeout(()=>{
+        for(let i=0;i<broken.length;i++) fireTriggerRef.current("break",{sourcePid:active,subjectCard:attacker});
+        runWhenResolved(breakFlow);
+      },0);
+    }else breakFlow();
   };
   // ハイパー化（コスト支払いによる解放：メインステップ）
   const handleHyperUnlock=uid=>{
@@ -1680,12 +1737,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
   // 攻撃先を預かるのと同じ流儀で、解決しきったのをリゾルバのアイドルで拾って ② へ進む。
   const handleEndTurn=()=>{
     // 解決を待っている間は END TURN がまだ押せるので、二度押しで①を二重に行わないようにする
-    if(pendingEndTurnRef.current) return;
-    pendingEndTurnRef.current=true;
+    if(endingTurnRef.current) return;
+    endingTurnRef.current=true;
     endOfTurnResolution();
-    // リゾルバが見るのは state のほう。①の誘発を積む setTimeout より後ろで立てることで、
-    // まだ誘発が積まれていない一瞬を「解決しきった」と見てしまうのを防ぐ
-    setTimeout(()=>setPendingEndTurn(true),0);
+    // ①の誘発は setTimeout で積まれるので、待ち行列に入れるのもその後ろに並べる。
+    // 先に入れてしまうと、まだ誘発が積まれていない一瞬を「解決しきった」と見てしまう
+    setTimeout(()=>runWhenResolved(()=>{ endingTurnRef.current=false; advanceToNextTurnRef.current(); }),0);
   };
 
   const endOfTurnResolution=()=>{
@@ -1816,8 +1873,9 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
     setPending([]);
     spellAfterCastRef.current=[];setPendingSpellAfterCast([]);
     pendingAttackRef.current=null;setPendingAttack(null);
-    // ターンの終わりの待ち合わせも捨てる（この後すぐ自分で advanceToNextTurn を呼ぶので二重に進めない）
-    pendingEndTurnRef.current=false;setPendingEndTurn(false);
+    // 解決待ちの続き（ターンの終わり・バトル・ブレイク）も捨てる
+    // （この後すぐ自分で advanceToNextTurn を呼ぶので、二重に進めない）
+    continuationsRef.current=[];setContinuationTick(t=>t+1);endingTurnRef.current=false;
     setActiveSteps(null);setTemplateChoiceModal(null);setTriggerOrderModal(null);
     setReplacementModal(null);setEnterReplaceQueue([]);setShieldAddQueue([]);
     setLeaveReplaceModal(null);setNeoPutModal(null);
@@ -1852,7 +1910,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,cardDb,onBackToMenu}){
             </>);
           })()}
           <div style={{display:"flex",gap:12,marginTop:32}}>
-            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb));setP2(initPlayerState(p2DeckIds,cardDb));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setWinReason(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
+            <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb,p1HyperIds));setP2(initPlayerState(p2DeckIds,cardDb,p2HyperIds));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setWinReason(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
             <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
           </div>
         </div>
