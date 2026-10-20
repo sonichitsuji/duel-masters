@@ -5622,5 +5622,46 @@
       ]
     },
     "id": 142
+  },
+  {
+    "name": "超次元シューティング・ホール",
+    "type": "spell",
+    "civ": "fire",
+    "race": null,
+    "cost": 5,
+    "power": 0,
+    "keywords": [],
+    "effect": "相手の「ブロッカー」を持つクリーチャーを1体選び、破壊する。\n火のコスト9以下のサイキック・クリーチャーを1体、自分の超次元ゾーンから出す。",
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "相手の「ブロッカー」を持つクリーチャーを1体選び、破壊する",
+            "type": "destroy",
+            "target": "opponent",
+            "amount": 1,
+            "filter": {
+              "creatureOnly": true,
+              "keyword": "blocker"
+            }
+          },
+          {
+            "label": "火のコスト9以下のサイキック・クリーチャーを1体、自分の超次元ゾーンから出す",
+            "type": "zonesToBz",
+            "zones": [
+              "hyper"
+            ],
+            "amount": 1,
+            "filter": {
+              "psychic": true,
+              "civ": "fire",
+              "maxCost": 9
+            }
+          }
+        ]
+      }
+    ],
+    "id": 143
   }
 ]
