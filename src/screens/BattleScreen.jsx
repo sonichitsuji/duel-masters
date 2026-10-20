@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, returnPsychicsHome, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, returnPsychicsHome, invasionCanStack, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -911,11 +911,27 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     const {card,kind}=play;
     // 革命チェンジは「出す」のではなく攻撃クリーチャーとの入れ替えなので、専用の処理へ回す。
     // 攻撃先（intent）は攻撃宣言の時に預けてあるものを使う
-    if(kind==="revolutionChange"){
+    if(kind==="revolutionChange"||kind==="invasion"){
+      // どちらも「攻撃中のクリーチャーに対して手札から割り込む」ので、攻撃先は
+      // 攻撃宣言の時に預けてあるものを使う。攻撃クリーチャーは**今の盤面**で引き直す
+      //（先に別の侵略が重なっていることがあるため）
       const atkUid=srcEvent?.ev?.subjectCard?.uid;
-      const attacker=stateRef.current[pid].battle.find(c=>c.uid===atkUid);
       const intent=pendingAttackRef.current?.intent;
-      if(!attacker||!intent){ addLog(`[革命チェンジ] ${pid}: 攻撃中のクリーチャーがいないため中止`); return; }
+      const label2=kind==="invasion"?"侵略":"革命チェンジ";
+      // 侵略は「重なった結果いま攻撃しているクリーチャー」に重ねるので attackingUid を優先する
+      const curUid=kind==="invasion"?(attackingUidRef.current||atkUid):atkUid;
+      const attacker=stateRef.current[pid].battle.find(c=>c.uid===curUid);
+      if(!attacker||!intent){ addLog(`[${label2}] ${pid}: 攻撃中のクリーチャーがいないため中止`); return; }
+      if(kind==="invasion"){
+        // 宣言の後に別の侵略が先に重なって、進化条件を満たさなくなっていたらキャンセル。
+        // 「侵略の条件」だけ満たさなくなった場合はそのまま重ねられる（宣言に要るだけなので）
+        if(!invasionCanStack(card,attacker)){
+          addLog(`[侵略] ${pid}: 「${attacker.name}」は進化条件を満たさないので「${face.name}」を重ねられない（キャンセル）`);
+          return;
+        }
+        handleInvasionExec(card,attacker,intent);
+        return;
+      }
       handleRevChangeExec(card,attacker,intent);
       return;
     }
@@ -1289,6 +1305,25 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   };
   // 革命チェンジ。攻撃先はすでに決まっているので、入れ替えたクリーチャーが
   // タップしたまま攻撃を引き継ぐ（そのあと新しいクリーチャーで「攻撃する時」が誘発する）
+  // 侵略。攻撃クリーチャーの**上に重ねて進化**する（入れ替える革命チェンジとはここが違う）。
+  // 重ねたクリーチャーがそのまま攻撃を引き継ぐ。
+  const handleInvasionExec=(handCard,attacker,intent)=>{
+    // 攻撃クリーチャーとその下のカードが、そのまま進化元になる
+    const bases=[attacker,...(attacker.evolutionBase||[])]
+      .map(c=>{const m={...c,tapped:false,faceUp:false};delete m.evolutionBase;return m;});
+    // 攻撃を引き継ぐのでタップしたまま。進化なので召喚酔いしない
+    const put={...handCard,tapped:true,enteredThisTurn:true,summonedThisTurn:false,evolutionBase:bases};
+    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?put:c);
+    setActiveState(s=>({...s,battle:newBattle,hand:s.hand.filter(c=>c.uid!==handCard.uid)}));
+    addLog(`[侵略] ${attacker.name} の上に「${handCard.name}」を重ねた（攻撃継続）`);
+    maybeFlagCantAttack([handCard.uid],setActiveState,otherState.battle);
+    // 重ねて出たので cip は誘発する（進化と同じ）
+    setTimeout(()=>putCreatureBzRef.current(active,put,"summon"),0);
+    setAttackingUid(handCard.uid);
+    // 重ねた後のクリーチャーで「攻撃する時」が誘発する。攻撃の回数と、
+    // 鬼エンドなどの宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
+    fireAttackTriggers(newBattle.find(c=>c.uid===handCard.uid),intent,{ swapped:true });
+  };
   const handleRevChangeExec=(handCard,attacker,intent)=>{
     const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:true,enteredThisTurn:true,summonedThisTurn:false}:c);
     // 入れ替えたクリーチャーは「それを構成するカードすべて」が手札に戻る。
@@ -1386,7 +1421,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     if(!swapped) setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn,
-        handPlayKinds:swapped?["revolutionChange"]:null});
+        handPlayKinds:swapped?["revolutionChange","invasion"]:null});
       pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
