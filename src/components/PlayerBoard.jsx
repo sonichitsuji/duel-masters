@@ -232,6 +232,11 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           {label}{isActive&&<span style={{fontSize:9,color:"#ffe066",marginLeft:6,fontFamily:"'Cinzel',serif",letterSpacing:1}}>◆ ACTIVE</span>}
         </span>
         <div style={{display:"flex",gap:4,marginLeft:"auto",alignItems:"center"}}>
+          {/* 超次元ゾーンは公開領域なので、墓地と同じようにいつでも中身を見られる */}
+          <div onClick={() => setZoneModal("hyper")} style={{ background: "#04202a", border: "1px solid #66ddff88", borderRadius: 6, padding: "2px 6px", textAlign: "center", minWidth: 36, cursor: "pointer" }}>
+            <div style={{ fontSize: 9, color: "#66ddff" }}>超次元</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#9ef", lineHeight: 1.1 }}>{(state.hyper || []).length}</div>
+          </div>
           <div style={{background:"#0d1a2e",border:"1px solid #2255aa88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36}}>
             <div style={{fontSize:9,color:"#5588aa"}}>DECK</div>
             <div style={{fontSize:16,fontWeight:700,color:"#7af",lineHeight:1.1}}>{state.deck.length}</div>
@@ -240,13 +245,6 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
             <div style={{fontSize:9,color:"#9966bb"}}>墓地{summonableCount("grave")>0&&<span style={{color:"#ffcc66"}}> ▲</span>}</div>
             <div style={{fontSize:16,fontWeight:700,color:"#b8f",lineHeight:1.1}}>{state.grave.length}</div>
           </div>
-          {/* 超次元ゾーンは置かれた時だけ表示する（閲覧のみ・戻ってこない） */}
-          {(state.hyper||[]).length>0&&(
-            <div onClick={()=>setZoneModal("hyper")} style={{background:"#04202a",border:"1px solid #66ddff88",borderRadius:6,padding:"2px 6px",textAlign:"center",minWidth:36,cursor:"pointer"}}>
-              <div style={{fontSize:9,color:"#66ddff"}}>超次元</div>
-              <div style={{fontSize:16,fontWeight:700,color:"#9ef",lineHeight:1.1}}>{state.hyper.length}</div>
-            </div>
-          )}
         </div>
         <div style={{border:"1px solid #3498dbaa",background:"rgba(52,152,219,0.10)",borderRadius:7,padding:"3px 6px"}}>
           <ShieldPile shields={state.shields} canClick={!!(attackingUid&&!isActive)} onBreak={onAttackPlayer}/>
