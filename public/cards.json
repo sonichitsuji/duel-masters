@@ -5724,5 +5724,73 @@
       ]
     },
     "id": 144
+  },
+  {
+    "name": "情熱の薔薇 メーテル",
+    "race": "マジック・アウトレイジMAX",
+    "cost": 4,
+    "power": 3000,
+    "type": "twinpact",
+    "civ": "water",
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、自分の手札を1枚、シールド化してもよい。そうしたら、自分のシールドを1つ手札に加える。ただし、その「S・トリガー」は使えない。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の手札を1枚、シールド化してもよい",
+            "type": "handToShield",
+            "amount": 1,
+            "optional": true
+          },
+          {
+            "label": "そうしたら、自分のシールドを1つ手札に加える（その「S・トリガー」は使えない）",
+            "type": "shieldToHand",
+            "target": "self",
+            "canUseTrigger": false,
+            "ifPrevious": true
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "神にも届く歌声",
+      "race": "マジック・ソング",
+      "cost": 3,
+      "civ": "water",
+      "keywords": [
+        "sTrigger"
+      ],
+      "effect": "S・トリガー\n相手のクリーチャーを1体選び、持ち主の手札に戻す。\nカードを1枚引き、自分の手札を1枚捨てる。",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "相手のクリーチャーを1体選び、持ち主の手札に戻す",
+              "type": "bzToHand",
+              "target": "opponent",
+              "amount": 1,
+              "filter": {
+                "creatureOnly": true
+              }
+            },
+            {
+              "label": "カードを1枚引く",
+              "type": "drawCards",
+              "amount": 1
+            },
+            {
+              "label": "自分の手札を1枚捨てる",
+              "type": "handToGrave",
+              "target": "self",
+              "amount": 1
+            }
+          ]
+        }
+      ]
+    },
+    "id": 145
   }
 ]
