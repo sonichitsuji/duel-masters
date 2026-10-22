@@ -26,11 +26,11 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
         <span style={{background:c.color,color:"#fff",fontWeight:700,fontSize:small?8:10,borderRadius:3,padding:"0 3px",lineHeight:"15px"}}>{card.cost}</span>
         <div style={{display:"flex",gap:1}}>{civs.map(cv=>{const cv_=CIV[cv];return cv_?<span key={cv} style={{fontSize:small?6:8,fontWeight:900,color:cv_.textColor,background:`${cv_.color}44`,borderRadius:2,padding:"0 2px",lineHeight:"13px",fontFamily:"'Noto Sans JP',sans-serif"}}>{cv_.label}</span>:null;})}</div>
       </div>
-      <div style={{color:"#fff",fontSize:small?6.5:8.5,fontWeight:700,lineHeight:1.2,textAlign:"center",flex:1,overflow:"hidden",wordBreak:"break-all",margin:"2px 0",textShadow:`0 0 5px ${c.glow}`}}>{(()=>{const dn=cardDisplayName(card);return dn.length>13?dn.slice(0,12)+"…":dn;})()}</div>
+      <div style={{color:"#fff",fontSize:small?6.5:8.5,fontWeight:700,lineHeight:1.2,textAlign:"center",flex:1,overflow:"hidden",wordBreak:"break-all",margin:"2px 0",textShadow:"0 1px 3px rgba(0,0,0,0.9)"}}>{(()=>{const dn=cardDisplayName(card);return dn.length>13?dn.slice(0,12)+"…":dn;})()}</div>
       {/* Race */}
-      {card.race&&!small&&<div style={{color:c.color,fontSize:6.5,textAlign:"center",opacity:0.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
+      {card.race&&!small&&<div style={{color:"rgba(255,255,255,0.78)",fontSize:6.5,textAlign:"center",textShadow:"0 1px 2px rgba(0,0,0,0.8)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",marginBottom:1}}>{card.race}</div>}
       {/* Power */}
-      <div style={{color:c.color,fontSize:small?7:9,textAlign:"center",borderTop:`1px solid ${c.color}44`,paddingTop:2,fontWeight:700}}>{card.type==="creature"||card.type==="evo_creature"?`${displayPower(card)}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="field"?"フィールド":card.type==="castle"?"城":"SPELL"}</div>
+      <div style={{color:"#fff",fontSize:small?7:9,textAlign:"center",borderTop:"1px solid rgba(255,255,255,0.18)",paddingTop:2,fontWeight:700,textShadow:"0 1px 2px rgba(0,0,0,0.8)"}}>{card.type==="creature"||card.type==="evo_creature"?`${displayPower(card)}`:card.type==="twinpact"?"TWIN":card.type==="tamaseed"?"タマシード":card.type==="field"?"フィールド":card.type==="castle"?"城":"SPELL"}</div>
       {/* NEO は下にカードがある間だけ進化クリーチャーとして扱われるので、バッジも実体を見て出す */}
       {isEvolutionNow(card)&&!small&&<div style={{position:"absolute",top:14,left:2,fontSize:6,color:"#adf",background:"rgba(0,0,80,0.7)",borderRadius:2,padding:"0 2px"}}>進化</div>}
       <div style={{position:"absolute",top:2,right:2,display:"flex",flexDirection:"column",gap:1}}>

@@ -131,7 +131,8 @@ const CSS = `
   text-align:center;font-size:6.5px;font-weight:700;line-height:1.15;color:#fff;
   overflow:hidden;word-break:break-all;padding:2px 0;text-shadow:0 1px 3px rgba(0,0,0,.9)}
 .deck-editor .card .ft{font-size:7px;font-weight:700;text-align:center;padding-top:2px;
-  border-top:1px solid rgba(255,255,255,.14);
+  border-top:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.85);
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .deck-editor .card .qty{position:absolute;top:-1px;right:-1px;min-width:15px;height:15px;
   padding:0 3px;border-radius:0 5px 0 6px;background:var(--gold);color:#000;font-size:9.5px;
@@ -225,7 +226,7 @@ function DeckCard({card,qty,selected,onClick}){
       </div>
       <div className="nm">{dn.length>22?dn.slice(0,21)+"…":dn}</div>
       {/* デッキ編集ではパワーよりも「何のカードか」が知りたいので、下段は種別を出す */}
-      <div className="ft" style={{ color:main.textColor }}>{CARD_TYPE_LABELS[card.type]||card.type}</div>
+      <div className="ft">{CARD_TYPE_LABELS[card.type]||card.type}</div>
       {qty>0&&<span className={"qty"+(qty>=MAX_COPIES?" full":"")}>{qty}</span>}
     </button>
   );

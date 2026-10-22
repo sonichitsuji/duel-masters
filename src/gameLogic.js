@@ -71,12 +71,12 @@ export function getCardCivs(card){
   return arr.sort((a,b)=>CIVS.indexOf(a)-CIVS.indexOf(b));
 }
 
+// カードは文明の色で全面を塗る。単色も多色も同じ規則で、色数ぶん \ 方向(左上→右下)に等分する
+// （単色は等分が1つ、つまりベタ塗り1色になる）。
+// 各文明はベタ塗りの平坦域を持ち、境界付近だけ細くグラデーションで混ぜる(色はくっきり分かれる)。
+// 鮮やかな color のままでは上に乗る文字が読めないので、少し暗く落としてから塗る。
 export function makeCardBg(civs) {
   const n = civs.length;
-  if (n === 1) return `linear-gradient(180deg, ${CIV[civs[0]]?.bg || '#08080f'}, #08080f)`;
-  // 多色: \ 方向(左上→右下)の斜め線で色数ぶん等分。
-  // 各文明はベタ塗りの平坦域を持ち、境界付近だけ細くグラデーションで混ぜる(色はくっきり分かれる)。
-  // bg(ほぼ黒)では色差が出ず視認できないため鮮やかな color を使用し、文字が読めるよう少し暗く落とす。
   const margin = 5; // 境界の混色域の半幅(%)。小さいほど色の境目がくっきりする。
   const stops = [];
   civs.forEach((civ, i) => {
