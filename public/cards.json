@@ -5663,5 +5663,66 @@
       }
     ],
     "id": 143
+  },
+  {
+    "name": "ゲラッチョ重役",
+    "race": "ジョーカーズ",
+    "cost": 6,
+    "power": 6000,
+    "type": "twinpact",
+    "civ": "darkness",
+    "keywords": [
+      "gStrike",
+      "wBreaker"
+    ],
+    "effect": "G・ストライク\nW・ブレイカー\nこのクリーチャーが出た時、相手のクリーチャーを1体選び、破壊する。\nJクライム8（このクリーチャーが攻撃する時、これと自分の墓地にあるコスト8以下のジョーカーズ・クリーチャー1体を入れ替えてもよい）",
+    "jCrime": {
+      "filter": {
+        "creatureOnly": true,
+        "maxCost": 8,
+        "raceContains": "ジョーカーズ"
+      }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーを1体選び、破壊する",
+            "type": "destroy",
+            "target": "opponent",
+            "amount": 1
+          }
+        ]
+      }
+    ],
+    "spellSide": {
+      "name": "「ミーのチョーおすすめゲラ！」",
+      "cost": 3,
+      "civ": "darkness",
+      "effect": "自分の山札の上から3枚を墓地に置く。\n相手のコスト3以下のクリーチャーを1体選び、破壊する。",
+      "triggers": [
+        {
+          "on": "cast",
+          "effects": [
+            {
+              "label": "自分の山札の上から3枚を墓地に置く",
+              "type": "topToGrave",
+              "amount": 3
+            },
+            {
+              "label": "相手のコスト3以下のクリーチャーを1体選び、破壊する",
+              "type": "destroy",
+              "target": "opponent",
+              "amount": 1,
+              "filter": {
+                "maxCost": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "id": 144
   }
 ]

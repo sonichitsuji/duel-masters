@@ -608,6 +608,20 @@ function checkAbilityFields(obj, where) {
       // 「相手のクリーチャーが攻撃またはブロックした時」が契機なので on は書けない
     }
   }
+  // jCrime: Jクライム。「このクリーチャーが攻撃する時、これと自分の墓地にある
+  // 指定のクリーチャー1体を入れ替えてもよい」。能力を持つのは**攻撃クリーチャー**の側で、
+  // filter は入れ替える相手（墓地のカード）に掛かる
+  if (obj.jCrime != null) {
+    const jc = obj.jCrime;
+    if (typeof jc !== "object" || Array.isArray(jc)) errors.push(`${where}.jCrime: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(jc)) {
+        if (k !== "filter") errors.push(`${where}.jCrime: 未知のキー "${k}"（コストは filter.maxCost に書きます）`);
+      }
+      if (!jc.filter) errors.push(`${where}.jCrime: filter（入れ替える墓地のカードの条件）が必要です`);
+      checkFilterKeys(jc.filter, `${where}.jCrime`);
+    }
+  }
   // invasionCond: 侵略。「指定の特性を持つ自分のクリーチャーが攻撃する時、その上に重ねる」
   if (obj.invasionCond != null) {
     const iv = obj.invasionCond;
@@ -660,7 +674,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","psychic",
   "evolution","ssx","spellSide","awakenSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","invasionCond","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
+  "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","invasionCond","jCrime","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換

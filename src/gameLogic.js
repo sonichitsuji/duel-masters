@@ -347,6 +347,20 @@ export function invasionCanStack(card, attacker) {
   return isCreatureSide(attacker) && matchCardFilter(attacker, spec.filter);
 }
 
+// Jクライム8:「このクリーチャーが攻撃する時、これと自分の墓地にあるコスト8以下の
+// ジョーカーズ・クリーチャー1体を入れ替えてもよい」。
+// 入れ替えである点は革命チェンジと同じで、違うのは**出どころと行き先が墓地**なことだけ。
+// 能力を持つのは入れ替わって出る側ではなく**攻撃クリーチャー**なので、
+// spec（jCrime）は攻撃クリーチャーから、候補の card は墓地から来る。
+export function jCrimeMatches(spec, card, attacker, ownerState) {
+  if (!spec || !card || !attacker || !ownerState) return false;
+  // 入れ替える効果は、そのクリーチャーを構成するカードがすべて墓地へ行かない状況では実行されない
+  // （G-NEO進化クリーチャーは離れる時に下のカードが身代わりになる。革命チェンジと同じ理由）
+  if (isGNeoEvolution(attacker)) return false;
+  if (!isCreatureSide(card)) return false;
+  return matchCardFilter(card, spec.filter);
+}
+
 export function revolutionChangeCandidates(attacker, ownerState) {
   if (!attacker || !ownerState) return [];
   return (ownerState.hand || []).filter(c => revolutionChangeMatches(c, attacker, ownerState));
@@ -377,7 +391,7 @@ const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "costReduce","condPower","grantKeywords","grantRace","grantPowerBoost","grantPowerBoostGrave",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
-  "revolutionChangeCond","invasionCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
+  "revolutionChangeCond","invasionCond","jCrime","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
   "replaceEnter","replaceShieldAdd","recycle"];
 
 // 「今どの面を見せているか」を解決する単一の窓口。
@@ -894,12 +908,17 @@ export function manaHasAll(state, filters){
 // 違いは ①提示の条件 ②コストを払うかどうか の2つだけなので、1つの枠組みにまとめてある。
 //   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
 //   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
-export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike", "revolutionChange", "invasion"];
+export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike", "revolutionChange", "invasion", "jCrime"];
+// 攻撃クリーチャーと入れ替える／その上に重ねる能力。契機は「自分のクリーチャーが攻撃する時」で固定
+const ATTACK_SWAP_KINDS = ["revolutionChange", "invasion", "jCrime"];
 // 能力の中身が入っているフィールド名。既定は kind と同じ名前
 const HAND_PLAY_SPEC_FIELD = { revolutionChange: "revolutionChangeCond", invasion: "invasionCond" };
+// 候補を探すゾーン。既定は手札で、Jクライムだけ墓地のクリーチャーと入れ替える
+const HAND_PLAY_ZONE = { jCrime: "grave" };
+export const handPlayZone = kind => HAND_PLAY_ZONE[kind] || "hand";
 // sTrigger は誘発で手札を探す能力ではないが、「手札のカードをコストを支払わずにプレイしてよいか
 // 聞く」点が同じなので、同じ枠組み（HandPlayModal / playFromHandDeclared）に乗せている。
-const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", revolutionChange: "革命チェンジ", invasion: "侵略", sTrigger: "S・トリガー" };
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", revolutionChange: "革命チェンジ", invasion: "侵略", jCrime: "Jクライム", sTrigger: "S・トリガー" };
 export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
 
 // 誘発の on / target がこのイベントに合うか（両方の能力で共通）
@@ -907,29 +926,38 @@ function handPlayMatchesEvent(spec, event, ev, ownerPid, kind){
   // ニンジャ・ストライクは「攻撃**または**ブロックした時」の2つが契機
   if(kind === "ninjaStrike"){
     if(event !== "attack" && event !== "block") return false;
-  }else if(kind === "revolutionChange" || kind === "invasion"){
-    // 革命チェンジと侵略は「自分のクリーチャーが攻撃する時」で固定
+  }else if(ATTACK_SWAP_KINDS.includes(kind)){
+    // 革命チェンジ・侵略・Jクライムは「自分のクリーチャーが攻撃する時」で固定
     // （spec は入れ替え／重ねる条件であって、契機ではない）
     if(event !== "attack") return false;
   }else if((spec.on || "attack") !== event) return false;
-  // アタック・チャンス／革命チェンジ／侵略は「**自分の**クリーチャーが攻撃する時」なので既定が self、
+  // アタック・チャンスと入れ替え系は「**自分の**クリーチャーが攻撃する時」なので既定が self、
   // ニンジャ・ストライクは「**相手の**クリーチャーが〜した時」なので既定が opponent
-  const FIXED_SELF = ["attackChance", "revolutionChange", "invasion"];
-  const defaultScope = FIXED_SELF.includes(kind) ? "self" : kind === "ninjaStrike" ? "opponent" : "both";
-  const scope = (kind === "revolutionChange" || kind === "invasion" ? null : spec.target) || defaultScope;
+  const fixedSelf = kind === "attackChance" || ATTACK_SWAP_KINDS.includes(kind);
+  const defaultScope = fixedSelf ? "self" : kind === "ninjaStrike" ? "opponent" : "both";
+  const scope = (ATTACK_SWAP_KINDS.includes(kind) ? null : spec.target) || defaultScope;
   if(scope === "self" && ev.sourcePid !== ownerPid) return false;
   if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
   return true;
 }
 
-// 手札から今プレイを宣言できるカードを返す。
-// event/ev は誘発の中身（fireTrigger と同じ形）。ownerPid はこの手札の持ち主。
-// 戻り値は [{ card, kind, cost }]。cost があれば支払いが要る。
+// 能力の中身がどこに書いてあるか。普通はプレイするカード自身が持つが、
+// Jクライムだけは**攻撃クリーチャー**が持つ能力で、入れ替える相手を墓地から選ぶ。
+// 攻撃クリーチャーはバトルゾーンにいるので、能力を無視されていれば読めない（effectiveCard 越し）
+function handPlaySpec(card, kind, ev){
+  if(kind === "jCrime") return ev.subjectCard ? effectiveCard(ev.subjectCard).jCrime : null;
+  return card[HAND_PLAY_SPEC_FIELD[kind] || kind];
+}
+
+// 今プレイを宣言できるカードを返す。
+// event/ev は誘発の中身（fireTrigger と同じ形）。ownerPid はこのゾーンの持ち主。
+// 戻り値は [{ card, kind, cost, fromZone }]。cost があれば支払いが要る。
 export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
   const out = [];
-  for(const card of state?.hand || []){
-    for(const kind of HAND_PLAY_KINDS){
-      const spec = card[HAND_PLAY_SPEC_FIELD[kind] || kind];
+  for(const kind of HAND_PLAY_KINDS){
+    const fromZone = handPlayZone(kind);
+    for(const card of state?.[fromZone] || []){
+      const spec = handPlaySpec(card, kind, ev);
       if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid, kind)) continue;
       // 呪文を唱えられない状態なら呪文は提示しない（ラフルル・ラブ等）
       if(spellDenyReason(card, state, otherState)) continue;
@@ -937,7 +965,7 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
         // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
         if(!oniEndActive(state, otherState)) continue;
         if(!manaHasAll(state, spec.manaHas)) continue;
-        out.push({ card, kind, cost: null });
+        out.push({ card, kind, cost: null, fromZone });
       }else if(kind === "ninjaStrike"){
         // ニンジャ・ストライクN（X）: 自分のマナゾーンにカードがN枚以上で、X文明があること。
         // マナはタップしない（支払いではなく条件）。
@@ -947,30 +975,34 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
         const mana = state?.mana || [];
         if(mana.length < (spec.count ?? 0)) continue;
         if(spec.civ && !mana.some(m => getManaCivs(m).includes(spec.civ))) continue;
-        out.push({ card, kind, cost: null });
+        out.push({ card, kind, cost: null, fromZone });
       }else if(kind === "invasion"){
         // 侵略: 攻撃クリーチャーに重ねられること。コストは支払わない。
         // 同じ攻撃で複数の侵略を**まとめて宣言**でき、重ねる順はリゾルバが選ばせる
         if(!invasionMatches(card, ev.subjectCard, state)) continue;
-        out.push({ card, kind, cost: null });
+        out.push({ card, kind, cost: null, fromZone });
       }else if(kind === "revolutionChange"){
         // 革命チェンジ: 攻撃したクリーチャーと入れ替えられること。コストは支払わない。
         // 鬼エンドなどと同じ枠組みに乗せてあるので、同じ攻撃で一緒に宣言できる
         if(!revolutionChangeMatches(card, ev.subjectCard, state)) continue;
-        out.push({ card, kind, cost: null });
+        out.push({ card, kind, cost: null, fromZone });
+      }else if(kind === "jCrime"){
+        // Jクライム: 攻撃クリーチャーと、墓地のこのカードを入れ替える。コストは支払わない
+        if(!jCrimeMatches(spec, card, ev.subjectCard, state)) continue;
+        out.push({ card, kind, cost: null, fromZone });
       }else if(kind === "attackChance"){
         // アタック・チャンス:「自分の指定のクリーチャーが攻撃する時」。
         // filter は攻撃したクリーチャー（ev.subjectCard）に掛かる。コストは支払わない
         if(!ev.subjectCard) continue;
         if(spec.filter && !matchCardFilter(ev.subjectCard, spec.filter)) continue;
-        out.push({ card, kind, cost: null });
+        out.push({ card, kind, cost: null, fromZone });
       }else{
         // D・D・D: 指定コストを払えること（払えないなら提示しない）
         const cost = spec.cost;
         if(!cost) continue;
         const asCard = { ...card, cost: cost.cost, civ: cost.civs || card.civ };
         if(!canPayCost(state?.mana || [], asCard, state).ok) continue;
-        out.push({ card, kind, cost });
+        out.push({ card, kind, cost, fromZone });
       }
     }
   }
