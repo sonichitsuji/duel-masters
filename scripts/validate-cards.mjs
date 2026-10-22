@@ -15,7 +15,7 @@ const root = path.join(__dirname, "..");
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
 const CIVS = new Set(["light","water","darkness","fire","nature","colorless"]);
-const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"]);
+const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","invasion","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"]);
 const TRIGGER_ONS = new Set(["cast","creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","battle","break","attack","block","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
@@ -608,6 +608,21 @@ function checkAbilityFields(obj, where) {
       // 「相手のクリーチャーが攻撃またはブロックした時」が契機なので on は書けない
     }
   }
+  // invasionCond: 侵略。「指定の特性を持つ自分のクリーチャーが攻撃する時、その上に重ねる」
+  if (obj.invasionCond != null) {
+    const iv = obj.invasionCond;
+    if (typeof iv !== "object" || Array.isArray(iv)) errors.push(`${where}.invasionCond: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(iv)) {
+        if (k !== "filter") errors.push(`${where}.invasionCond: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (!iv.filter) errors.push(`${where}.invasionCond: filter（攻撃クリーチャーの条件）が必要です`);
+      checkFilterKeys(iv.filter, `${where}.invasionCond`);
+    }
+    if (!(obj.keywords || []).includes("invasion")) {
+      errors.push(`${where}: invasionCond を書くなら keywords に "invasion" も要ります`);
+    }
+  }
   // recycle: 自分の墓地から、リサイクル・コストを支払って唱える
   if (obj.recycle != null) {
     const rc = obj.recycle;
@@ -645,7 +660,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","psychic",
   "evolution","ssx","spellSide","awakenSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
+  "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","invasionCond","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換

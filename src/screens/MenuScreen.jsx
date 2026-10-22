@@ -15,9 +15,10 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
 
   const openNewDeck=()=>{setEditingDeckIdx(null);setScreen("deckEdit");};
   const openEditDeck=idx=>{setEditingDeckIdx(idx);setScreen("deckEdit");};
-  const saveDeck=({name,ids})=>{
-    if(editingDeckIdx===null){setDecks(d=>[...d,{name,ids}]);}
-    else{setDecks(d=>d.map((dk,i)=>i===editingDeckIdx?{name,ids}:dk));}
+  const saveDeck=({ name, ids, hyperIds })=>{
+    const deck={ name, ids, hyperIds };
+    if(editingDeckIdx===null){setDecks(d=>[...d, deck]);}
+    else{setDecks(d=>d.map((dk,i)=>i===editingDeckIdx?deck:dk));}
     setScreen("deckList");
   };
 

@@ -131,7 +131,8 @@ const CSS = `
   text-align:center;font-size:6.5px;font-weight:700;line-height:1.15;color:#fff;
   overflow:hidden;word-break:break-all;padding:2px 0;text-shadow:0 1px 3px rgba(0,0,0,.9)}
 .deck-editor .card .ft{font-size:7px;font-weight:700;text-align:center;padding-top:2px;
-  border-top:1px solid rgba(255,255,255,.14);
+  border-top:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.85);
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .deck-editor .card .qty{position:absolute;top:-1px;right:-1px;min-width:15px;height:15px;
   padding:0 3px;border-radius:0 5px 0 6px;background:var(--gold);color:#000;font-size:9.5px;
@@ -225,32 +226,33 @@ function DeckCard({card,qty,selected,onClick}){
       </div>
       <div className="nm">{dn.length>22?dn.slice(0,21)+"…":dn}</div>
       {/* デッキ編集ではパワーよりも「何のカードか」が知りたいので、下段は種別を出す */}
-      <div className="ft" style={{ color:main.textColor }}>{CARD_TYPE_LABELS[card.type]||card.type}</div>
+      <div className="ft">{CARD_TYPE_LABELS[card.type]||card.type}</div>
       {qty>0&&<span className={"qty"+(qty>=MAX_COPIES?" full":"")}>{qty}</span>}
     </button>
   );
 }
 
 export function DeckEditor({cardDb,initialIds,initialHyperIds,initialName,onSave,onCancel}){
+  const byId={};cardDb.forEach(c=>{byId[c.id]=c;});
+  // サイキックは超次元ゾーン、それ以外はメインデッキ。枠は別々に数える
+  const isPsychic=id=>!!byId[id]?.psychic;
+  const countById=ids=>{const c={};(ids||[]).forEach(id=>{c[id]=(c[id]||0)+1;});return c;};
+
   const [name,setName]=useState(initialName||"新しいデッキ");
-  const [counts,setCounts]=useState(()=>{
-    const c={};(initialIds||[]).forEach(id=>{c[id]=(c[id]||0)+1;});return c;
-  });
-  // 超次元ゾーン（デッキ外）。サイキック・クリーチャーはメインデッキに入らないので、
-  // 入れる先は「そのカードがサイキックかどうか」で自動的に決まる
-  const [hyperCounts,setHyperCounts]=useState(()=>{
-    const c={};(initialHyperIds||[]).forEach(id=>{c[id]=(c[id]||0)+1;});return c;
-  });
+  // デッキシートから読んだ場合など、渡された40枚の側にサイキックが混ざっていることがある。
+  // メインデッキには入らないカードなので、ここで超次元ゾーンへ振り分ける
+  const [counts,setCounts]=useState(()=>countById((initialIds||[]).filter(id=>!isPsychic(id))));
+  // 超次元ゾーン（デッキ外）。入れる先は「そのカードがサイキックかどうか」で自動的に決まる
+  const [hyperCounts,setHyperCounts]=useState(()=>countById([
+    ...(initialHyperIds||[]), ...(initialIds||[]).filter(isPsychic),
+  ]));
   const [search,setSearch]=useState("");
   const [pickedId,setPickedId]=useState(()=>(initialIds||[])[0]??null);
   const isPC=useIsPC();
   const zoneRef=useRef(null), gridRef=useRef(null), stripRef=useRef(null);
 
-  const byId={};cardDb.forEach(c=>{byId[c.id]=c;});
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const hyperTotal=Object.values(hyperCounts).reduce((a,b)=>a+b,0);
-  // サイキックは超次元ゾーン、それ以外はメインデッキ。枠は別々に数える
-  const isPsychic=id=>!!byId[id]?.psychic;
   const binOf=id=>isPsychic(id)
     ? {counts:hyperCounts,setCounts:setHyperCounts,total:hyperTotal,max:HYPER_SIZE}
     : {counts,setCounts,total,max:DECK_SIZE};
@@ -355,6 +357,8 @@ export function DeckEditor({cardDb,initialIds,initialHyperIds,initialName,onSave
     if(!picked) return <div className="detail"><div className="none">カードを選ぶと、ここに内容が出ます。</div></div>;
     const civs=getCardCivs(picked);
     const n=countOf(picked.id);
+    // 枚数の上限は入る枠のもの（サイキックなら超次元ゾーンの8枚）を見る
+    const bin=binOf(picked.id);
     // ツインパクトもクリーチャーなのでパワーを持つ
     const hasPower=picked.type==="creature"||picked.type==="evo_creature"||picked.type==="twinpact";
     return (
@@ -373,11 +377,11 @@ export function DeckEditor({cardDb,initialIds,initialHyperIds,initialName,onSave
         </div>
         <div className="dbody scroll"><CardEffectText card={picked}/></div>
         <div className="qtybar">
-          <span className="lbl">デッキ中</span>
+          <span className="lbl">{isPsychic(picked.id)?"超次元ゾーン":"デッキ中"}</span>
           <button className="qbtn" onClick={()=>remove(picked.id)} disabled={n===0} aria-label="1枚減らす">−</button>
           <span className={"qnum"+(n>=MAX_COPIES?" full":"")}>{n}<small> / {MAX_COPIES}</small></span>
           <button className="qbtn" onClick={()=>add(picked.id)}
-            disabled={n>=MAX_COPIES||total>=DECK_SIZE} aria-label="1枚増やす">＋</button>
+            disabled={n>=MAX_COPIES||bin.total>=bin.max} aria-label="1枚増やす">＋</button>
         </div>
       </div>
     );
@@ -402,11 +406,9 @@ export function DeckEditor({cardDb,initialIds,initialHyperIds,initialName,onSave
         <span className="lbl">メイン</span>
         <span className={"num"+(total===DECK_SIZE?" full":"")}>{total}</span>
         <span className="of">/ {DECK_SIZE}</span>
-        {hyperTotal>0&&(<>
-          <span className="lbl" style={{marginLeft:10}}>超次元</span>
-          <span className="num">{hyperTotal}</span>
-          <span className="of">/ {HYPER_SIZE}</span>
-        </>)}
+        <span className="lbl" style={{ marginLeft: 10 }}>超次元</span>
+        <span className="num">{hyperTotal}</span>
+        <span className="of">/ {HYPER_SIZE}</span>
         <div className="civbar">
           {CIVS.filter(cv=>tally[cv]).map(cv=>(
             <span key={cv} className="civchip" style={{

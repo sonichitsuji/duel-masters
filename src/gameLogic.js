@@ -71,12 +71,12 @@ export function getCardCivs(card){
   return arr.sort((a,b)=>CIVS.indexOf(a)-CIVS.indexOf(b));
 }
 
+// カードは文明の色で全面を塗る。単色も多色も同じ規則で、色数ぶん \ 方向(左上→右下)に等分する
+// （単色は等分が1つ、つまりベタ塗り1色になる）。
+// 各文明はベタ塗りの平坦域を持ち、境界付近だけ細くグラデーションで混ぜる(色はくっきり分かれる)。
+// 鮮やかな color のままでは上に乗る文字が読めないので、少し暗く落としてから塗る。
 export function makeCardBg(civs) {
   const n = civs.length;
-  if (n === 1) return `linear-gradient(180deg, ${CIV[civs[0]]?.bg || '#08080f'}, #08080f)`;
-  // 多色: \ 方向(左上→右下)の斜め線で色数ぶん等分。
-  // 各文明はベタ塗りの平坦域を持ち、境界付近だけ細くグラデーションで混ぜる(色はくっきり分かれる)。
-  // bg(ほぼ黒)では色差が出ず視認できないため鮮やかな color を使用し、文字が読めるよう少し暗く落とす。
   const margin = 5; // 境界の混色域の半幅(%)。小さいほど色の境目がくっきりする。
   const stops = [];
   civs.forEach((civ, i) => {
@@ -318,6 +318,35 @@ export function revolutionChangeMatches(card, attacker, ownerState) {
   return true;
 }
 
+// 侵略: 指定の特性を持つ自分のクリーチャーが攻撃する時、手札のこのクリーチャーを
+// **その上に重ねて進化**できる。宣言のタイミングは革命チェンジ／D・D・D と同じ。
+//
+// 条件は2つあり、見るタイミングが違う:
+//   invasionCond.filter … 「侵略」を**宣言する**ために攻撃クリーチャーが満たす条件（例: 火のコマンド）
+//   evolution            … 実際に**重ねる**ために満たす進化条件
+// 宣言した後に先に別の侵略が重なって、攻撃クリーチャーが
+//   ・進化条件を満たさなくなった → 重ねられない（キャンセル）
+//   ・侵略の条件だけ満たさなくなった → そのまま重ねられる（侵略の条件は宣言に要るだけ）
+// なので、この関数は**宣言の可否**だけを見る。重ねられるかは invasionCanStack で見る。
+export function invasionMatches(card, attacker, ownerState) {
+  if (!card || !attacker || !ownerState) return false;
+  if (!hasKeyword(card, "invasion") || !card.invasionCond) return false;
+  if (!isCreatureSide(attacker)) return false;
+  if (!matchCardFilter(attacker, card.invasionCond.filter)) return false;
+  // 宣言の時点で進化条件も満たせないなら、そもそも提示しない
+  return invasionCanStack(card, attacker);
+}
+
+// 重ねられるか（進化条件）。宣言の後、解決する時にもう一度見る
+export function invasionCanStack(card, attacker) {
+  if (!card || !attacker) return false;
+  const spec = evolutionSpec(card);
+  // 進化条件を書いていないカードは、攻撃クリーチャーなら何にでも重ねられる
+  if (!spec) return isCreatureSide(attacker);
+  // 侵略はバトルゾーンの攻撃クリーチャーに重ねるので、進化元のゾーン指定は見ない
+  return isCreatureSide(attacker) && matchCardFilter(attacker, spec.filter);
+}
+
 export function revolutionChangeCandidates(attacker, ownerState) {
   if (!attacker || !ownerState) return [];
   return (ownerState.hand || []).filter(c => revolutionChangeMatches(c, attacker, ownerState));
@@ -348,7 +377,7 @@ const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
   "costReduce","condPower","grantKeywords","grantRace","grantPowerBoost","grantPowerBoostGrave",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
-  "revolutionChangeCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
+  "revolutionChangeCond","invasionCond","finalRevolution","alternateCost","reactivePassive","endOfTurnEffect",
   "replaceEnter","replaceShieldAdd","recycle"];
 
 // 「今どの面を見せているか」を解決する単一の窓口。
@@ -865,12 +894,12 @@ export function manaHasAll(state, filters){
 // 違いは ①提示の条件 ②コストを払うかどうか の2つだけなので、1つの枠組みにまとめてある。
 //   oniEnd … シールドが1つもないプレイヤーがいる＋マナ条件。コストは払わない
 //   ddd    … 指定のコストを支払う（[自然(2)] のような部分コスト）
-export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike", "revolutionChange"];
+export const HAND_PLAY_KINDS = ["oniEnd", "ddd", "attackChance", "ninjaStrike", "revolutionChange", "invasion"];
 // 能力の中身が入っているフィールド名。既定は kind と同じ名前
-const HAND_PLAY_SPEC_FIELD = { revolutionChange: "revolutionChangeCond" };
+const HAND_PLAY_SPEC_FIELD = { revolutionChange: "revolutionChangeCond", invasion: "invasionCond" };
 // sTrigger は誘発で手札を探す能力ではないが、「手札のカードをコストを支払わずにプレイしてよいか
 // 聞く」点が同じなので、同じ枠組み（HandPlayModal / playFromHandDeclared）に乗せている。
-const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", revolutionChange: "革命チェンジ", sTrigger: "S・トリガー" };
+const HAND_PLAY_LABELS = { oniEnd: "鬼エンド", ddd: "D・D・D", attackChance: "アタック・チャンス", ninjaStrike: "ニンジャ・ストライク", revolutionChange: "革命チェンジ", invasion: "侵略", sTrigger: "S・トリガー" };
 export const handPlayLabel = kind => HAND_PLAY_LABELS[kind] || kind;
 
 // 誘発の on / target がこのイベントに合うか（両方の能力で共通）
@@ -878,15 +907,16 @@ function handPlayMatchesEvent(spec, event, ev, ownerPid, kind){
   // ニンジャ・ストライクは「攻撃**または**ブロックした時」の2つが契機
   if(kind === "ninjaStrike"){
     if(event !== "attack" && event !== "block") return false;
-  }else if(kind === "revolutionChange"){
-    // 革命チェンジは「自分のクリーチャーが攻撃する時」で固定（spec は入れ替えの条件）
+  }else if(kind === "revolutionChange" || kind === "invasion"){
+    // 革命チェンジと侵略は「自分のクリーチャーが攻撃する時」で固定
+    // （spec は入れ替え／重ねる条件であって、契機ではない）
     if(event !== "attack") return false;
   }else if((spec.on || "attack") !== event) return false;
-  // アタック・チャンスと革命チェンジは「**自分の**クリーチャーが攻撃する時」なので既定が self、
+  // アタック・チャンス／革命チェンジ／侵略は「**自分の**クリーチャーが攻撃する時」なので既定が self、
   // ニンジャ・ストライクは「**相手の**クリーチャーが〜した時」なので既定が opponent
-  const defaultScope = kind === "attackChance" || kind === "revolutionChange" ? "self"
-    : kind === "ninjaStrike" ? "opponent" : "both";
-  const scope = (kind === "revolutionChange" ? null : spec.target) || defaultScope;
+  const FIXED_SELF = ["attackChance", "revolutionChange", "invasion"];
+  const defaultScope = FIXED_SELF.includes(kind) ? "self" : kind === "ninjaStrike" ? "opponent" : "both";
+  const scope = (kind === "revolutionChange" || kind === "invasion" ? null : spec.target) || defaultScope;
   if(scope === "self" && ev.sourcePid !== ownerPid) return false;
   if(scope === "opponent" && ev.sourcePid === ownerPid) return false;
   return true;
@@ -917,6 +947,11 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
         const mana = state?.mana || [];
         if(mana.length < (spec.count ?? 0)) continue;
         if(spec.civ && !mana.some(m => getManaCivs(m).includes(spec.civ))) continue;
+        out.push({ card, kind, cost: null });
+      }else if(kind === "invasion"){
+        // 侵略: 攻撃クリーチャーに重ねられること。コストは支払わない。
+        // 同じ攻撃で複数の侵略を**まとめて宣言**でき、重ねる順はリゾルバが選ばせる
+        if(!invasionMatches(card, ev.subjectCard, state)) continue;
         out.push({ card, kind, cost: null });
       }else if(kind === "revolutionChange"){
         // 革命チェンジ: 攻撃したクリーチャーと入れ替えられること。コストは支払わない。
