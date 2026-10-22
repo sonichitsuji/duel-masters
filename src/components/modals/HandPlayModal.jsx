@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CardFace } from "../CardFace";
-import { CARD_TYPE_LABELS, CIV } from "../../constants";
+import { CARD_TYPE_LABELS, CIV, ZONE_LABELS } from "../../constants";
 import { cardDisplayName, isCreatureSide, handPlayLabel } from "../../gameLogic";
 
 // ===========================
@@ -23,6 +23,8 @@ export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
   const verb = !one ? "プレイする" : isCreatureSide(faceOf(one)) ? "召喚する" : "唱える";
   const costLabel = cost => `[${(cost.civs || []).map(cv => CIV[cv]?.label || cv).join("/")}(${cost.cost})]`;
   const kinds = [...new Set(plays.map(p => p.kind))].map(handPlayLabel).join(" / ");
+  // 普通は手札から行うが、Jクライムのように別のゾーンから入れ替えるものもある
+  const zones = [...new Set(plays.map(p => ZONE_LABELS[p.fromZone] || "手札"))].join("・");
   const toggle = uid => setSelected(s => s.includes(uid) ? s.filter(u => u !== uid) : [...s, uid]);
 
   return (
@@ -31,7 +33,7 @@ export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
         <div>
           <div style={{ fontFamily:"'Cinzel',serif", color:"#ff8899", fontSize:14, fontWeight:900, letterSpacing:2 }}>{kinds}</div>
           <div style={{ fontSize:11, color:"#888", marginTop:4 }}>
-            {pid.toUpperCase()}: 手札のカードをプレイできます。
+            {pid.toUpperCase()}: {zones}のカードをプレイできます。
           </div>
         </div>
 

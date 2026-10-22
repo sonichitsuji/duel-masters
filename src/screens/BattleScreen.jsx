@@ -911,13 +911,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     const {card,kind}=play;
     // 革命チェンジは「出す」のではなく攻撃クリーチャーとの入れ替えなので、専用の処理へ回す。
     // 攻撃先（intent）は攻撃宣言の時に預けてあるものを使う
-    if(kind==="revolutionChange"||kind==="invasion"){
-      // どちらも「攻撃中のクリーチャーに対して手札から割り込む」ので、攻撃先は
+    if(kind==="revolutionChange"||kind==="invasion"||kind==="jCrime"){
+      // どれも「攻撃中のクリーチャーに対して割り込む」ので、攻撃先は
       // 攻撃宣言の時に預けてあるものを使う。攻撃クリーチャーは**今の盤面**で引き直す
       //（先に別の侵略が重なっていることがあるため）
       const atkUid=srcEvent?.ev?.subjectCard?.uid;
       const intent=pendingAttackRef.current?.intent;
-      const label2=kind==="invasion"?"侵略":"革命チェンジ";
+      const label2=handPlayLabel(kind);
       // 侵略は「重なった結果いま攻撃しているクリーチャー」に重ねるので attackingUid を優先する
       const curUid=kind==="invasion"?(attackingUidRef.current||atkUid):atkUid;
       const attacker=stateRef.current[pid].battle.find(c=>c.uid===curUid);
@@ -926,12 +926,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
         // 宣言の後に別の侵略が先に重なって、進化条件を満たさなくなっていたらキャンセル。
         // 「侵略の条件」だけ満たさなくなった場合はそのまま重ねられる（宣言に要るだけなので）
         if(!invasionCanStack(card,attacker)){
-          addLog(`[侵略] ${pid}: 「${attacker.name}」は進化条件を満たさないので「${face.name}」を重ねられない（キャンセル）`);
+          addLog(`[侵略] ${pid}: 「${attacker.name}」は進化条件を満たさないので「${card.name}」を重ねられない（キャンセル）`);
           return;
         }
         handleInvasionExec(card,attacker,intent);
         return;
       }
+      if(kind==="jCrime"){ handleJCrimeExec(card,attacker,intent); return; }
       handleRevChangeExec(card,attacker,intent);
       return;
     }
@@ -1005,9 +1006,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   // 進化元を選ぶカード（NEO進化を含む）は先に進化元を決めてから、コストの支払いへ進む
   const beginHandPlay=(pid,play,srcEvent)=>{
     const spec=evolutionSpec(play.face||play.card);
-    // 前の1枚の効果で手札から動いていることがあるので、実行の直前に確かめる
-    if(!stateRef.current[pid].hand.some(c=>c.uid===play.card.uid)){
-      addLog(`[${handPlayLabel(play.kind)}] 「${play.card.name}」は手札にないので実行できない`);
+    // 前の1枚の効果でそのゾーンから動いていることがあるので、実行の直前に確かめる
+    const fromZone=play.fromZone||"hand";
+    if(!stateRef.current[pid][fromZone].some(c=>c.uid===play.card.uid)){
+      addLog(`[${handPlayLabel(play.kind)}] 「${play.card.name}」は${ZONE_LABELS[fromZone]||fromZone}にないので実行できない`);
       return;
     }
     if(spec&&!play.evolutionBaseUids){
@@ -1324,33 +1326,45 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     // 鬼エンドなどの宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
     fireAttackTriggers(newBattle.find(c=>c.uid===handCard.uid),intent,{ swapped:true });
   };
-  const handleRevChangeExec=(handCard,attacker,intent)=>{
-    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?{...handCard,uid:handCard.uid,tapped:true,enteredThisTurn:true,summonedThisTurn:false}:c);
-    // 入れ替えたクリーチャーは「それを構成するカードすべて」が手札に戻る。
-    // 進化クリーチャーなら下のカードも一緒に戻る（下のカードを消滅させない）
-    const toHand=[attacker,...(attacker.evolutionBase||[])]
+  // 攻撃クリーチャーとの入れ替え。革命チェンジは手札と、Jクライムは墓地と入れ替える。
+  // 違うのは「入れ替える相手がどこから来て、攻撃クリーチャーがどこへ行くか」だけなので、
+  // ゾーンを引数で受けて1本にまとめてある。
+  const handleSwapExec=({zone,kind,newCard,attacker,intent,onSwapped})=>{
+    const put={...newCard,tapped:true,enteredThisTurn:true,summonedThisTurn:false};
+    const newBattle=activeState.battle.map(c=>c.uid===attacker.uid?put:c);
+    // 入れ替えたクリーチャーは「それを構成するカードすべて」がそのゾーンへ移る。
+    // 進化クリーチャーなら下のカードも一緒に（下のカードを消滅させない）
+    const moved=[attacker,...(attacker.evolutionBase||[])]
       .map(c=>{const m={...c,tapped:false,hyperMode:false,cantAttackThisTurn:false,enteredThisTurn:false,summonedThisTurn:false,faceUp:false};delete m.evolutionBase;return m;});
     setActiveState(s=>({
       ...s,
       battle:newBattle,
-      hand:s.hand.filter(c=>c.uid!==handCard.uid).concat(toHand),
+      [zone]:s[zone].filter(c=>c.uid!==newCard.uid).concat(moved),
     }));
-    addLog(`[REV] 革命チェンジ！${attacker.name} → ${handCard.name}（攻撃継続）`);
-    maybeFlagCantAttack([handCard.uid],setActiveState,otherState.battle);
-    // 入れ替わって出たクリーチャーの「出た時」。これまで autoEffect しか撃っておらず、
-    // triggers:[{on:"creaturePutBz"}] で書かれた cip が誘発していなかった
-    const revPut=newBattle.find(c=>c.uid===handCard.uid);
-    // 革命チェンジは入れ替えなのでコストを支払わない（paid は既定の false）
-    setTimeout(()=>putCreatureBzRef.current(active,revPut,"summon"),0);
-    if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
-    else if(handCard.finalRevolution&&!usedFinalRevThisTurn){
-      setUsedFinalRevThisTurn(true);
-      triggerEffect(handCard.finalRevolution,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,handCard);
-    }
-    setAttackingUid(handCard.uid);
+    addLog(`[${handPlayLabel(kind)}] ${attacker.name} → ${newCard.name}（攻撃継続）`);
+    maybeFlagCantAttack([newCard.uid],setActiveState,otherState.battle);
+    // 入れ替わって出たクリーチャーの「出た時」。入れ替えなのでコストは支払わない（paid は既定の false）
+    setTimeout(()=>putCreatureBzRef.current(active,put,"summon"),0);
+    onSwapped?.(newBattle);
+    setAttackingUid(newCard.uid);
     // 入れ替わった後のクリーチャーで「攻撃する時」が誘発する。
     // 攻撃の回数と、鬼エンドなどの宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
-    fireAttackTriggers(newBattle.find(c=>c.uid===handCard.uid),intent,{ swapped:true });
+    fireAttackTriggers(newBattle.find(c=>c.uid===newCard.uid),intent,{ swapped:true });
+  };
+  const handleRevChangeExec=(handCard,attacker,intent)=>{
+    handleSwapExec({zone:"hand",kind:"revolutionChange",newCard:handCard,attacker,intent,
+      onSwapped:newBattle=>{
+        // ファイナル革命は「革命チェンジして出た時」の能力なので、入れ替えの共通処理には置かない
+        if(handCard.name==="蒼き団長 ドギラゴン剣"&&!usedFinalRevThisTurn) setFinalRevModal(true);
+        else if(handCard.finalRevolution&&!usedFinalRevThisTurn){
+          setUsedFinalRevThisTurn(true);
+          triggerEffect(handCard.finalRevolution,active,{...activeState,battle:newBattle},setActiveState,otherState,setOtherState,handCard.name,handCard);
+        }
+      }});
+  };
+  // Jクライム。攻撃クリーチャーを墓地に置き、かわりに墓地のクリーチャーが攻撃を引き継ぐ
+  const handleJCrimeExec=(graveCard,attacker,intent)=>{
+    handleSwapExec({zone:"grave",kind:"jCrime",newCard:graveCard,attacker,intent});
   };
   const handleFinalRevConfirm=selected=>{
     setUsedFinalRevThisTurn(true);
@@ -1421,7 +1435,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     if(!swapped) setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn,
-        handPlayKinds:swapped?["revolutionChange","invasion"]:null});
+        handPlayKinds:swapped?["revolutionChange","invasion","jCrime"]:null});
       pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
