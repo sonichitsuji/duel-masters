@@ -884,17 +884,19 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   };
   offerSpellAfterCastRef.current=offerSpellAfterCast;
 
-  // 手札からの宣言型プレイ（鬼エンド / D・D・D）。
-  // 条件を満たす手札があれば pending へ積み、リゾルバに順番を任せる。
-  // 「〜してもよい」なので必ず見送れる。複数枚あれば1枚ずつ、解決のたびに再提示する。
+  // 宣言型プレイ（鬼エンド / D・D・D / 革命チェンジ …）。
+  // 条件を満たすカードがあれば pending へ積み、リゾルバに順番を任せる。
+  // 「〜してもよい」なので必ず見送れる。一覧は**この時点の盤面で1度だけ**作り、
+  // 解決の途中で手札が増えても足さない（宣言の窓は一度きり）。
   const offerHandPlays=(event,ev)=>{
+    // 宣言の窓は1回の攻撃につき一度だけ。入れ替え／重ねた後の再発火では聞き直さない
+    // （→ fireAttackTriggers の swapped）
+    if(ev.noHandPlays) return;
     // ニンジャ・ストライクの「その攻撃中に使っていないこと」は進行の状態なので、ここで載せる
     const ev2={...ev,ninjaUsed:ninjaUsedThisAttackRef.current};
     ["p1","p2"].forEach(pid=>{
       const oPid=pid==="p1"?"p2":"p1";
-      // handPlayKinds が載っていれば、その種類だけを提示する（→ fireAttackTriggers の swapped）
-      const plays=findHandPlays(stateRef.current[pid],stateRef.current[oPid],event,ev2,pid)
-        .filter(p=>!ev2.handPlayKinds||ev2.handPlayKinds.includes(p.kind));
+      const plays=findHandPlays(stateRef.current[pid],stateRef.current[oPid],event,ev2,pid);
       // priority 2 = 誘発（0/1）より後。先に誘発を解決しきってから「使うかどうか」を聞く。
       // （プレイした後に再提示するので、これが先に来ると誘発が後回しになり続けてしまう）
       if(plays.length) enqueueEffectRef.current({
@@ -1323,7 +1325,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     setTimeout(()=>putCreatureBzRef.current(active,put,"summon"),0);
     setAttackingUid(handCard.uid);
     // 重ねた後のクリーチャーで「攻撃する時」が誘発する。攻撃の回数と、
-    // 鬼エンドなどの宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
+    // 宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
     fireAttackTriggers(newBattle.find(c=>c.uid===handCard.uid),intent,{ swapped:true });
   };
   // 攻撃クリーチャーとの入れ替え。革命チェンジは手札と、Jクライムは墓地と入れ替える。
@@ -1348,7 +1350,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     onSwapped?.(newBattle);
     setAttackingUid(newCard.uid);
     // 入れ替わった後のクリーチャーで「攻撃する時」が誘発する。
-    // 攻撃の回数と、鬼エンドなどの宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
+    // 攻撃の回数と、宣言型プレイはこの攻撃で既に済んでいる（→ swapped）
     fireAttackTriggers(newBattle.find(c=>c.uid===newCard.uid),intent,{ swapped:true });
   };
   const handleRevChangeExec=(handCard,attacker,intent)=>{
@@ -1417,10 +1419,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   };
   // 「攻撃する時」の誘発。革命チェンジで入れ替わった場合は新しいクリーチャーで誘発する。
   // 攻撃先は誘発を積んでから預ける。先に預けるとリゾルバが誘発の前に攻撃を進めてしまう。
-  // swapped:true は革命チェンジで入れ替わった後の再発火。
+  // swapped:true は入れ替え／重ねた後の再発火。
   //  ・攻撃の回数はすでに数えているので数え直さない
-  //  ・「クリーチャーが攻撃する時」の宣言型プレイ（鬼エンド等）は1回の攻撃につき一度なので
-  //    二度提示しない。ただし革命チェンジ自身は続けてチェンジできるので提示する
+  //  ・宣言型プレイは聞き直さない。宣言の窓は攻撃宣言の一度きりで、
+  //    革命チェンジも侵略も Jクライムも、そこで宣言したぶんしか使えない
   const fireAttackTriggers=(attacker,intent,{swapped=false}={})=>{
     if(!attacker){ pendingAttackRef.current={intent}; setPendingAttack({intent}); return; }
     // ハイパーモード攻撃時効果：自分の他クリーチャーを1体アンタップ
@@ -1435,7 +1437,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     if(!swapped) setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn,
-        handPlayKinds:swapped?["revolutionChange","invasion","jCrime"]:null});
+        noHandPlays:swapped});
       pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
