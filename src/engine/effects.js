@@ -141,8 +141,8 @@ export function matchFilter(card, filter, ctx) {
 // 今この形で誘発するのは discard（捨てた直後なので実体は墓地にある）だけなので、
 // 実際に取り除くゾーンは墓地。他の出来事に広げる時はここを見直すこと
 // 盤面のゾーンではなく ctx から候補を取る疑似ゾーン
-const PSEUDO_ZONES = new Set(["revealed", "lastMoved", "eventCards"]);
-const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper", eventCards: "grave" };
+const PSEUDO_ZONES = new Set(["revealed", "lastMoved", "eventCards", "wasUnder"]);
+const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper", eventCards: "grave", wasUnder: "grave" };
 
 function zoneCards(state, zone, ctx) {
   switch (zone) {
@@ -160,6 +160,9 @@ function zoneCards(state, zone, ctx) {
     // メテオバーン用。スナップショットではなく「今バトルゾーンにいる」カードの下を見る。
     // 革命チェンジ等で入れ替わっていれば空 = 不発になる。
     case "under": return (state?.battle || []).find(c => c.uid === ctx?.srcCardUid)?.evolutionBase || [];
+    // 「下にあったカード」。離れた後に見るためのもので、誘発の主体に敷かれていたカードを返す。
+    // 実体は（破壊なら）本体と一緒に墓地にあるので、ZONE_STATE_KEY で墓地に対応づけてある
+    case "wasUnder": return ctx?.subjectCard?.evolutionBase || [];
     // 「このクリーチャーに含まれるカード」= 自身＋下に敷かれたカード
     case "stack": {
       const me = (state?.battle || []).find(c => c.uid === ctx?.srcCardUid);
@@ -255,7 +258,7 @@ const SOURCE = {
   revealedToDeckTop:  { zone: "revealed", target: "self" },
 };
 // 選択を要さず自動実行される効果
-const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
+const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","topToUnder","count",
   "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck","awaken","unawaken"]);
 // 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
 const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
@@ -447,6 +450,15 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name };
   // 「そうしたら」判定用。このステップを実際に行ったか。各 case が明示しなければ末尾で既定値を入れる
   ctx.stepDone = undefined;
+  // 「〜してもよい」を見送った（モーダルの「スキップ」）。何も起こさず、「そうしたら」も繋がない。
+  // ドローや山札操作のように選択を伴わない効果は、選択が空でも実行されてしまうので、
+  // 見送りはこの合図で表す。このステップ限りなので、後続に残さず消しておく
+  if (ctx.skipped) {
+    delete ctx.skipped;
+    ctx.stepDone = false;
+    addLog(`${pid}: ${effect.label || effect.type} を行わなかった`);
+    return ctx;
+  }
   // subject:true =「そのクリーチャー」。誘発の主体そのものを対象にする（選択させない）
   if (effect.subject) selectedUids = ctx.subjectCard ? [ctx.subjectCard.uid] : [];
   const type = effect.type;
@@ -581,6 +593,29 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       setSelf(s => ({ ...s, deck: s.deck.slice(n), grave: [...s.grave, ...moved] }));
       ctx.lastMoved = moved;
       addLog(`${pid}: 山札の上から${n}枚を墓地へ`);
+      break;
+    }
+    // 山札の上から N 枚を、表向きにしてこのクリーチャーの下に置く。
+    // 下に敷いたカードは進化元そのものなので、NEO進化クリーチャーはこれで進化クリーチャーになる
+    // （進化かどうかは読み出し時に判定しているため、ここで何かを立てる必要はない）。
+    case "topToUnder": {
+      const live = selfState.battle.find(c => c.uid === ctx.srcCardUid);
+      const n = Math.min(amount, selfState.deck.length);
+      if (!live || n <= 0) {
+        ctx.stepDone = false;
+        addLog(`${pid}: 下に置けなかった（${!live ? "クリーチャーがバトルゾーンにいない" : "山札が無い"}）`);
+        break;
+      }
+      const moved = selfState.deck.slice(0, n).map(c => {
+        const m = { ...c, tapped: false, faceUp: true };
+        delete m.evolutionBase; delete m.tempBuff;
+        return m;
+      });
+      setSelf(s => ({ ...s, deck: s.deck.slice(n),
+        battle: s.battle.map(c => c.uid === live.uid
+          ? { ...c, evolutionBase: [...(c.evolutionBase || []), ...moved] } : c) }));
+      ctx.lastMoved = moved;
+      addLog(`${pid}: 山札の上から${n}枚を表向きにして「${live.name}」の下に置いた`);
       break;
     }
     case "topToMana": {
@@ -1149,11 +1184,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "graveToHand": {
-      for (const pidx of pids) {
-        const cards = stateOf(pidx).grave.filter(c => selectedUids.includes(c.uid));
-        if (!cards.length) continue;
+      // zone で「墓地のどのカードか」を絞れる（既定 "grave"。"wasUnder" は下にあったカード）。
+      // 実体はどちらも墓地にあるので、取り除く先は ZONE_STATE_KEY で引く
+      const fromZone = effect.zone || "grave";
+      const key = ZONE_STATE_KEY[fromZone] || "grave";
+      for (const { pidx, cards } of pickSelected(fromZone)) {
         const uids = cards.map(c => c.uid);
-        setOf(pidx)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false }))] }));
+        setOf(pidx)(s => ({ ...s, [key]: s[key].filter(c => !uids.includes(c.uid)),
+          hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false, faceUp: false }))] }));
         addLog(`${pid}: 墓地から「${cards.map(c => c.name).join(", ")}」を手札へ`);
         ctx.lastMoved = cards;
       }

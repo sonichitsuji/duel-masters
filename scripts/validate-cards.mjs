@@ -28,7 +28,7 @@ const EFFECT_TYPES = new Set([
   // ターン進行
   "skipRestOfTurn",
   // ドロー/山札
-  "drawCards","reveal","search","topToGrave","topToMana","topToShield",
+  "drawCards","reveal","search","topToGrave","topToMana","topToShield","topToUnder",
   // 公開カードの行き先
   "revealedToHand","revealedToBz","revealedToMana","revealedToGrave","revealedToDeckTop","revealedToDeckBottom",
   // 手札から
@@ -112,6 +112,8 @@ const ENTER_WHO = ["self","opponent","both"];
 const CAST_FROM_ZONES = new Set(["hand","grave"]);
 // playFromHand の zone。eventCards は「その誘発の元になった出来事のカード」（捨てたその呪文 等）
 const PLAY_FROM_ZONES = new Set(["hand","grave","eventCards"]);
+// graveToHand の zone。既定の墓地のほか、"wasUnder"（そのクリーチャーの下にあったカード）を指せる
+const GRAVE_TO_HAND_ZONES = new Set(["grave","wasUnder"]);
 // spellAfterCast: 唱えた後、墓地のかわりに置く場所と、その対象になる「唱えたゾーン」
 const SPELL_AFTER_CAST_TO = new Set(["deckBottom","deckTop","hand","mana","shield"]);
 const SPELL_AFTER_CAST_FROM = new Set(["hand","grave","any"]);
@@ -252,6 +254,13 @@ function checkOne(e, where) {
   if (e.side != null) {
     if (e.type !== "playFromHand") errors.push(`${where}: side は type:"playFromHand" でのみ使えます（ツインパクトのどちらの面で唱えるか）`);
     else if (!["creature","spell"].includes(e.side)) errors.push(`${where}: side は "creature" か "spell"`);
+  }
+  if (e.type === "graveToHand" && e.zone != null && !GRAVE_TO_HAND_ZONES.has(e.zone)) {
+    errors.push(`${where}: graveToHand の zone は ${[...GRAVE_TO_HAND_ZONES].join("/")}`);
+  }
+  // 下にあったカードは「破壊された時」のように、離れた後の誘発でしか見られない
+  if (e.zone === "wasUnder" && e.type !== "graveToHand") {
+    errors.push(`${where}: zone:"wasUnder" が使えるのは graveToHand だけです`);
   }
   if (e.type === "playFromHand" && e.zone != null && !PLAY_FROM_ZONES.has(e.zone)) {
     errors.push(`${where}: playFromHand の zone は ${[...PLAY_FROM_ZONES].join("/")}`);

@@ -186,7 +186,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
             {isAuto ? "確認" : "実行"}
           </button>
           {isOptional && (
-            <button onClick={() => onAdvance([])} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
+            <button onClick={() => onAdvance([], { skipped: true })} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
               スキップ
             </button>
           )}

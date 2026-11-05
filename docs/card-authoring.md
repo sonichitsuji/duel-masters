@@ -323,6 +323,7 @@
 - `reveal {amount}` — 山札の上を公開（以降 `revealed*` の対象になる）
 - `search {destination,amount,takeAll,filter}` — 山札から探す。`destination`: `hand`/`deckTop`/`bz`/`mana`（実行後シャッフル）
 - `topToGrave {amount}` / `topToMana {amount,tapped}` / `topToShield {amount}` — 山札の上を各ゾーンへ
+- `topToUnder {amount}` — 山札の上を**表向きにしてこのクリーチャーの下に置く** → **§7.26.5**
 - `shuffleDeck {target}` — 山札をシャッフルする（`target` で自分/相手/おたがい）
 
 **公開カードの行き先**
@@ -388,7 +389,8 @@
   （「自分の墓地またはマナゾーンから」→ **§7.26**）
 - `ignoreAbilities {target,all,filter}` — **そのエレメントの能力を無視する** → **§7.27**
 - `awaken` / `unawaken` — サイキック・クリーチャーを**裏返す**（覚醒／解除）→ **§7.17**
-- `graveToHand {target,filter,amount}` — 墓地から手札に戻す
+- `graveToHand {target,filter,amount,zone}` — 墓地から手札に戻す。
+  `zone:"wasUnder"` と書くと**そのクリーチャーの下にあったカード**だけが対象 → **§7.26.5**
 - `graveToDeck {target,filter,any,all,onePlayer}` — 墓地のカードを**山札に加えてシャッフル**する
   （「自身の山札に加えてシャッフルする」。下に置く `graveToDeckBottom` とは別物）
 - `graveToDeckBottom {target,filter,amount,all,order}` — 墓地から山札の下へ
@@ -1601,6 +1603,42 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 | その他 | `graveToBz` と同じ（`tempKeywords` / `summoningSickness` / `destroyAtEndOfTurn`） |
 
 1ゾーンだけなら `graveToBz` / `manaToBz` を使ってください（validator がエラーにします）。
+
+## 7.26.5. 下にカードを置く（`topToUnder`）と、下にあったカード（`zone:"wasUnder"`）
+
+> 自分のターンの終わりに、自分の山札の上から1枚を**表向きにしてこのクリーチャーの下に置いてもよい**。
+> このクリーチャーが破壊された時、**下にあったカードをすべて**墓地から手札に戻す。
+
+```jsonc
+{ "on": "endOfTurn", "target": "self", "effects": [
+  { "label": "自分の山札の上から1枚を表向きにしてこのクリーチャーの下に置いてもよい",
+    "type": "topToUnder", "amount": 1, "optional": true } ] },
+{ "on": "destroyed", "effects": [
+  { "label": "下にあったカードをすべて墓地から手札に戻す",
+    "type": "graveToHand", "zone": "wasUnder", "all": true } ] }
+```
+
+### `topToUnder` — 下に置く
+
+`topToGrave` / `topToMana` / `topToShield` と同じ「山札の上をどこかへ」の仲間で、行き先が
+**このクリーチャーの下**（＝進化元）です。メテオバーン（`meteorBurn`）の逆向きにあたります。
+
+- 置いたカードは**表向き**です
+- **下にカードがあれば進化クリーチャーとして扱われる**ので、NEO進化クリーチャー（`evolution.neo`）
+  はこれで進化クリーチャーになります。進化かどうかは読み出し時に判定しているため、
+  置いた瞬間から自然にそうなります（→ §7.26）
+- このクリーチャーがバトルゾーンにいない、または山札が無ければ**不発**です
+  （`stepDone:false` なので、後続に `ifPrevious` を書けばそこで止まります）
+
+### `zone:"wasUnder"` — 下にあったカード
+
+`eventCards` と同じ**疑似ゾーン**で、**誘発の主体の下に敷かれていたカード**を候補にします。
+破壊された後は本体と一緒に墓地にあるので、実体のゾーンは墓地です。
+
+- 使えるのは `graveToHand` だけです（「下にあったカードを墓地から手札に戻す」用）
+- **離れた後に見るためのもの**です。バトルゾーンにいる間の下のカードは `zone:"under"`
+  （メテオバーン）や `amountPer` の `evolutionBase` で見ます
+- `all:true` と組み合わせると、下にあったカードを**すべて**動かします
 
 ## 7.27. 能力を無視する（`ignoreAbilities`）と「数字を1つ選ぶ」（`chooseNumber`）
 

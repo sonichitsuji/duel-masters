@@ -5792,5 +5792,55 @@
       ]
     },
     "id": 145
+  },
+  {
+    "name": "～時空の工兵～",
+    "race": "グレートメカオー/スチーム・ナイト",
+    "cost": 2,
+    "power": 1000,
+    "type": "creature",
+    "civ": "water",
+    "keywords": [
+      "gStrike"
+    ],
+    "effect": "G・ストライク（このカードを自分のシールドゾーンから手札に加える時、表向きにし、相手のクリーチャーを1体選んでもよい。このターン、そのクリーチャーは攻撃できない）\nNEO進化：光、水、または闇のクリーチャー1体の上に置いてもよい。（カードが下にあれば、これをNEO進化クリーチャーとして扱う）\n自分のターンの終わりに、自分の山札の上から1枚を表向きにしてこのクリーチャーの下に置いてもよい。\nこのクリーチャーが破壊された時、下にあったカードをすべて墓地から手札に戻す。",
+    "evolution": {
+      "zone": "bz",
+      "count": 1,
+      "neo": true,
+      "filter": {
+        "civ": [
+          "light",
+          "water",
+          "darkness"
+        ]
+      }
+    },
+    "triggers": [
+      {
+        "on": "endOfTurn",
+        "target": "self",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚を表向きにしてこのクリーチャーの下に置いてもよい",
+            "type": "topToUnder",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      },
+      {
+        "on": "destroyed",
+        "effects": [
+          {
+            "label": "下にあったカードをすべて墓地から手札に戻す",
+            "type": "graveToHand",
+            "zone": "wasUnder",
+            "all": true
+          }
+        ]
+      }
+    ],
+    "id": 146
   }
 ]
