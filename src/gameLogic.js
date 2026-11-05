@@ -173,11 +173,6 @@ function isSpellSide(card) {
   if (card.side) return card.side === "spell";
   return card.type === "spell" || card.type === "twinpact";
 }
-// 進化クリーチャーかどうか。type:"evo_creature" と、NEO進化のように
-// type は "creature" のまま evolution（進化元の指定）を持つものの両方を拾う。
-export function isEvolutionCard(card) {
-  return card?.type === "evo_creature" || !!card?.evolution;
-}
 
 function matchesType(card, t) {
   if (t === "creature") return isCreatureSide(card);
@@ -211,8 +206,8 @@ export function matchCardFilter(card, filter) {
   if (filter.hasCip != null && hasPlayTrigger(card) !== !!filter.hasCip) return false;
   // psychic: サイキック・クリーチャーかどうか。matchFilter と同じ語彙
   if (filter.psychic != null && !!card.psychic !== !!filter.psychic) return false;
-  // evolution: 進化クリーチャーかどうか（NEO進化も含む）。matchFilter と同じ語彙
-  if (filter.evolution != null && isEvolutionCard(card) !== !!filter.evolution) return false;
+  // evolution: いま進化クリーチャーか。matchFilter と同じ語彙（→ isEvolutionNow）
+  if (filter.evolution != null && isEvolutionNow(card) !== !!filter.evolution) return false;
   // not: 「〜ではない」。1つでも一致したら弾く（配列なら「そのどれにも当てはまらない」）
   if (filter.not && anyOf(filter.not, sub => matchCardFilter(card, sub))) return false;
   return true;
@@ -272,6 +267,66 @@ export function extractManyFromBattle(battle, uids) {
 
 export function extractFromBattle(battle, uid) {
   return extractManyFromBattle(battle, [uid]);
+}
+
+// 下に敷かれたカードは、重なりの情報を持たない平らなカードとして扱う
+const stripStack = card => {
+  const c = { ...card };
+  delete c.evolutionBase; delete c.tempBuff; delete c.hyperMode;
+  delete c.grantedRaces; delete c.faceUp;
+  return c;
+};
+
+// 一番上が離れた後、残った進化元の一番上が新しい本体に昇格する。
+// 名前も能力も入れ替わるが、同じ場所に居続けているので、位置と状態
+// （タップ・そのターンに出たか・攻撃できるか）はそのクリーチャーのものを引き継ぐ。
+// 下にカードが残っていても進化クリーチャーではない（unstacked → isEvolutionNow）。
+function promoteCard(card, from, below) {
+  const out = { ...stripStack(card),
+    tapped: !!from.tapped,
+    summonedThisTurn: !!from.summonedThisTurn,
+    enteredThisTurn: !!from.enteredThisTurn,
+    cantAttackThisTurn: !!from.cantAttackThisTurn,
+    unstacked: true,
+  };
+  if (below.length) out.evolutionBase = below;
+  return out;
+}
+
+// バトルゾーンから「カード1枚だけ」を取り除く（zone:"bzCards"）。
+// 進化クリーチャーは何枚ものカードが重なった1体なので、「カードを選ぶ」効果は
+// 一番上の1枚か、進化元の1枚だけを動かせる。
+// 一番上を取り除くと、残った進化元の一番上が新しい本体に昇格する。
+// 単独でバトルゾーンに存在できないカード（呪文など）は、存在できるものが
+// 一番上に来るまで上から順に墓地へ置く。
+//   extracted … 選ばれて動くカード
+//   fellOff   … ルール上の後始末で墓地へ置かれるカード
+//   topUids  … 選ばれたうち「一番上」だったもの（＝そのエレメントが離れた）
+export function extractCardsFromBattle(battle, uids) {
+  const uidSet = new Set(uids);
+  const extracted = [], fellOff = [], topUids = [], newBattle = [];
+  for (const card of battle) {
+    const under = card.evolutionBase || [];
+    const taken = under.filter(c => uidSet.has(c.uid));
+    let rest = under.filter(c => !uidSet.has(c.uid));
+    if (!uidSet.has(card.uid)) {
+      // 進化元だけを抜いた。本体はそのまま残る
+      extracted.push(...taken.map(stripStack));
+      newBattle.push(taken.length ? { ...card, evolutionBase: rest } : card);
+      continue;
+    }
+    // 一番上が離れた＝そのエレメントがバトルゾーンを離れた
+    topUids.push(card.uid);
+    extracted.push(stripStack(card), ...taken.map(stripStack));
+    // 単独で存在できるカードが一番上に来るまで、上から順に墓地へ
+    while (rest.length && !isElement(rest[0])) {
+      fellOff.push(stripStack(rest[0]));
+      rest = rest.slice(1);
+    }
+    if (!rest.length) continue;   // 昇格できるカードが無い＝盤面から消える
+    newBattle.push(promoteCard(rest[0], card, rest.slice(1)));
+  }
+  return { newBattle, extracted, fellOff, topUids };
 }
 
 // S・トリガーとして実行できる面を返す（無ければ null）。
@@ -725,10 +780,13 @@ export function evolutionLabel(spec) {
 // 「いまこのカードは進化クリーチャーか」。
 // NEO は下にカードがある間だけ進化クリーチャーとして扱われるので、カードの型ではなく
 // 盤面のカード（evolutionBase を持つ実体）を渡すこと。
+// 手札や山札のカードもここを通す（下にカードが無いので NEO は偽＝「進化でない」）。
 export function isEvolutionNow(card) {
   if (!card) return false;
+  // 重なりが崩れて一番上になったカードは、下にカードが残っていても進化クリーチャーではない
+  if (card.unstacked) return false;
   if (card.type === "evo_creature") return true;
-  return !!(evolutionSpec(card)?.neo && card.evolutionBase?.length);
+  return !!(evolutionSpec(card) && card.evolutionBase?.length);
 }
 
 // G-NEO進化クリーチャーか（＝除去耐性が働くか）。

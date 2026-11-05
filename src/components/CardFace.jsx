@@ -57,7 +57,8 @@ export function CardFace({card,selected,onClick,small,dimmed,grantedKeywords,inB
       </div>
       {hyper&&<div style={{position:"absolute",top:0,left:0,right:0,textAlign:"center",fontSize:6,fontWeight:900,color:"#ffcc00",background:"rgba(0,0,0,0.75)",borderRadius:"5px 5px 0 0",letterSpacing:1,lineHeight:"12px"}}>HYPER</div>}
       {card.summonedThisTurn&&!isEvolutionNow(card)&&!ownKw.includes("speedAttacker")&&!grantedKeywords?.includes("speedAttacker")&&<div style={{position:"absolute",bottom:14,left:0,right:0,textAlign:"center",fontSize:7,color:"#888"}}>酔</div>}
-      {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:7,background:"rgba(0,0,0,0.75)",color:"#ffe066",borderRadius:3,padding:"1px 3px",fontWeight:700,letterSpacing:0}}>EVO×{card.evolutionBase.length + 1}</div>}
+      {/* 重なりが崩れて一番上になったカードは進化クリーチャーではないので、枚数だけを見せる */}
+      {card.evolutionBase?.length > 0 && <div style={{position:"absolute",bottom:2,right:2,fontSize:7,background:"rgba(0,0,0,0.75)",color:"#ffe066",borderRadius:3,padding:"1px 3px",fontWeight:700,letterSpacing:0}}>{card.unstacked?`下×${card.evolutionBase.length}`:`EVO×${card.evolutionBase.length + 1}`}</div>}
     </div>
   );
 }
