@@ -260,12 +260,12 @@
         "effects": [
           {
             "label": "コスト3以下の他のクリーチャーを1体手札に戻してもよい",
-            "optional": true,
             "type": "bzToHand",
             "target": "both",
             "filter": {
               "maxCost": 3
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -566,9 +566,9 @@
         "effects": [
           {
             "label": "任意のプレイヤーのクリーチャーを1体破壊してもよい",
-            "optional": true,
             "type": "destroy",
-            "target": "both"
+            "target": "both",
+            "optional": true
           },
           {
             "label": "破壊したクリーチャーのオーナーの墓地から進化でないクリーチャーを1体バトルゾーンに出す",
@@ -601,10 +601,10 @@
           {
             "label": "ブロッカーを2体まで手札からバトルゾーンに出す",
             "type": "handToBz",
+            "amount": 2,
             "filter": {
               "keyword": "blocker"
-            },
-            "amount": 2
+            }
           }
         ]
       }
@@ -633,11 +633,11 @@
           },
           {
             "label": "自分のマナゾーンからクリーチャーを1体バトルゾーンに出してもよい",
-            "optional": true,
             "type": "manaToBz",
             "filter": {
               "type": "creature"
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -1017,12 +1017,12 @@
           },
           {
             "label": "公開したカードの中から呪文を1枚選んで手札に加えてもよい",
-            "optional": true,
             "type": "revealedToHand",
+            "amount": 1,
             "filter": {
               "type": "spell"
             },
-            "amount": 1
+            "optional": true
           },
           {
             "label": "残りのカードを好きな順序で山札の一番下に置く",
@@ -1079,13 +1079,13 @@
           {
             "label": "光のコスト7以下のドラゴンを1体手札からバトルゾーンに出す（ブロッカー付与）",
             "type": "handToBz",
+            "amount": 1,
             "filter": {
               "civ": "light",
               "maxCost": 7,
               "raceContains": "ドラゴン"
             },
-            "tempKeyword": "blocker",
-            "amount": 1
+            "tempKeyword": "blocker"
           }
         ]
       }
@@ -1123,13 +1123,13 @@
           },
           {
             "label": "多色クリーチャーを1体選んで山札の上に置いてもよい",
-            "optional": true,
             "type": "revealedToDeckTop",
+            "amount": 1,
             "filter": {
               "type": "creature",
               "multiColor": true
             },
-            "amount": 1
+            "optional": true
           },
           {
             "label": "残りのカードを好きな順序で山札の一番下に置く",
@@ -1198,9 +1198,9 @@
         "effects": [
           {
             "label": "他のクリーチャーを2体まで選びタップまたはアンタップする",
-            "optional": true,
             "type": "tapToggle",
-            "target": "both"
+            "target": "both",
+            "optional": true
           }
         ]
       }
@@ -1230,17 +1230,17 @@
             "tapped": true
           },
           {
+            "label": "直前のカードがドラゴンか",
             "type": "count",
             "zone": "lastMoved",
             "filter": {
               "raceContains": "ドラゴン"
-            },
-            "label": "直前のカードがドラゴンか"
+            }
           },
           {
+            "label": "ドラゴンならもう1枚マナへ",
             "type": "topToMana",
             "amount": "count",
-            "label": "ドラゴンならもう1枚マナへ",
             "tapped": true
           }
         ]
@@ -1292,12 +1292,12 @@
             },
             {
               "label": "アーマードを1枚選んで手札に加えてもよい",
-              "optional": true,
               "type": "revealedToHand",
+              "amount": 1,
               "filter": {
                 "raceContains": "アーマード"
               },
-              "amount": 1
+              "optional": true
             },
             {
               "label": "残りを好きな順序で山札の下に置く",
@@ -1405,10 +1405,10 @@
             {
               "label": "名前に《ボルシャック》とあるカードをすべて手札に加える",
               "type": "revealedToHand",
+              "takeAll": true,
               "filter": {
                 "nameContains": "ボルシャック"
-              },
-              "takeAll": true
+              }
             },
             {
               "label": "残りを好きな順序で山札の下に置く",
@@ -1556,12 +1556,12 @@
           },
           {
             "label": "その中のアーマードを好きな数出す",
-            "optional": true,
             "type": "revealedToBz",
             "filter": {
               "raceContains": "アーマード",
               "notNameSelf": true
-            }
+            },
+            "optional": true
           },
           {
             "label": "残りを好きな順序で山札の下に置く",
@@ -1603,15 +1603,15 @@
         "effects": [
           {
             "label": "相手のクリーチャーを1体選んでバトルする",
-            "optional": true,
             "type": "battle",
-            "target": "opponent"
+            "target": "opponent",
+            "optional": true
           },
           {
             "label": "バトル勝利：相手のシールドを1つブレイクしてもよい",
-            "optional": true,
             "type": "breakShield",
-            "target": "opponent"
+            "target": "opponent",
+            "optional": true
           }
         ]
       }
@@ -1644,9 +1644,7 @@
         "effects": [
           {
             "label": "光または水の、コスト3以下の呪文を1枚、コストを支払わずに唱えてもよい",
-            "optional": true,
             "type": "playFromHand",
-            "free": true,
             "filter": {
               "maxCost": 3,
               "type": "spell",
@@ -1654,7 +1652,9 @@
                 "light",
                 "water"
               ]
-            }
+            },
+            "free": true,
+            "optional": true
           }
         ]
       }
@@ -1720,13 +1720,13 @@
           "all": true
         },
         {
+          "label": "相手のタップ数を数える",
           "type": "count",
           "zone": "bz",
           "target": "opponent",
           "filter": {
             "tapped": true
-          },
-          "label": "相手のタップ数を数える"
+          }
         },
         {
           "type": "drawCards",
@@ -1766,9 +1766,7 @@
           "amount": 1
         },
         {
-          "optional": true,
           "type": "playFromHand",
-          "free": true,
           "filter": {
             "maxCost": 6,
             "type": "spell",
@@ -1776,7 +1774,9 @@
               "light",
               "water"
             ]
-          }
+          },
+          "free": true,
+          "optional": true
         }
       ]
     }
@@ -1799,12 +1799,12 @@
         "effects": [
           {
             "label": "山札を見て呪文を1枚選び、山札の一番上に置く",
-            "optional": true,
             "type": "search",
             "destination": "deckTop",
             "filter": {
               "type": "spell"
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -1889,10 +1889,10 @@
             {
               "type": "grant",
               "target": "self",
+              "untapAfterAttack": true,
               "keywords": [
                 "speedAttacker"
-              ],
-              "untapAfterAttack": true
+              ]
             }
           ]
         }
@@ -1946,26 +1946,26 @@
             "label": "自分の手札をすべて捨て、その枚数より1枚多くカードを引く。",
             "effects": [
               {
+                "label": "手札の枚数を数える",
                 "type": "count",
                 "zone": "hand",
-                "target": "self",
-                "label": "手札の枚数を数える"
+                "target": "self"
               },
               {
+                "label": "手札をすべて捨てる",
                 "type": "handToGrave",
                 "target": "self",
-                "all": true,
-                "label": "手札をすべて捨てる"
+                "all": true
               },
               {
+                "label": "捨てた枚数を引く",
                 "type": "drawCards",
-                "amount": "count",
-                "label": "捨てた枚数を引く"
+                "amount": "count"
               },
               {
+                "label": "さらに1枚引く",
                 "type": "drawCards",
-                "amount": 1,
-                "label": "さらに1枚引く"
+                "amount": 1
               }
             ]
           },
@@ -1979,8 +1979,8 @@
               {
                 "type": "handToGrave",
                 "target": "opponent",
-                "random": true,
-                "amount": 1
+                "amount": 1,
+                "random": true
               }
             ]
           },
@@ -1993,10 +1993,10 @@
                   "maxCost": 5,
                   "type": "creature"
                 },
+                "destroyAtEndOfTurn": true,
                 "tempKeywords": [
                   "speedAttacker"
-                ],
-                "destroyAtEndOfTurn": true
+                ]
               }
             ]
           }
@@ -2030,9 +2030,9 @@
         "effects": [
           {
             "label": "カードを1枚引いてもよい",
-            "optional": true,
             "type": "drawCards",
-            "amount": 1
+            "amount": 1,
+            "optional": true
           }
         ]
       },
@@ -2041,20 +2041,20 @@
         "optional": true,
         "effects": [
           {
+            "label": "手札の枚数を数える",
             "type": "count",
             "zone": "hand",
-            "target": "self",
-            "label": "手札の枚数を数える"
+            "target": "self"
           },
           {
             "label": "手札の枚数以下のコストを持つ、クリーチャーではないカードを1枚、コストを支払わず実行してもよい（ハイパーモード時）",
-            "optional": true,
             "type": "playFromHand",
-            "free": true,
             "filter": {
               "type": "nonCreature",
               "maxCost": "count"
-            }
+            },
+            "free": true,
+            "optional": true
           }
         ]
       }
@@ -2128,10 +2128,10 @@
         "effects": [
           {
             "label": "自分のシールドを1つ手札に戻してもよい（その「S・トリガー」は使えない）",
-            "optional": true,
             "type": "shieldToHand",
             "target": "self",
-            "canUseTrigger": false
+            "canUseTrigger": false,
+            "optional": true
           }
         ]
       },
@@ -2141,9 +2141,9 @@
         "effects": [
           {
             "label": "自分の山札の上から1枚目をシールド化してもよい",
-            "optional": true,
             "type": "topToShield",
-            "amount": 1
+            "amount": 1,
+            "optional": true
           }
         ]
       }
@@ -2185,9 +2185,9 @@
         "effects": [
           {
             "label": "カードを1枚引いてもよい",
-            "optional": true,
             "type": "drawCards",
-            "amount": 1
+            "amount": 1,
+            "optional": true
           }
         ]
       }
@@ -2225,8 +2225,8 @@
           },
           {
             "label": "自分の手札を1枚シールド化してもよい",
-            "optional": true,
-            "type": "handToShield"
+            "type": "handToShield",
+            "optional": true
           }
         ]
       },
@@ -2240,8 +2240,8 @@
           },
           {
             "label": "自分の手札を1枚シールド化してもよい",
-            "optional": true,
-            "type": "handToShield"
+            "type": "handToShield",
+            "optional": true
           }
         ]
       },
@@ -2255,13 +2255,13 @@
         "effects": [
           {
             "label": "S・トリガーを持つ呪文を1枚、コストを支払わず唱えてもよい",
-            "optional": true,
             "type": "playFromHand",
-            "free": true,
             "filter": {
               "type": "spell",
               "keyword": "sTrigger"
-            }
+            },
+            "free": true,
+            "optional": true
           }
         ]
       }
@@ -2298,9 +2298,9 @@
         "effects": [
           {
             "label": "カードを1枚引いてもよい",
-            "optional": true,
             "type": "drawCards",
-            "amount": 1
+            "amount": 1,
+            "optional": true
           }
         ],
         "firstEachTurn": true
@@ -2337,8 +2337,8 @@
             "label": "相手の手札を1枚見ないで捨てさせる",
             "type": "handToGrave",
             "target": "opponent",
-            "random": true,
-            "amount": 1
+            "amount": 1,
+            "random": true
           }
         ]
       },
@@ -2403,20 +2403,20 @@
         "on": "creaturePutBz",
         "effects": [
           {
+            "label": "対象の数を数える",
             "type": "count",
             "zone": "bz",
             "target": "self",
             "filter": {
               "civ": "light",
               "element": true
-            },
-            "label": "対象の数を数える"
+            }
           },
           {
             "label": "光のクリーチャー/タマシード1つにつき1枚引いてもよい",
-            "optional": true,
             "type": "drawCards",
-            "amount": "count"
+            "amount": "count",
+            "optional": true
           }
         ]
       },
@@ -2430,9 +2430,9 @@
         "effects": [
           {
             "label": "相手のクリーチャーを1体選び、シールド化してもよい",
-            "optional": true,
             "type": "bzToShield",
-            "target": "opponent"
+            "target": "opponent",
+            "optional": true
           }
         ]
       }
@@ -2455,20 +2455,20 @@
         "on": "attack",
         "effects": [
           {
+            "label": "対象の数を数える",
             "type": "count",
             "zone": "bz",
             "target": "self",
             "filter": {
               "creatureOnly": true,
               "maxCost": 4
-            },
-            "label": "対象の数を数える"
+            }
           },
           {
             "label": "コスト4以下のクリーチャー1体につき1枚引いてもよい",
-            "optional": true,
             "type": "drawCards",
-            "amount": "count"
+            "amount": "count",
+            "optional": true
           }
         ]
       },
@@ -2477,14 +2477,14 @@
         "effects": [
           {
             "label": "光のコスト4以下のクリーチャーを手札から出してもよい",
-            "optional": true,
             "type": "handToBz",
             "filter": {
               "civ": "light",
               "type": "creature",
               "maxCost": 4
             },
-            "summoningSickness": true
+            "summoningSickness": true,
+            "optional": true
           }
         ]
       }
@@ -2523,10 +2523,10 @@
         "effects": [
           {
             "label": "このクリーチャーを自分の墓地から出してもよい",
-            "optional": true,
             "type": "graveToBz",
             "self": true,
-            "summoningSickness": true
+            "summoningSickness": true,
+            "optional": true
           }
         ]
       }
@@ -2818,11 +2818,11 @@
               {
                 "label": "コスト3以下のクリーチャーを1体、自分の墓地から出す",
                 "type": "graveToBz",
+                "amount": 1,
                 "filter": {
                   "type": "creature",
                   "maxCost": 3
-                },
-                "amount": 1
+                }
               }
             ]
           }
@@ -2984,8 +2984,8 @@
           {
             "label": "このクリーチャーの下にあるカードを1枚墓地に置いてもよい",
             "type": "meteorBurn",
-            "count": 1,
             "to": "grave",
+            "count": 1,
             "optional": true
           },
           {
@@ -3038,8 +3038,8 @@
           {
             "label": "このクリーチャーの下にあるカードを1枚墓地に置いてもよい",
             "type": "meteorBurn",
-            "count": 1,
             "to": "grave",
+            "count": 1,
             "optional": true
           },
           {
@@ -3054,10 +3054,10 @@
             "label": "その後、進化ではないクリーチャーを1体、自分の墓地から出す",
             "type": "graveToBz",
             "target": "self",
+            "amount": 1,
             "filter": {
               "type": "nonEvoCreature"
-            },
-            "amount": 1
+            }
           }
         ]
       }
@@ -3326,12 +3326,12 @@
             "type": "bzToMana",
             "target": "both",
             "amount": 1,
-            "optional": true,
             "filter": {
               "element": true,
               "maxCost": 3
             },
-            "tapped": true
+            "tapped": true,
+            "optional": true
           }
         ]
       }
@@ -3412,10 +3412,10 @@
             "type": "manaToBz",
             "target": "self",
             "amount": 1,
-            "optional": true,
             "filter": {
               "type": "field"
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -3503,22 +3503,22 @@
         "optional": true,
         "effects": [
           {
+            "label": "自分のマナゾーンにあるカードの枚数を数える",
             "type": "count",
             "zone": "mana",
             "target": "self",
-            "as": "マナの枚数",
-            "label": "自分のマナゾーンにあるカードの枚数を数える"
+            "as": "マナの枚数"
           },
           {
             "label": "その枚数以下のコストのクリーチャーを1体、自分のマナゾーンから出してもよい",
             "type": "manaToBz",
             "target": "self",
             "amount": 1,
-            "optional": true,
             "filter": {
               "creatureOnly": true,
               "maxCost": "マナの枚数"
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -3538,11 +3538,11 @@
               "type": "search",
               "destination": "mana",
               "amount": 1,
-              "tapped": true,
-              "optional": true,
               "filter": {
                 "civNot": "nature"
-              }
+              },
+              "tapped": true,
+              "optional": true
             }
           ]
         }
@@ -3991,8 +3991,8 @@
             "type": "shieldToHand",
             "target": "self",
             "all": true,
-            "optional": true,
-            "canUseTrigger": false
+            "canUseTrigger": false,
+            "optional": true
           }
         ]
       }
@@ -4030,9 +4030,6 @@
           {
             "label": "破壊したカードよりコストが1大きいクリーチャーまたはタマシードを、自分の墓地から出す（クリーチャーならこのターン「スピードアタッカー」）",
             "type": "graveToBz",
-            "tempKeywords": [
-              "speedAttacker"
-            ],
             "filter": {
               "type": [
                 "creature",
@@ -4042,7 +4039,10 @@
                 "var": "destroyedCost",
                 "plus": 1
               }
-            }
+            },
+            "tempKeywords": [
+              "speedAttacker"
+            ]
           },
           {
             "label": "こうして出したカードのうちクリーチャーを数える",
@@ -4153,8 +4153,8 @@
             "label": "プレイヤーを1人選ぶ。そのプレイヤーは自身の墓地をシャッフルして山札の下に置く",
             "type": "graveToDeckBottom",
             "target": "both",
-            "all": true,
             "choosePlayer": true,
+            "all": true,
             "order": "shuffle"
           },
           {
@@ -4167,10 +4167,10 @@
             "label": "その枚数以下のコストを持つ相手のクリーチャーを1体選び、破壊してもよい",
             "type": "destroy",
             "target": "opponent",
-            "optional": true,
             "filter": {
               "maxCost": "toDeckCount"
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -4237,12 +4237,12 @@
             "type": "playFromHand",
             "zone": "grave",
             "target": "self",
-            "free": true,
-            "optional": true,
             "filter": {
               "type": "spell",
               "maxCost": 4
-            }
+            },
+            "free": true,
+            "optional": true
           }
         ]
       },
@@ -4258,8 +4258,8 @@
             "label": "その呪文を自分の墓地からコストを支払わずに唱える",
             "type": "playFromHand",
             "zone": "grave",
-            "target": "self",
             "side": "spell",
+            "target": "self",
             "subject": true,
             "free": true,
             "optional": true
@@ -4320,12 +4320,12 @@
               "type": "playFromHand",
               "zone": "hand",
               "target": "self",
-              "free": true,
-              "optional": true,
               "filter": {
                 "type": "spell",
                 "maxCost": 5
-              }
+              },
+              "free": true,
+              "optional": true
             }
           ]
         }
@@ -4440,10 +4440,10 @@
             "type": "bzToHand",
             "target": "both",
             "amount": 1,
-            "optional": true,
             "filter": {
               "creatureOnly": true
             },
+            "optional": true,
             "onlyIf": {
               "count": "hotCard",
               "min": 1
@@ -4542,8 +4542,8 @@
           {
             "label": "数字を1つ選ぶ",
             "type": "chooseNumber",
-            "as": "n",
-            "min": 0
+            "min": 0,
+            "as": "n"
           },
           {
             "label": "その数字と同じコストの相手のエレメントの能力を、次の自分のターンのはじめまで無視する",
@@ -4780,11 +4780,11 @@
             "label": "自分の山札を見る。その中から、名前に《ボルシャック》とあるクリーチャーを1体選び、相手に見せてから自分の手札に加えてもよい。",
             "type": "search",
             "destination": "hand",
+            "amount": 1,
             "filter": {
               "type": "creature",
               "nameContains": "ボルシャック"
             },
-            "amount": 1,
             "optional": true
           },
           {
@@ -5002,10 +5002,10 @@
             "type": "search",
             "destination": "hand",
             "amount": 1,
-            "optional": true,
             "filter": {
               "evolution": true
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -5048,9 +5048,9 @@
           {
             "label": "自分の手札を2枚、好きな順序で山札の上に置く",
             "type": "handToDeck",
+            "to": "top",
             "target": "self",
             "amount": 2,
-            "to": "top",
             "order": "choose"
           }
         ]
@@ -5115,8 +5115,8 @@
             "label": "次の自分のターンのはじめまで、その捨てたカードと同じコストの相手のクリーチャーは攻撃もブロックもできない",
             "type": "denyAttackBlock",
             "target": "opponent",
-            "mode": "both",
             "all": true,
+            "mode": "both",
             "filter": {
               "creatureOnly": true,
               "cost": {
@@ -5262,15 +5262,15 @@
         "effects": [
           {
             "label": "その呪文をコストを支払わずに唱えてもよい",
-            "optional": true,
             "type": "playFromHand",
             "zone": "eventCards",
-            "free": true,
             "amount": 1,
             "filter": {
               "type": "spell",
               "maxCost": 5
-            }
+            },
+            "free": true,
+            "optional": true
           }
         ]
       }
@@ -5314,9 +5314,9 @@
         "effects": [
           {
             "label": "カードを1枚引いてもよい",
-            "optional": true,
             "type": "drawCards",
-            "amount": 1
+            "amount": 1,
+            "optional": true
           }
         ]
       },
@@ -5423,8 +5423,8 @@
             "label": "そのターン、このクリーチャーのパワーを+5000する",
             "type": "powerBuff",
             "target": "self",
-            "subject": true,
             "amount": 5000,
+            "subject": true,
             "expires": "endOfTurn"
           }
         ]
@@ -5459,17 +5459,17 @@
             "count": {
               "var": "discarded"
             },
-            "onlyIf": {
-              "count": "discarded",
-              "min": 1
-            },
             "filter": {
               "creatureOnly": true
             },
             "keywords": [
               "wBreaker"
             ],
-            "expires": "endOfTurn"
+            "expires": "endOfTurn",
+            "onlyIf": {
+              "count": "discarded",
+              "min": 1
+            }
           }
         ]
       }
@@ -5496,15 +5496,15 @@
             "type": "playFromHand",
             "zone": "grave",
             "target": "self",
-            "free": true,
-            "optional": true,
             "filter": {
               "type": "spell",
               "maxCost": 7
             },
+            "free": true,
             "afterCast": {
               "to": "hand"
-            }
+            },
+            "optional": true
           }
         ]
       }
@@ -5588,9 +5588,9 @@
           "effects": [
             {
               "label": "カードを1枚引いてもよい",
-              "optional": true,
               "type": "drawCards",
-              "amount": 1
+              "amount": 1,
+              "optional": true
             }
           ]
         },
@@ -5599,9 +5599,9 @@
           "effects": [
             {
               "label": "カードを1枚引いてもよい",
-              "optional": true,
               "type": "drawCards",
-              "amount": 1
+              "amount": 1,
+              "optional": true
             }
           ]
         }
@@ -5895,8 +5895,8 @@
             "filter": {
               "evolution": true
             },
-            "optional": true,
-            "as": "evo"
+            "as": "evo",
+            "optional": true
           },
           {
             "label": "そうしたら、自分の山札からクリーチャーを2体まで表向きにして、その下に置く。その後、山札をシャッフルする",
