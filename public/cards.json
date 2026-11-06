@@ -5842,5 +5842,77 @@
       }
     ],
     "id": 146
+  },
+  {
+    "name": "龍脈術 落城の計",
+    "race": null,
+    "cost": 3,
+    "power": 0,
+    "type": "spell",
+    "civ": "water",
+    "keywords": [
+      "sTrigger"
+    ],
+    "effect": "S・トリガー\nバトルゾーンにあるコスト6以下のカードを1枚選び、持ち主の手札に戻す。",
+    "triggers": [
+      {
+        "on": "cast",
+        "effects": [
+          {
+            "label": "バトルゾーンにあるコスト6以下のカードを1枚選び、持ち主の手札に戻す",
+            "type": "bzToHand",
+            "zone": "bzCards",
+            "target": "both",
+            "amount": 1,
+            "filter": {
+              "maxCost": 6
+            }
+          }
+        ]
+      }
+    ],
+    "id": 147
+  },
+  {
+    "name": "時空工兵タイムチェンジャー",
+    "race": "グレートメカオー",
+    "cost": 3,
+    "power": 2000,
+    "type": "creature",
+    "civ": "water",
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、自分の進化クリーチャーを1体選んでもよい。そうしたら、自分の山札を見て、その中からクリーチャーを2体表向きにし、選んだ進化クリーチャーの下に置く。その後、山札をシャッフルする。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の進化クリーチャーを1体選んでもよい",
+            "type": "pick",
+            "zone": "bz",
+            "target": "self",
+            "amount": 1,
+            "filter": {
+              "evolution": true
+            },
+            "optional": true,
+            "as": "evo"
+          },
+          {
+            "label": "そうしたら、自分の山札からクリーチャーを2体まで表向きにして、その下に置く。その後、山札をシャッフルする",
+            "type": "search",
+            "destination": "under",
+            "under": "evo",
+            "amount": 2,
+            "filter": {
+              "creatureOnly": true
+            },
+            "optional": true,
+            "ifPrevious": true
+          }
+        ]
+      }
+    ],
+    "id": 148
   }
 ]

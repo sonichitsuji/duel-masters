@@ -275,10 +275,10 @@ function checkOne(e, where) {
     errors.push(`${where}: search の destination は ${[...SEARCH_DESTINATIONS].join("/")}`);
   }
   if (e.under != null && e.type !== "search" && e.type !== "topToUnder") {
-    errors.push(`${{where}: under が使えるのは search / topToUnder だけです`);
+    errors.push(`${where}: under が使えるのは search / topToUnder だけです`);
   }
   if (e.type === "search" && e.destination === "under" && e.under == null) {
-    errors.push(`${{where}: search destination:"under" は under（pick で選んだカードの変数名）が必要です`);
+    errors.push(`${where}: search destination:"under" は under（pick で選んだカードの変数名）が必要です`);
   }
 
   if (e.type === "playFromHand" && e.zone != null && !PLAY_FROM_ZONES.has(e.zone)) {

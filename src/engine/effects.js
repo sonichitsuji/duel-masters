@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionCard, withJustDiver, spellDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -127,7 +127,7 @@ export function matchFilter(card, filter, ctx) {
   // psychic: サイキック・クリーチャー（超次元ゾーンから出るクリーチャー）かどうか
   if (f.psychic != null && !!card.psychic !== !!f.psychic) return false;
   // evolution: 進化クリーチャーかどうか（type:"evo_creature" と NEO進化の両方）
-  if (f.evolution != null && isEvolutionCard(card) !== !!f.evolution) return false;
+  if (f.evolution != null && isEvolutionNow(card) !== !!f.evolution) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   // not: 「〜ではない」。中身は filter と同じ語彙で、1つでも一致したら弾く。
   // 配列を書けば「そのどれにも当てはまらない」＝ AND で否定する
@@ -150,8 +150,9 @@ function zoneCards(state, zone, ctx) {
   switch (zone) {
     case "hand": return state?.hand || [];
     case "bz": case "battle": return state?.battle || [];
-    // 「バトルゾーンにあるカード」。進化クリーチャーは何枚ものカードが重なった
-    // 1体なので、カードを選ぶ果はその重なりを1枚ずつ候補にする（    case "bzCards": return (state?.battle || []).flatMap(c => [c, ...(c.evolutionBase || [])]);
+    // 「バトルゾーンにあるカード」。進化クリーチャーは何枚ものカードが重なった1体なので、
+    // 「カードを選ぶ」効果はその重なりを1枚ずつ候補にする
+    case "bzCards": return (state?.battle || []).flatMap(c => [c, ...(c.evolutionBase || [])]);
     case "mana": return state?.mana || [];
     case "grave": return state?.grave || [];
     case "shield": return state?.shields || [];
