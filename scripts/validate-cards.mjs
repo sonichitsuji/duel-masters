@@ -28,7 +28,7 @@ const EFFECT_TYPES = new Set([
   // ターン進行
   "skipRestOfTurn",
   // ドロー/山札
-  "drawCards","reveal","search","topToGrave","topToMana","topToShield",
+  "drawCards","reveal","search","topToGrave","topToMana","topToShield","topToUnder",
   // 公開カードの行き先
   "revealedToHand","revealedToBz","revealedToMana","revealedToGrave","revealedToDeckTop","revealedToDeckBottom",
   // 手札から
@@ -112,6 +112,12 @@ const ENTER_WHO = ["self","opponent","both"];
 const CAST_FROM_ZONES = new Set(["hand","grave"]);
 // playFromHand の zone。eventCards は「その誘発の元になった出来事のカード」（捨てたその呪文 等）
 const PLAY_FROM_ZONES = new Set(["hand","grave","eventCards"]);
+// zone:"bzCards"（バトルゾーンのカードを1枚ずつ）を書ける効果
+const BZ_CARDS_TYPES = new Set(["destroy","bzToHand","bzToMana","bzToShield"]);
+// search の行き先。"under" は pick で選んだカードの下
+const SEARCH_DESTINATIONS = new Set(["hand","deckTop","bz","mana","under"]);
+// graveToHand の zone。既定の墓地のほか、"wasUnder"（そのクリーチャーの下にあったカード）を指せる
+const GRAVE_TO_HAND_ZONES = new Set(["grave","wasUnder"]);
 // spellAfterCast: 唱えた後、墓地のかわりに置く場所と、その対象になる「唱えたゾーン」
 const SPELL_AFTER_CAST_TO = new Set(["deckBottom","deckTop","hand","mana","shield"]);
 const SPELL_AFTER_CAST_FROM = new Set(["hand","grave","any"]);
@@ -125,7 +131,7 @@ const STATIC_DENY_TYPES = new Set(["cantPutCreature","cantPutCreatureFromNonHand
 const EFFECT_KEYS = new Set([
   "type","label","target","zone","zones","filter","amount","count","maxSelect","min","max",
   "all","any","takeAll","random","order","as","optional","ifPrevious","onlyIf","subject","selfFrom","onePlayer",
-  "asCost","canUseTrigger","choosePlayer","side","until","templates","afterCast","mode",
+  "asCost","under","canUseTrigger","choosePlayer","side","until","templates","afterCast","mode",
   "self","owner","destination","to","tapped","free","reason","timing","maxPerTurn",
   "perUnit","expires","keywords","tempKeyword","tempKeywords","summoningSickness",
   "destroyAtEndOfTurn","noUntapNextTurn","untapAfterAttack","untap",
@@ -253,6 +259,28 @@ function checkOne(e, where) {
     if (e.type !== "playFromHand") errors.push(`${where}: side は type:"playFromHand" でのみ使えます（ツインパクトのどちらの面で唱えるか）`);
     else if (!["creature","spell"].includes(e.side)) errors.push(`${where}: side は "creature" か "spell"`);
   }
+  if (e.type === "graveToHand" && e.zone != null && !GRAVE_TO_HAND_ZONES.has(e.zone)) {
+    errors.push(`${where}: graveToHand の zone は ${[...GRAVE_TO_HAND_ZONES].join("/")}`);
+  }
+  // 下にあったカードは「破壊された時」のように、離れた後の誘発でしか見られない
+  if (e.zone === "wasUnder" && e.type !== "graveToHand") {
+    errors.push(`${where}: zone:"wasUnder" が使えるのは graveToHand だけです`);
+  }
+  // 「カード単位で選ぶ」。進化クリーチャーの重なりを1枚ずつ候補にする
+  if (e.zone === "bzCards" && !BZ_CARDS_TYPES.has(e.type)) {
+    errors.push(`${where}: zone:"bzCards" が使えるのは ${[...BZ_CARDS_TYPES].join("/")} だけです`);
+  }
+  // search の行き先。destination:"under" は「pick で選んだカードの下」に置く
+  if (e.type === "search" && e.destination != null && !SEARCH_DESTINATIONS.has(e.destination)) {
+    errors.push(`${where}: search の destination は ${[...SEARCH_DESTINATIONS].join("/")}`);
+  }
+  if (e.under != null && e.type !== "search" && e.type !== "topToUnder") {
+    errors.push(`${where}: under が使えるのは search / topToUnder だけです`);
+  }
+  if (e.type === "search" && e.destination === "under" && e.under == null) {
+    errors.push(`${where}: search destination:"under" は under（pick で選んだカードの変数名）が必要です`);
+  }
+
   if (e.type === "playFromHand" && e.zone != null && !PLAY_FROM_ZONES.has(e.zone)) {
     errors.push(`${where}: playFromHand の zone は ${[...PLAY_FROM_ZONES].join("/")}`);
   }
@@ -307,6 +335,10 @@ function checkEffect(eff, where) {
       // 「そうしたら」は直前のステップに依存するので、先頭には置けない
       if (e?.ifPrevious && i === 0) errors.push(`${where}: 先頭のステップに ifPrevious は指定できません（直前のステップがありません）`);
       if (e?.ifPrevious != null && typeof e.ifPrevious !== "boolean") errors.push(`${where}: ifPrevious は真偽値`);
+      // under:"<変数名>" は、同じ effects 列の前のステップの pick が as で控えた名前を指す
+      if (e?.under && !eff.effects.slice(0, i).some(p => p.type === "pick" && p.as === e.under)) {
+        errors.push(`${where}: under:"${e.under}" を控えている pick が手前のステップにありません`);
+      }
     });
     return;
   }

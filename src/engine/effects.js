@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionCard, withJustDiver, spellDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -127,7 +127,7 @@ export function matchFilter(card, filter, ctx) {
   // psychic: サイキック・クリーチャー（超次元ゾーンから出るクリーチャー）かどうか
   if (f.psychic != null && !!card.psychic !== !!f.psychic) return false;
   // evolution: 進化クリーチャーかどうか（type:"evo_creature" と NEO進化の両方）
-  if (f.evolution != null && isEvolutionCard(card) !== !!f.evolution) return false;
+  if (f.evolution != null && isEvolutionNow(card) !== !!f.evolution) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   // not: 「〜ではない」。中身は filter と同じ語彙で、1つでも一致したら弾く。
   // 配列を書けば「そのどれにも当てはまらない」＝ AND で否定する
@@ -141,13 +141,18 @@ export function matchFilter(card, filter, ctx) {
 // 今この形で誘発するのは discard（捨てた直後なので実体は墓地にある）だけなので、
 // 実際に取り除くゾーンは墓地。他の出来事に広げる時はここを見直すこと
 // 盤面のゾーンではなく ctx から候補を取る疑似ゾーン
-const PSEUDO_ZONES = new Set(["revealed", "lastMoved", "eventCards"]);
-const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper", eventCards: "grave" };
+const PSEUDO_ZONES = new Set(["revealed", "lastMoved", "eventCards", "wasUnder"]);
+const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", bzCards: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper", eventCards: "grave", wasUnder: "grave" };
+// バトルゾーンを見るゾーン。"bz" はエレメント単位、"bzCards" はカード単位
+const BZ_ZONES = new Set(["bz", "battle", "bzCards"]);
 
 function zoneCards(state, zone, ctx) {
   switch (zone) {
     case "hand": return state?.hand || [];
     case "bz": case "battle": return state?.battle || [];
+    // 「バトルゾーンにあるカード」。進化クリーチャーは何枚ものカードが重なった1体なので、
+    // 「カードを選ぶ」効果はその重なりを1枚ずつ候補にする
+    case "bzCards": return (state?.battle || []).flatMap(c => [c, ...(c.evolutionBase || [])]);
     case "mana": return state?.mana || [];
     case "grave": return state?.grave || [];
     case "shield": return state?.shields || [];
@@ -160,6 +165,9 @@ function zoneCards(state, zone, ctx) {
     // メテオバーン用。スナップショットではなく「今バトルゾーンにいる」カードの下を見る。
     // 革命チェンジ等で入れ替わっていれば空 = 不発になる。
     case "under": return (state?.battle || []).find(c => c.uid === ctx?.srcCardUid)?.evolutionBase || [];
+    // 「下にあったカード」。離れた後に見るためのもので、誘発の主体に敷かれていたカードを返す。
+    // 実体は（破壊なら）本体と一緒に墓地にあるので、ZONE_STATE_KEY で墓地に対応づけてある
+    case "wasUnder": return ctx?.subjectCard?.evolutionBase || [];
     // 「このクリーチャーに含まれるカード」= 自身＋下に敷かれたカード
     case "stack": {
       const me = (state?.battle || []).find(c => c.uid === ctx?.srcCardUid);
@@ -255,7 +263,7 @@ const SOURCE = {
   revealedToDeckTop:  { zone: "revealed", target: "self" },
 };
 // 選択を要さず自動実行される効果
-const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","count",
+const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","topToUnder","count",
   "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck","awaken","unawaken"]);
 // 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
 const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
@@ -271,9 +279,34 @@ export const BZ_ENTER_FROM = {
   playFromHand: "*",
 };
 
+// 「下に置く」先のカード。既定はこの能力の持ち主自身。
+// under:"<変数名>" と書けば、pick（{type:"pick", as:"<変数名>"}）で選んだカードの下に置く。
+function underTargetUid(effect, ctx) {
+  const v = effect.under ? ctx?.vars?.[effect.under] : null;
+  const picked = Array.isArray(v) ? v[0] : v;
+  return picked?.uid ?? ctx?.srcCardUid;
+}
+
+// カードをそのクリーチャーの下に敷く。表向きにして末尾（＝一番下）に足す。
+// 下に敷くカードは重なりの情報を持たない平らなカードにする（stackEvolutionBases と同じ作法）。
+function putUnder(battle, targetUid, cards) {
+  if (!cards.length) return battle;
+  const moved = cards.map(c => {
+    const m = { ...c, tapped: false, faceUp: true };
+    delete m.evolutionBase; delete m.tempBuff;
+    return m;
+  });
+  return battle.map(c => c.uid === targetUid
+    ? { ...c, evolutionBase: [...(c.evolutionBase || []), ...moved] } : c);
+}
+
 // このステップでバトルゾーンを離れるカードを、実行前に列挙する。
 // all:true の全体除去でも個別選択でも同じ結果になるよう、executeEffect の判定と同じ式を使う。
 // 戻り値は [{ card, ownerPid }]。
+//
+// zone:"bzCards"（進化元を1枚だけ動かす）の時は、ここで見るのが battle の一番上だけなので
+// 進化元を選んだ場合は何も返らない。「一番上が離れた＝そのクリーチャーが離れた」、
+// 進化元の1枚が動くのは離脱ではない、という切り分けがこれで自然に出る。
 export function leavingBzCards(effect, selectedUids, ctx, p1, p2, ownerPid) {
   const type = effect?.type;
   if (!BZ_LEAVE_DEST[type]) return [];
@@ -368,7 +401,7 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
     const states = targetPids(tgt, ownerPid, c2).map(pidx => [pidx === "p1" ? p1 : p2, pidx]);
     for (const [st, stPid] of states) {
       let got = zoneCards(st, zone, c2);
-      if (zone === "bz" || zone === "battle") {
+      if (BZ_ZONES.has(zone)) {
         // 相手のバトルゾーンから「選ぶ」時だけ、「相手に選ばれない」カードを候補から外す
         if (selects && st === otherState) got = got.filter(c => !isUnselectableByOpponent(c, st));
         // 他のカードから足された種族（grantRace）を載せる。filter.raceContains は盤面を
@@ -447,6 +480,15 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name };
   // 「そうしたら」判定用。このステップを実際に行ったか。各 case が明示しなければ末尾で既定値を入れる
   ctx.stepDone = undefined;
+  // 「〜してもよい」を見送った（モーダルの「スキップ」）。何も起こさず、「そうしたら」も繋がない。
+  // ドローや山札操作のように選択を伴わない効果は、選択が空でも実行されてしまうので、
+  // 見送りはこの合図で表す。このステップ限りなので、後続に残さず消しておく
+  if (ctx.skipped) {
+    delete ctx.skipped;
+    ctx.stepDone = false;
+    addLog(`${pid}: ${effect.label || effect.type} を行わなかった`);
+    return ctx;
+  }
   // subject:true =「そのクリーチャー」。誘発の主体そのものを対象にする（選択させない）
   if (effect.subject) selectedUids = ctx.subjectCard ? [ctx.subjectCard.uid] : [];
   const type = effect.type;
@@ -488,6 +530,22 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   // all:true の全体除去でも効くように、選択の有無に関わらずここで除く。
   const leaveExempt = new Set(ctx.leaveExempt || []);
   const notExempt = list => (leaveExempt.size ? list.filter(c => !leaveExempt.has(c.uid)) : list);
+  // zone:"bzCards" =「バトルゾーンにあるカードを1枚だけ」。進化クリーチャーは
+  // 何枚ものカードが重なった1体なので、「カードを選ぶ」効果は一番上の1枚か
+  // 進化元の1枚だけを動かせる（既定の "bz" は、そのエレメントを構成するカードすべて）
+  const bzCardLevel = effect.zone === "bzCards";
+  // 対象の洗い出し。bzCards は進化元も候補なので、重なりを平らにしてから絞る
+  const bzTargets = pidx => {
+    const pool = zoneCards(stateOf(pidx), bzCardLevel ? "bzCards" : "bz", ctx);
+    return notExempt(effect.all ? pool.filter(c => matchFilter(c, effect.filter, ctx))
+                                : pool.filter(c => selectedUids.includes(c.uid)));
+  };
+  // そのうち「一番上」だったもの。離れたのはこのカードたちで、進化元1枚が動くのは離脱ではない
+  const bzTopOnly = (pidx, targets) => targets.filter(c => stateOf(pidx).battle.some(b => b.uid === c.uid));
+  // バトルゾーンから取り除く。fellOff は重なりが崩れて単独では存在できなくなり、墓地へ置かれるカード
+  const takeFromBattle = (battle, uids) => bzCardLevel
+    ? extractCardsFromBattle(battle, uids)
+    : { ...extractManyFromBattle(battle, uids), fellOff: [] };
   // as:「この効果で動かした枚数」を控える。後続ステップの amount / count から
   // {"var":"…"} で参照できる（「その枚数と同じ数の〜」）。枚数を数える効果で共通に使う
   const noteAs = n => { if (effect.as) ctx.vars[effect.as] = n; };
@@ -583,6 +641,25 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       addLog(`${pid}: 山札の上から${n}枚を墓地へ`);
       break;
     }
+    // 山札の上から N 枚を、表向きにしてクリーチャーの下に置く。
+    // 下に敷いたカードは進化元そのものなので、NEO進化クリーチャーはこれで進化クリーチャーになる
+    // （進化かどうかは読み出し時に判定しているため、ここで何かを立てる必要はない）。
+    // 置く先は既定でこの能力の持ち主自身。under:"<変数名>" と書けば pick で選んだカードの下に置く。
+    case "topToUnder": {
+      const targetUid = underTargetUid(effect, ctx);
+      const live = selfState.battle.find(c => c.uid === targetUid);
+      const n = Math.min(amount, selfState.deck.length);
+      if (!live || n <= 0) {
+        ctx.stepDone = false;
+        addLog(`${pid}: 下に置けなかった（${!live ? "クリーチャーがバトルゾーンにいない" : "山札が無い"}）`);
+        break;
+      }
+      const moved = selfState.deck.slice(0, n);
+      setSelf(s => ({ ...s, deck: s.deck.slice(n), battle: putUnder(s.battle, targetUid, moved) }));
+      ctx.lastMoved = moved;
+      addLog(`${pid}: 山札の上から${n}枚を表向きにして「${live.name}」の下に置いた`);
+      break;
+    }
     case "topToMana": {
       const n = Math.min(amount, selfState.deck.length);
       if (n > 0) {
@@ -616,9 +693,12 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
           if (dest === "hand") b.hand = [...s.hand, ...take.map(c => ({ ...c, tapped: false }))];
           if (dest === "bz")   b.battle = [...s.battle, ...take.map(c => withJustDiver({ ...c, tapped: false, enteredThisTurn: true, summonedThisTurn: entersSick(effect) }))];
           if (dest === "mana") b.mana = [...s.mana, ...take.map(c => ({ ...c, tapped: !!effect.tapped }))];
+          // 「選んだカードの下に置く」。置く先は under で指す（既定はこの能力の持ち主自身）
+          if (dest === "under") b.battle = putUnder(s.battle, underTargetUid(effect, ctx), take);
           return b;
         });
-        const where = dest === "deckTop" ? "山札の上" : dest === "hand" ? "手札" : dest === "bz" ? "バトルゾーン" : "マナ";
+        const where = dest === "deckTop" ? "山札の上" : dest === "hand" ? "手札"
+          : dest === "bz" ? "バトルゾーン" : dest === "under" ? "選んだクリーチャーの下" : "マナ";
         addLog(`${pid}: 山札から ${take.map(c => c.name).join(", ")} を${where}へ`);
       } else {
         setSelf(s => ({ ...s, deck: shuffle(s.deck) }));
@@ -811,13 +891,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         const st = stateOf(pidx);
         const targets = notExempt(effect.self
           ? st.battle.filter(c => c.uid === ctx.srcCardUid)
-          : effect.all
-            ? st.battle.filter(c => matchFilter(c, effect.filter, ctx))
-            : st.battle.filter(c => selectedUids.includes(c.uid)));
+          : bzTargets(pidx));
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
-        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted] }; });
-        targets.forEach(c => { addLog(`${pid}: ${c.name} を破壊`); markDestroyed(c, pidx, false); });
+        setOf(pidx)(s => { const { newBattle, extracted, fellOff } = takeFromBattle(s.battle, uids); return { ...s, battle: newBattle, grave: [...s.grave, ...extracted, ...fellOff] }; });
+        targets.forEach(c => addLog(`${pid}: ${c.name} を破壊`));
+        // 進化元の1枚が墓地へ行くのは「そのクリーチャーが破壊された」ではないので、
+        // 誘発するのは一番上だったカードだけ
+        bzTopOnly(pidx, targets).forEach(c => markDestroyed(c, pidx, false));
         // 「破壊したカードよりコストが1大きい〜」用に、破壊したカードのコストを控える。
         // ctx.destroyedThisStep は次のステップに進む前に消費されるので、ここで変数に写す。
         if (effect.asCost) ctx.vars[effect.asCost] = Math.max(...targets.map(c => c.cost || 0));
@@ -827,32 +908,39 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     }
     case "bzToHand": {
       for (const pidx of pids) {
-        const st = stateOf(pidx);
-        const targets = notExempt(effect.all ? st.battle.filter(c => matchFilter(c, effect.filter, ctx)) : st.battle.filter(c => selectedUids.includes(c.uid)));
+        const targets = bzTargets(pidx);
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
-        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids);
-          return { ...s, battle: newBattle, hand: [...s.hand, ...extracted.map(c => ({ ...c, tapped: false, hyperMode: false, cantAttackThisTurn: false, enteredThisTurn: false, summonedThisTurn: false, tempBuff: undefined }))] }; });
+        setOf(pidx)(s => { const { newBattle, extracted, fellOff } = takeFromBattle(s.battle, uids);
+          // 下に敷かれていたカードが戻るので、裤向き・昇格の印も落としてから手札へ入れる
+          const toHand = c => ({ ...c, tapped: false, faceUp: false, unstacked: undefined,
+            hyperMode: false, cantAttackThisTurn: false, enteredThisTurn: false, summonedThisTurn: false, tempBuff: undefined });
+          return { ...s, battle: newBattle, grave: [...s.grave, ...fellOff],
+            hand: [...s.hand, ...extracted.map(toHand)] }; });
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} を持ち主の手札へ`);
       }
       break;
     }
     case "bzToMana": {
       for (const pidx of pids) {
-        const targets = notExempt(stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid)));
+        const targets = bzTargets(pidx);
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
-        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, mana: [...s.mana, ...extracted.map(c => ({ ...c, tapped: !!effect.tapped }))] }; });
+        setOf(pidx)(s => { const { newBattle, extracted, fellOff } = takeFromBattle(s.battle, uids);
+          return { ...s, battle: newBattle, grave: [...s.grave, ...fellOff],
+            mana: [...s.mana, ...extracted.map(c => ({ ...c, tapped: !!effect.tapped }))] }; });
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} をマナゾーンへ`);
       }
       break;
     }
     case "bzToShield": {
       for (const pidx of pids) {
-        const targets = notExempt(stateOf(pidx).battle.filter(c => selectedUids.includes(c.uid)));
+        const targets = bzTargets(pidx);
         if (!targets.length) continue;
         const uids = targets.map(c => c.uid);
-        setOf(pidx)(s => { const { newBattle, extracted } = extractManyFromBattle(s.battle, uids); return { ...s, battle: newBattle, shields: [...s.shields, ...extracted.map(c => ({ ...c, tapped: false, faceUp: false }))], shieldAddedThisTurn: true }; });
+        setOf(pidx)(s => { const { newBattle, extracted, fellOff } = takeFromBattle(s.battle, uids);
+          return { ...s, battle: newBattle, grave: [...s.grave, ...fellOff],
+            shields: [...s.shields, ...extracted.map(c => ({ ...c, tapped: false, faceUp: false }))], shieldAddedThisTurn: true }; });
         noteShieldAdd(ctx, pidx, targets);
         addLog(`${pid}: ${targets.map(c => c.name).join(", ")} をシールド化`);
       }
@@ -1149,11 +1237,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "graveToHand": {
-      for (const pidx of pids) {
-        const cards = stateOf(pidx).grave.filter(c => selectedUids.includes(c.uid));
-        if (!cards.length) continue;
+      // zone で「墓地のどのカードか」を絞れる（既定 "grave"。"wasUnder" は下にあったカード）。
+      // 実体はどちらも墓地にあるので、取り除く先は ZONE_STATE_KEY で引く
+      const fromZone = effect.zone || "grave";
+      const key = ZONE_STATE_KEY[fromZone] || "grave";
+      for (const { pidx, cards } of pickSelected(fromZone)) {
         const uids = cards.map(c => c.uid);
-        setOf(pidx)(s => ({ ...s, grave: s.grave.filter(c => !uids.includes(c.uid)), hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false }))] }));
+        setOf(pidx)(s => ({ ...s, [key]: s[key].filter(c => !uids.includes(c.uid)),
+          hand: [...s.hand, ...cards.map(c => ({ ...c, tapped: false, faceUp: false }))] }));
         addLog(`${pid}: 墓地から「${cards.map(c => c.name).join(", ")}」を手札へ`);
         ctx.lastMoved = cards;
       }
