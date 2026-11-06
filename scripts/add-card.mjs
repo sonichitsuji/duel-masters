@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { orderCardSteps } from "./step-key-order.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CARDS = path.join(__dirname, "..", "public", "cards.json");
@@ -37,7 +38,8 @@ for (const card of newCards) {
   usedIds.add(card.id);
   if (existingNames.has(card.name)) console.warn(`⚠ 同名カードが既に存在: "${card.name}"（重複の可能性）`);
   existingNames.add(card.name);
-  added.push(card);
+  // 効果ステップのキーは正規の並びに直してから書く（→ scripts/step-key-order.mjs）
+  added.push(orderCardSteps(card));
 }
 
 // 既存の整形（2スペースインデント）に合わせてテキスト挿入（全文再整形しない）

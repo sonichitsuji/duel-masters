@@ -52,6 +52,41 @@
 > なお `autoEffect` は廃止されました（`trigger:"play"` → `on:"creaturePutBz"` /
 > `trigger:"cast"` → `on:"cast"`）。移行は `node scripts/migrate-autoeffect.mjs` で行いました。
 
+### ステップに書くキーの並び
+
+`effects` の各要素は、**カードテキストを読む順**に書きます。
+並びは `scripts/step-key-order.mjs` が持っていて、`node scripts/add-card.mjs` が**自動でそろえます**。
+手で書き足した時だけ `npm run validate-cards` が警告で知らせます（正しい並びも一緒に出ます）。
+
+| 順 | グループ | キー |
+|---|---|---|
+| 1 | 何をするか | `label` `type` |
+| 2 | どこから／どこへ | `zone` `zones` `destination` `to` `under` `owner` `selfFrom` `side` |
+| 3 | だれの | `target` `self` `choosePlayer` `onePlayer` |
+| 4 | いくつ | `count` `amount` `perUnit` `min` `max` `maxSelect` `maxPerTurn` |
+| 5 | どう選ぶか | `all` `any` `random` `takeAll` `subject` `order` `mode` `templates` |
+| 6 | どれ | `filter` |
+| 7 | 効果ごとの細かい指定 | `tapped` `free` `untap` `keywords` `tempKeywords` `expires` `canUseTrigger` など |
+| 8 | 変数に控える | `as` `asCost` |
+| 9 | 実行するかどうか | `optional` `ifPrevious` `onlyIf` |
+
+```jsonc
+// ✅ 「相手のコスト3以下のクリーチャーを1体選び、破壊してもよい」をそのままの順で
+{ "label": "相手のコスト3以下のクリーチャーを1体選び、破壊してもよい",
+  "type": "destroy", "target": "opponent", "amount": 1,
+  "filter": { "maxCost": 3 }, "optional": true }
+```
+```jsonc
+// ❌ 同じ内容でも並びがばらばら
+{ "type": "destroy", "optional": true, "amount": 1,
+  "label": "…", "filter": { "maxCost": 3 }, "target": "opponent" }
+```
+
+- **`optional` / `ifPrevious` / `onlyIf` は末尾**にまとめます。
+  「このステップを実行するかどうか」の話なので、何をするかを読み終えた後に来る方が素直です
+  （「〜してもよい」は `label` に書いてあるので、先頭で見えなくても困りません）
+- 表に無いキーは末尾に残ります。未知のキーは validator が別に弾きます
+
 ### 共通パラメータ（effects の各要素）
 | パラメータ | 説明 |
 |---|---|

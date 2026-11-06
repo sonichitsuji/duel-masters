@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stepKeysOrdered, orderStepKeys } from "./step-key-order.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -199,6 +200,12 @@ function checkOne(e, where) {
   if (!e || !e.type) { errors.push(`${where}: type の無い効果要素`); return; }
   for (const k of Object.keys(e)) {
     if (!EFFECT_KEYS.has(k)) errors.push(`${where}: 効果ステップの未知のキー "${k}"（綴り違い？）`);
+  }
+  // キーの並びは scripts/step-key-order.mjs で決めてある。
+  // add-card.mjs は自動でそろえるので、ここに引っかかるのは手で書き足した時だけ
+  if (!stepKeysOrdered(e)) {
+    warnings.push(`${where}: 効果ステップのキーの並びが規約と違います（${Object.keys(e).join(" → ")}）`
+      + `\n    正しい並び: ${Object.keys(orderStepKeys(e)).join(" → ")}`);
   }
   checkFilterKeys(e.filter, where);
   // chooseMode は effects の途中に置けるので、ここでも選択肢を見る
