@@ -37,3 +37,22 @@ JSX の style プロパティも同様。ただし1行が極端に長くなる�
 
 カードのデータ記法（`public/cards.json` の語彙・効果・トリガー）は `docs/card-authoring.md` を参照。
 カード追加は `node scripts/add-card.mjs <file.json>`、検証は `npm run validate-cards`。
+
+## プルリクエスト
+
+**説明の1行目に、マージ元を書く。** そのあと1行空けて本文を続ける。
+
+```
+Merge pull request #68 from sonichitsuji/claude/relaxed-pascal-783kks
+
+## 概要
+…
+```
+
+このリポジトリはマージコミットの既定を「Pull request title and description」にしてあるので、
+**PRのタイトルがコミットのタイトル、PRの説明がコミットの本文**になる。
+タイトルを見れば内容が分かり、本文の1行目を見ればどこからマージしたかが分かる、という形にしたい。
+GitHub の設定だけではこの並びを作れない（`Merge pull request #N from …` はタイトル側にしか入れられない）
+ので、説明の1行目は手で書く。
+
+PR番号は作成するまで分からないので、**PRを作った後にその番号で説明を書き直す**。
