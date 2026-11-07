@@ -19,10 +19,13 @@
 //   onlyIf   「〜なら」の条件（{ count, min, max }）
 //   enum:X   ENUMS.X から選ぶ
 
+import { ALL_KEYWORDS, KEYWORD_LABELS } from "./constants.js";
+
 // ---------------------------------------------------------------------------
 // 選択肢
 // ---------------------------------------------------------------------------
 export const ENUMS = {
+  keyword: Object.fromEntries(ALL_KEYWORDS.map(k => [k, KEYWORD_LABELS[k] || k])),
   target: { self: "自分", opponent: "相手", both: "おたがい", eventPlayer: "その出来事を起こした側" },
   civ: { light: "光", water: "水", darkness: "闇", fire: "火", nature: "自然", colorless: "無色" },
   cardType: {
@@ -55,6 +58,8 @@ export const ENUMS = {
   denyMode: { both: "攻撃もブロックも", attack: "攻撃だけ", block: "ブロックだけ" },
   owner: { destroyed: "破壊されたクリーチャーの持ち主" },
   selfFrom: { lastPut: "直前に出したクリーチャー" },
+  // トリガーの target は「このカード自身」も書ける（効果ステップの target には無い値）
+  triggerTarget: { this: "このカード自身", self: "自分", opponent: "相手", both: "おたがい" },
 };
 
 // ---------------------------------------------------------------------------
@@ -63,7 +68,7 @@ export const ENUMS = {
 // 実データで多い順に並べてある。UI はこの順でドロップダウンに出す。
 export const FILTER_SCHEMA = {
   maxCost: { kind: "numVar", label: "コストが〜以下" },
-  type: { kind: "enum:filterType", label: "種別" },
+  type: { kind: "enum:filterType", label: "種別", multi: true },
   creatureOnly: { kind: "bool", label: "クリーチャーだけ" },
   civ: { kind: "enum:civ", label: "文明", multi: true },
   raceContains: { kind: "text", label: "種族に〜を含む", multi: true },
@@ -75,7 +80,7 @@ export const FILTER_SCHEMA = {
   nameContains: { kind: "text", label: "名前に〜を含む", multi: true },
   cost: { kind: "numVar", label: "コストがちょうど〜" },
   minCost: { kind: "numVar", label: "コストが〜以上" },
-  keyword: { kind: "keywords", label: "キーワード能力を持つ" },
+  keyword: { kind: "enum:keyword", label: "キーワード能力を持つ", multi: true },
   psychic: { kind: "bool", label: "サイキック・クリーチャー" },
   civNot: { kind: "enum:civ", label: "〜の文明ではない", multi: true },
   multiColor: { kind: "bool", label: "多色" },
@@ -278,9 +283,36 @@ export const TRIGGER_SCHEMA = {
   endOfTurn: { label: "ターンの終わりに", scope: "self", keys: [] },
 };
 
-export const TRIGGER_SCOPE_LABELS = {
-  this: "このカード自身", self: "自分", opponent: "相手", both: "おたがい",
+// トリガーに書けるキーと、その入力の種類。target は見出しの行で別に出す。
+export const TRIGGER_KEY_SCHEMA = {
+  target: { kind: "enum:triggerTarget", label: "だれの" },
+  label: { kind: "text", label: "ラベル（モーダルに出る説明）" },
+  optional: { kind: "bool", label: "〜してもよい" },
+  oncePerTurn: { kind: "bool", label: "1ターンに1度だけ" },
+  oncePerGame: { kind: "bool", label: "1ゲームに1度だけ" },
+  turnOf: { kind: "enum:target", label: "だれのターンか" },
+  hyperOnly: { kind: "bool", label: "ハイパーモードの時だけ" },
+  firstEachTurn: { kind: "bool", label: "各ターン最初の1回だけ" },
+  method: { kind: "text", label: "出た方法（summon など）" },
+  paid: { kind: "bool", label: "コストを支払った時だけ" },
+  manaTapped: { kind: "bool", label: "マナをタップしたか" },
+  fromZone: { kind: "enum:playZone", label: "どのゾーンから唱えたか" },
+  lastCard: { kind: "bool", label: "最後に引いたカードだけ" },
+  filter: { kind: "filter", label: "契機の条件（どのカードか）" },
+  condition: { kind: "json", label: "誘発の条件（condition）" },
 };
+
+// どのトリガーにも書けるキー。これに TRIGGER_SCHEMA[on].keys を足したものが選べるキー。
+// target は「だれの」として見出しの行に出すので、フォームの本体には並べない
+const TRIGGER_COMMON_KEYS = ["target", "label", "optional", "oncePerTurn", "oncePerGame",
+  "turnOf", "hyperOnly", "condition", "filter"];
+
+export function triggerKeysFor(on) {
+  return [...TRIGGER_COMMON_KEYS, ...(TRIGGER_SCHEMA[on]?.keys || [])]
+    .map(k => [k, TRIGGER_KEY_SCHEMA[k]?.kind || "json"]);
+}
+
+export const triggerLabel = on => TRIGGER_SCHEMA[on]?.label || on;
 
 // トリガーに書けるキー。validator に未知キー検査が無かったので、ここを出どころにする。
 export const TRIGGER_KEYS = new Set([
@@ -313,6 +345,35 @@ export const KEY_GROUPS = [
 
 // ここに無いキーは末尾に、元の並びのまま残す（validator が未知のキーとして別に弾く）。
 export const STEP_KEY_ORDER = KEY_GROUPS.flatMap(([, keys]) => keys);
+
+// ステップのキーの日本語名。UI のフォームの見出しに使う。
+// キーそのものも併記するので、ここは「何を指定する欄か」が分かる短い言い方にする。
+export const KEY_LABELS = {
+  label: "ラベル（モーダルに出る説明）", type: "効果の種類",
+  zone: "どこから", zones: "どこから（複数）", destination: "行き先", to: "行き先",
+  under: "どのカードの下に（pick の変数名）", owner: "だれのカードを",
+  selfFrom: "自分側の起点", side: "ツインパクトのどちらの面",
+  target: "だれの", self: "このカード自身も対象にする",
+  choosePlayer: "対象のプレイヤーを選ぶ", onePlayer: "片方のプレイヤーだけ",
+  count: "回数 / 個数", amount: "枚数", perUnit: "1つあたりの量",
+  min: "最小", max: "最大", maxSelect: "選べる上限", maxPerTurn: "1ターンに何回まで",
+  all: "すべて", any: "好きな枚数（0枚でもよい）", random: "ランダムに選ぶ",
+  takeAll: "まとめて全部", subject: "この能力の主体を対象にする",
+  order: "並べる順序", mode: "何を封じるか", templates: "選択肢（入れ子のステップ列）",
+  filter: "対象の条件",
+  tapped: "タップして置く", free: "コストを支払わずに", untap: "アンタップする",
+  untapAfterAttack: "攻撃の終わりにアンタップする", noUntapNextTurn: "次のターンにアンタップしない",
+  summoningSickness: "出たターンは攻撃できない", destroyAtEndOfTurn: "ターンの終わりに破壊する",
+  keywords: "与えるキーワード能力", tempKeyword: "一時的に与えるキーワード能力",
+  tempKeywords: "一時的に与えるキーワード能力（複数）", expires: "いつまで",
+  canUseTrigger: "S・トリガーを使える", afterCast: "唱えた後に続けて行うこと",
+  until: "いつまで", reason: "理由（ログ表示）", timing: "使えるタイミング",
+  as: "結果を控える変数名", asCost: "コストとして控える変数名",
+  optional: "〜してもよい", ifPrevious: "そうしたら（直前を行った時だけ）",
+  onlyIf: "〜なら（変数の値で判定）",
+};
+
+export const keyLabel = k => KEY_LABELS[k] || k;
 
 const RANK = new Map(STEP_KEY_ORDER.map((k, i) => [k, i]));
 const rank = k => (RANK.has(k) ? RANK.get(k) : STEP_KEY_ORDER.length);
@@ -349,6 +410,62 @@ export function orderCardSteps(value) {
   return out;
 }
 
+// カード直下とトリガーのキーの並び。cards.json の大多数がこの順なので、それに合わせる
+export const CARD_KEY_ORDER = ["id", "name", "race", "cost", "power", "type", "civ",
+  "keywords", "effect", "triggers"];
+export const TRIGGER_KEY_ORDER = ["on", "label", "target", "turnOf", "filter", "condition",
+  "method", "paid", "manaTapped", "fromZone", "lastCard", "firstEachTurn", "hyperOnly",
+  "oncePerTurn", "oncePerGame", "optional", "type", "count", "templates", "effects"];
+
+// 決めた並びにキーを揃える。並びに無いキーは末尾に、元の順のまま残す（sort は安定）
+function orderBy(order, obj) {
+  const r = k => { const i = order.indexOf(k); return i < 0 ? order.length : i; };
+  const out = {};
+  for (const k of Object.keys(obj).sort((a, b) => r(a) - r(b))) out[k] = obj[k];
+  return out;
+}
+
+// label は「書いてあれば出す」。フォームで空のままのものを JSON に残さない
+function pruneLabels(value) {
+  if (Array.isArray(value)) return value.map(pruneLabels);
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (k === "label" && typeof v === "string" && !v.trim()) continue;
+    out[k] = pruneLabels(v);
+  }
+  return out;
+}
+
+// カードビルダーの編集中の状態 → cards.json に書く形。
+// 空の欄は落とし、キーを決まった順に並べる。フォームがまだ扱えない構造キー
+// （evolution / spellSide / revolutionChangeCond など）は触らずそのまま持ち越す。
+export function buildCardJson(draft) {
+  const out = {};
+  const put = (k, v) => { if (v !== undefined) out[k] = v; };
+  put("id", draft.id);
+  put("name", draft.name?.trim() || "");
+  // 種族なしは null と書くのが多数派。読み込んだカードが null なら null のまま、
+  // はじめから持っていなければ書かない（どちらの書き方も往復で変わらないように）
+  if (draft.race === null) put("race", null);
+  else if (draft.race?.trim()) put("race", draft.race.trim());
+  put("cost", Number(draft.cost) || 0);
+  if (draft.power != null && draft.power !== "") put("power", Number(draft.power));
+  put("type", draft.type);
+  put("civ", Array.isArray(draft.civ) && draft.civ.length === 1 ? draft.civ[0] : draft.civ);
+  put("keywords", draft.keywords || []);
+  put("effect", draft.effect || "");
+  if (draft.triggers?.length) {
+    // 「○回選んで実行」（templates）の能力は effects を持たないので、足さない
+    out.triggers = draft.triggers.map(t => orderBy(TRIGGER_KEY_ORDER,
+      t.templates ? { ...t } : { ...t, effects: t.effects || [] }));
+  }
+  for (const [k, v] of Object.entries(draft)) {
+    if (!CARD_KEY_ORDER.includes(k) && v !== undefined) out[k] = v;
+  }
+  return pruneLabels(orderCardSteps(orderBy(CARD_KEY_ORDER, out)));
+}
+
 // ---------------------------------------------------------------------------
 // UI が使う小道具
 // ---------------------------------------------------------------------------
@@ -378,3 +495,14 @@ export function stepFitsSchema(step) {
 }
 
 export const effectLabel = type => EFFECT_SCHEMA[type]?.label || type;
+
+// kind ごとの、その指定を足した直後の値（UI のフォームの初期値）
+export function defaultValueFor(kind) {
+  if (kind === "bool") return true;
+  if (kind === "num" || kind === "numVar") return 1;
+  if (kind === "keywords" || kind === "steps" || kind === "zones") return [];
+  if (kind === "filter" || kind === "json") return {};
+  if (kind === "onlyIf") return { count: "", min: 1 };
+  if (kind.startsWith("enum:")) return Object.keys(ENUMS[kind.slice(5)] || {})[0] || "";
+  return "";
+}
