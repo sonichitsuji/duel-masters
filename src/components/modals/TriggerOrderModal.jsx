@@ -1,4 +1,5 @@
-import { CIV, EFFECT_TYPE_LABELS } from "../../constants";
+import { CIV } from "../../constants";
+import { effectLabel } from "../../cardSchema";
 import { getCardCivs } from "../../gameLogic";
 
 // いま解決を待っている能力を一覧表示し、そこから1つ選ばせるモーダル。
@@ -9,7 +10,7 @@ import { getCardCivs } from "../../gameLogic";
 // 現行の記法は effects 配列。steps は旧記法、type 直書きは単発効果。
 function stepLine(st){
   if(!st) return null;
-  const label=st.label||EFFECT_TYPE_LABELS[st.type]||st.type;
+  const label=st.label||effectLabel(st.type);
   // label が既に「〜てもよい」で終わっているなら重ねて付けない
   return st.optional&&!/てもよい/.test(label||"") ? `${label}（してもよい）` : label;
 }

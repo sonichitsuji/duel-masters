@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { CIV, CIVS, KEYWORD_LABELS, CARD_TYPE_LABELS } from "../constants";
-import { CardEditor } from "./CardEditor";
+import INITIAL_CARD_DB from "../../public/cards.json";
+import { CardBuilder } from "./CardBuilder";
 import { cardDisplayName, displayPower } from "../gameLogic";
+
+// 同梱カードは DATA_VERSION が上がると mergeCardDb（src/App.jsx）が上書きするので、
+// 書き換えても消える。見るのと複製だけに留める
+const BUNDLED_IDS = new Set(INITIAL_CARD_DB.map(c => c.id));
 
 // ===========================
 // CARD MANAGER
@@ -9,7 +14,8 @@ import { cardDisplayName, displayPower } from "../gameLogic";
 export function CardManager({cardDb,setCardDb,onClose}){
   const [search,setSearch]=useState("");
   const [civFilter,setCivFilter]=useState("all");
-  const [editing,setEditing]=useState(null); // card or "new"
+  // { card, readOnly } か null。card が null なら新規
+  const [editing,setEditing]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(null);
 
   const filtered=cardDb.filter(c=>{
@@ -26,7 +32,10 @@ export function CardManager({cardDb,setCardDb,onClose}){
   return(
     <div className="fullscreen-panel" style={{background:"#050510",zIndex:600,display:"flex",flexDirection:"column"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}`}</style>
-      {editing&&<CardEditor card={editing==="new"?null:editing} onSave={handleSave} onCancel={()=>setEditing(null)}/>}
+      {editing&&(
+        <CardBuilder card={editing.card} readOnly={editing.readOnly}
+          onSave={handleSave} onCancel={()=>setEditing(null)}/>
+      )}
       {confirmDelete&&(
         <div className="fullscreen-panel" style={{background:"rgba(0,0,0,0.88)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:"#0a0a18",border:"1px solid #f8444455",borderRadius:12,padding:20,maxWidth:320,width:"100%"}}>
@@ -41,7 +50,7 @@ export function CardManager({cardDb,setCardDb,onClose}){
       )}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520)",borderBottom:"1px solid #2a1a4a",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,color:"#ffe066",flex:1}}>🗂 カード管理 ({cardDb.length}種)</div>
-        <button onClick={()=>setEditing("new")} style={{padding:"6px 14px",borderRadius:6,background:"rgba(68,255,136,0.15)",border:"1px solid #4f844",color:"#4f8",cursor:"pointer",fontSize:12,fontWeight:700}}>➕ 追加</button>
+        <button onClick={()=>setEditing({ card:null, readOnly:false })} style={{padding:"6px 14px",borderRadius:6,background:"rgba(68,255,136,0.15)",border:"1px solid #4f844",color:"#4f8",cursor:"pointer",fontSize:12,fontWeight:700}}>➕ 追加</button>
         <button onClick={onClose} style={{padding:"6px 12px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>← 戻る</button>
       </div>
       <div style={{padding:"8px 12px",display:"flex",gap:6,flexWrap:"wrap",borderBottom:"1px solid #141428",background:"#060614"}}>
@@ -52,15 +61,26 @@ export function CardManager({cardDb,setCardDb,onClose}){
         </select>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"8px 12px",display:"flex",flexDirection:"column",gap:5}}>
-        {filtered.map(card=>{const c=CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]||CIV.fire;return(
+        {filtered.map(card=>{const c=CIV[Array.isArray(card.civ)?card.civ[0]:card.civ]||CIV.fire;
+          const bundled=BUNDLED_IDS.has(card.id);
+          // 複製は id を外して渡す。保存する時に新しい id が振られる
+          const duplicate=()=>{
+            const copy={ ...structuredClone(card), name:`${cardDisplayName(card)}のコピー` };
+            delete copy.id;
+            setEditing({ card:copy, readOnly:false });
+          };
+          return(
           <div key={card.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1a1a2a"}}>
             <span style={{fontSize:11,fontWeight:900,color:c.textColor,background:`${c.color}33`,borderRadius:3,padding:"1px 4px",fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{cardDisplayName(card)}</div>
               <div style={{fontSize:10,color:"#555"}}>コスト:{card.cost} {card.power!=null?`/ P:${displayPower(card)}`:`/ ${CARD_TYPE_LABELS[card.type]||"呪文"}`} {card.keywords?.map(k=><span key={k} style={{color:c.textColor,marginRight:3}}>{KEYWORD_LABELS[k]||k}</span>)}</div>
             </div>
-            <button onClick={()=>setEditing(card)} style={{padding:"4px 10px",borderRadius:4,background:"rgba(255,224,102,0.1)",border:"1px solid #ffe06644",color:"#ffe066",cursor:"pointer",fontSize:11}}>編集</button>
-            <button onClick={()=>setConfirmDelete(card)} style={{padding:"4px 10px",borderRadius:4,background:"rgba(255,80,80,0.1)",border:"1px solid #f8444444",color:"#f84",cursor:"pointer",fontSize:11}}>削除</button>
+            <button onClick={()=>setEditing({ card, readOnly:bundled })} style={{padding:"4px 10px",borderRadius:4,background:"rgba(255,224,102,0.1)",border:"1px solid #ffe06644",color:"#ffe066",cursor:"pointer",fontSize:11}}>{bundled?"見る":"編集"}</button>
+            <button onClick={duplicate} style={{padding:"4px 10px",borderRadius:4,background:"rgba(74,163,255,0.1)",border:"1px solid #4aa3ff44",color:"#4aa3ff",cursor:"pointer",fontSize:11}}>複製</button>
+            {bundled?null:(
+              <button onClick={()=>setConfirmDelete(card)} style={{padding:"4px 10px",borderRadius:4,background:"rgba(255,80,80,0.1)",border:"1px solid #f8444444",color:"#f84",cursor:"pointer",fontSize:11}}>削除</button>
+            )}
           </div>
         );})}
         {filtered.length===0&&<div style={{color:"#333",fontSize:12,textAlign:"center",padding:20}}>該当なし</div>}

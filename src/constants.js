@@ -1,5 +1,5 @@
-export const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"];
-export const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", gStrike:"G・ストライク", charger:"チャージャー", zRush:"Zラッシュ", escape:"エスケープ", slayer:"スレイヤー", guardman:"ガードマン", unselectable:"相手に選ばれない", machFighter:"マッハファイター", worldBreaker:"ワールド・ブレイカー", justDiver:"ジャストダイバー", unattackable:"攻撃されない" };
+export const ALL_KEYWORDS = ["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","invasion","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"];
+export const KEYWORD_LABELS = { speedAttacker:"スピードアタッカー", wBreaker:"W・ブレイカー", tBreaker:"T・ブレイカー", blocker:"ブロッカー", cantAttack:"攻撃不可", sTrigger:"S・トリガー", drawOnPlay:"ドロー(召喚時)", revolutionChange:"革命チェンジ", invasion:"侵略", gStrike:"G・ストライク", charger:"チャージャー", zRush:"Zラッシュ", escape:"エスケープ", slayer:"スレイヤー", guardman:"ガードマン", unselectable:"相手に選ばれない", machFighter:"マッハファイター", worldBreaker:"ワールド・ブレイカー", justDiver:"ジャストダイバー", unattackable:"攻撃されない" };
 
 export const CIV = {
   light:    { label:"光", color:"#f1c40f", glow:"#ffcc44", bg:"#101005", textColor:"#ffdd66" },
@@ -44,33 +44,6 @@ export const KEYWORD_REGEX = new RegExp(
     .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`
 );
 
-// ===========================
-// EFFECT CONFIRM MODAL
-// ===========================
-// label を書いていない効果ステップを日本語で表示するための既定文言。
-// 誘発した能力の中身を解決前に確認するのに使うので、cards.json で使う type は一通り埋めておく。
-export const EFFECT_TYPE_LABELS = {
-  // ドロー・手札
-  drawCards:"カードを引く", draw:"カードをドロー", handToGrave:"手札を捨てる",
-  handDestroy:"相手の手札を破壊", handToBz:"手札からバトルゾーンへ出す",
-  // バトルゾーン
-  destroy:"クリーチャーを破壊", destroyUnder:"パワー以下のクリーチャーを破壊",
-  destroyMaxPower:"最大パワーの相手クリーチャーを破壊", battle:"バトルする",
-  bzToHand:"クリーチャーを手札に戻す", bounce:"クリーチャーを手札に戻す",
-  bzToMana:"クリーチャーをマナゾーンへ", sendToMana:"クリーチャーをマナゾーンへ",
-  bzToDeck:"クリーチャーを山札へ", bzToShield:"クリーチャーをシールドへ",
-  tap:"タップする", untap:"アンタップする", tapAll:"相手クリーチャーを全タップ",
-  powerBuff:"パワーを変更する", grant:"能力を与える",
-  // マナ・墓地・山札
-  manaToHand:"マナゾーンのカードを手札へ", manaReturn:"マナゾーンのカードを手札へ",
-  manaToGrave:"マナゾーンのカードを墓地へ", topToMana:"山札の上をマナゾーンへ",
-  deckToMana:"山札の上をマナゾーンへ", topToGrave:"山札の上を墓地へ",
-  graveToBz:"墓地からバトルゾーンへ出す", graveToHand:"墓地から手札へ",
-  graveToDeckBottom:"墓地を山札の下へ", shuffleDeck:"山札をシャッフルする",
-  search:"山札からカードをサーチ", deckSearch:"山札からカードをサーチ",
-  // シールド・その他
-  addShield:"シールドを追加する", shieldToHand:"シールドを手札へ",
-  shieldToGrave:"シールドを墓地へ", breakShield:"シールドをブレイク",
-  meteorBurn:"メテオバーン（下のカードを動かす）", castFromGrave:"墓地から唱える",
-  grantSummonFrom:"召喚できるゾーンを増やす", winGame:"ゲームに勝つ",
-};
+// 効果ステップの日本語名（label を書いていないステップの表示に使う）は
+// src/cardSchema.js の EFFECT_SCHEMA が持っている。そこから effectLabel() で引く。
+// ここに別の表を置くと、エディタの表示と解決前の確認で文言がずれるので持たない。
