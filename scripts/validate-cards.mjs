@@ -9,6 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stepKeysOrdered, orderStepKeys } from "./step-key-order.mjs";
+// トリガーに書けるキーの一覧。語彙の出どころは src/cardSchema.js にまとめてある
+import { TRIGGER_KEYS } from "../src/cardSchema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -386,6 +388,10 @@ function checkCondition(cond, where, allowBothSides = false) {
 }
 
 function checkTrigger(tr, where) {
+  // 綴り違い（turnOf を turnof と書く等）は、今まで黙って無視されていた
+  for (const k of Object.keys(tr)) {
+    if (!TRIGGER_KEYS.has(k)) errors.push(`${where}(${tr.on}): 未知のキー "${k}"`);
+  }
   if (LEGACY_ONS.has(tr.on)) errors.push(`${where}: 旧トリガー名 "${tr.on}"（on＋target 形式へ移行してください）`);
   else if (!TRIGGER_ONS.has(tr.on)) errors.push(`${where}: 未知のtrigger on "${tr.on}"`);
   if (tr.target && !TRIGGER_SCOPES.includes(tr.target)) errors.push(`${where}(${tr.on}): 未知のtarget "${tr.target}"`);
