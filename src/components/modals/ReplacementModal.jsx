@@ -44,7 +44,7 @@ export function ReplacementModal({ modal, onApply, onCancel }) {
             </button>
           </div>
         )}
-        <div style={{ fontSize:9, color:"#555", marginTop:8, textAlign:"center" }}>
+        <div style={{ fontSize:9, color:"#999", marginTop:8, textAlign:"center" }}>
           {options ? "1つだけ選んで適用します。選ばなかった置換は起きません" : "「例外処理で中止」を選ぶと置換は行われず、元の処理のまま進みます"}
         </div>
       </div>

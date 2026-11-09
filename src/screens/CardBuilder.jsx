@@ -23,7 +23,7 @@ import { mkCardId, syncCardIdSeed } from "../gameLogic";
 
 const CSS = `
 .card-builder{--ground:#04040e; --panel:#0a0a18; --panel-2:#0d0d1c; --sunken:#070711;
-  --line:#2a1a4a; --line-soft:#1a1a2e; --ink:#e8e8f4; --ink-2:#8a8aa8; --ink-3:#4a4a68;
+  --line:#2a1a4a; --line-soft:#1a1a2e; --ink:#e8e8f4; --ink-2:#8a8aa8; --ink-3:#7a7a98;
   --gold:#ffe066; --danger:#ff6b6b; --confirm:#44ff88; --water:#4aa3ff;
   --sans:'Noto Sans JP','Hiragino Sans','Segoe UI',system-ui,sans-serif;
   --display:'Cinzel',Georgia,serif;

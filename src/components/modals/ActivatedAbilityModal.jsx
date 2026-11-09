@@ -17,7 +17,7 @@ export function ActivatedAbilityModal({ entries, onUse, onClose }) {
 
         <div style={{ display:"flex", flexDirection:"column", gap:8, overflowY:"auto" }}>
           {entries.length === 0 && (
-            <div style={{ fontSize:11, color:"#666", textAlign:"center", padding:10 }}>今使える能力はありません</div>
+            <div style={{ fontSize:11, color:"#999", textAlign:"center", padding:10 }}>今使える能力はありません</div>
           )}
           {entries.map(e => {
             const civs = getCardCivs(e.card);

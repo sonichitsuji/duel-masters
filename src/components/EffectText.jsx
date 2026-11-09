@@ -30,7 +30,7 @@ export function CardEffectText({card}){
     const civs=civ==null?[]:getCardCivs({civ});
     return (
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap"}}>
-        <span style={{fontSize:9,color:"#777",border:"1px solid #333",borderRadius:3,padding:"0 5px",letterSpacing:1}}>{label}</span>
+        <span style={{fontSize:9,color:"#aaa",border:"1px solid #555",borderRadius:3,padding:"0 5px",letterSpacing:1}}>{label}</span>
         <span style={{fontSize:12,fontWeight:700,color:"#fff"}}>{name}</span>
         {cost!=null&&<span style={{fontSize:10,color:"#888"}}>コスト{cost}</span>}
         {civs.map(cv=>CIV[cv]?(
@@ -45,7 +45,7 @@ export function CardEffectText({card}){
         {sideHead("クリーチャー",card.name)}
         <EffectText text={card.effect}/>
       </div>
-      <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #333"}}>
+      <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #555"}}>
         {sideHead("呪文",spell.name,spell.cost,spell.civ??card.civ)}
         <EffectText text={spell.effect}/>
       </div>

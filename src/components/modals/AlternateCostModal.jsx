@@ -23,7 +23,7 @@ export function AlternateCostModal({ card, onSelectNormal, onSelectAlternate, on
             <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト [{altCivLabel}({card.alternateCost.cost})]</div>
           </button>
         </div>
-        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#888", cursor:"pointer", fontSize:12 }}>
           キャンセル
         </button>
       </div>

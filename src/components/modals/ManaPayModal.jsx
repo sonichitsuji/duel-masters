@@ -50,7 +50,7 @@ export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onC
           <div style={{ fontFamily:"'Cinzel',serif", color:c.textColor, fontSize:14, fontWeight:900 }}>マナを選択</div>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5 }}>
             <span style={{ fontSize:12, color:"#ccc" }}>{cardCivs.map(cv=>CIV[cv]?.label).join("")} {card.name}</span>
-            <span style={{ fontSize:11, color:"#666" }}>コスト {needed}</span>
+            <span style={{ fontSize:11, color:"#999" }}>コスト {needed}</span>
           </div>
         </div>
 
@@ -88,7 +88,7 @@ export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onC
 
         {/* Mana cards */}
         <div>
-          <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>マナゾーン（タップで選択 / 再タップで解除）</div>
+          <div style={{ fontSize:10, color:"#999", marginBottom:4 }}>マナゾーン（タップで選択 / 再タップで解除）</div>
           <div style={{ display:"flex", gap:4, flexWrap:"wrap", minHeight:44 }}>
             {mana.map(mc => {
               const isSel = selectedUids.includes(mc.uid);
@@ -99,7 +99,7 @@ export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onC
               );
             })}
             {mana.filter(c=>!c.tapped).length===0 && (
-              <div style={{ fontSize:11, color:"#333", alignSelf:"center" }}>利用可能なマナがありません</div>
+              <div style={{ fontSize:11, color:"#888", alignSelf:"center" }}>利用可能なマナがありません</div>
             )}
           </div>
         </div>
@@ -107,7 +107,7 @@ export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onC
         {/* Buttons */}
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={() => canConfirm && onConfirm(selectedUids)} disabled={!canConfirm}
-            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#555"}`, color:canConfirm?c.textColor:"#777", cursor:canConfirm?"pointer":"not-allowed" }}>
             ✓ 決定
           </button>
           <button onClick={onCancel} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #444", color:"#888", cursor:"pointer", fontSize:12 }}>

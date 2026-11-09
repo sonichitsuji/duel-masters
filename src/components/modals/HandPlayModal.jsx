@@ -48,7 +48,7 @@ export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
           {picks.map(p => (
             <div key={p.card.uid} style={{ marginTop:8, fontSize:11, color:"#ccc", background:"rgba(0,0,0,0.4)", borderRadius:6, padding:"6px 8px", border:"1px solid #ff446633" }}>
               <b style={{ color:"#fff" }}>{cardDisplayName(faceOf(p))}</b>
-              <span style={{ color:"#777", marginLeft:6 }}>
+              <span style={{ color:"#aaa", marginLeft:6 }}>
                 {faceOf(p).side === "spell" ? CARD_TYPE_LABELS.spell : (CARD_TYPE_LABELS[faceOf(p).type] || faceOf(p).type)}
               </span>
               <span style={{ color:"#ff8899", marginLeft:6 }}>{handPlayLabel(p.kind)}</span>
@@ -66,12 +66,12 @@ export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
 
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={() => picks.length && onPlay(picks)} disabled={!picks.length}
-            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:picks.length?"linear-gradient(135deg,#ff446633,#ff446611)":"#111", border:`1px solid ${picks.length?"#ff4466":"#333"}`, color:picks.length?"#ff8899":"#444", cursor:picks.length?"pointer":"not-allowed" }}>
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:picks.length?"linear-gradient(135deg,#ff446633,#ff446611)":"#111", border:`1px solid ${picks.length?"#ff4466":"#555"}`, color:picks.length?"#ff8899":"#777", cursor:picks.length?"pointer":"not-allowed" }}>
             {one
               ? (one.cost ? `${costLabel(one.cost)} を支払って${verb}` : `コストを支払わずに${verb}`)
               : `${picks.length}枚をプレイする`}
           </button>
-          <button onClick={onSkip} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
+          <button onClick={onSkip} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#999", cursor:"pointer", fontSize:12 }}>
             使わない
           </button>
         </div>
