@@ -182,7 +182,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
             onClick={() => canConfirm && onAdvance(selected,
               chosenNumber != null ? { chosenNumber } : chosenPlayer ? { chosenPlayer } : undefined)}
             disabled={!canConfirm}
-            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#555"}`, color:canConfirm?c.textColor:"#777", cursor:canConfirm?"pointer":"not-allowed" }}>
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#555"}`, color:canConfirm?c.textColor:"#aaa", cursor:canConfirm?"pointer":"not-allowed" }}>
             {isAuto ? "確認" : "実行"}
           </button>
           {isOptional && (

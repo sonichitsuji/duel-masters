@@ -228,7 +228,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
                     : "#0a0a14",
                   border: canStart ? "none" : "1px solid #1a1a2a",
                   borderRadius:2,
-                  color: canStart ? "#000" : "#777",
+                  color: canStart ? "#000" : "#aaa",
                   cursor: canStart ? "pointer" : "not-allowed",
                   fontFamily:"'Cinzel Decorative',serif",
                   fontSize:16,
@@ -293,7 +293,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
         {/* Footer */}
         <div style={{padding:"12px 16px 0",textAlign:"center"}}>
           <div style={{height:1,background:"linear-gradient(90deg,transparent,#1a1a3a,transparent)",marginBottom:10}}/>
-          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#777",letterSpacing:3}}>DUEL MASTERS SIMULATOR — LOCAL 2P EDITION</div>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#888",letterSpacing:3}}>DUEL MASTERS SIMULATOR — LOCAL 2P EDITION</div>
         </div>
       </div>
 

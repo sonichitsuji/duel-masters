@@ -56,7 +56,7 @@ JSONのみ返してください。前後の説明は不要です。`}
         {!parsed&&(
           <div style={{marginBottom:16}}>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:"none"}}/>
-            <button onClick={()=>fileRef.current?.click()} disabled={loading} style={{width:"100%",padding:"16px",borderRadius:10,border:"2px dashed #555",background:"#080818",color:loading?"#777":"#888",cursor:loading?"not-allowed":"pointer",fontSize:13}}>
+            <button onClick={()=>fileRef.current?.click()} disabled={loading} style={{width:"100%",padding:"16px",borderRadius:10,border:"2px dashed #555",background:"#080818",color:loading?"#888":"#aaa",cursor:loading?"not-allowed":"pointer",fontSize:13}}>
               {loading?"読み取り中...":"画像を選択（タップでカメラ / ファイル）"}
             </button>
             {error&&<div style={{color:"#f84",fontSize:11,marginTop:8}}>{error}</div>}
@@ -83,7 +83,7 @@ JSONのみ返してください。前後の説明は不要です。`}
               </div>
             )}
             <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>onResult(deckIds,parsed)} disabled={deckIds.length===0} style={{flex:1,padding:"10px",borderRadius:7,fontWeight:700,fontSize:13,background:deckIds.length>0?"linear-gradient(135deg,#4af,#08f)":"#111",border:"none",color:deckIds.length>0?"#000":"#777",cursor:deckIds.length>0?"pointer":"not-allowed"}}>
+              <button onClick={()=>onResult(deckIds,parsed)} disabled={deckIds.length===0} style={{flex:1,padding:"10px",borderRadius:7,fontWeight:700,fontSize:13,background:deckIds.length>0?"linear-gradient(135deg,#4af,#08f)":"#111",border:"none",color:deckIds.length>0?"#000":"#aaa",cursor:deckIds.length>0?"pointer":"not-allowed"}}>
                 デッキ編集画面へ ({deckIds.length}枚)
               </button>
               <button onClick={()=>setParsed(null)} style={{padding:"10px 14px",borderRadius:7,background:"#111",border:"1px solid #555",color:"#999",cursor:"pointer",fontSize:12}}>再読み込み</button>

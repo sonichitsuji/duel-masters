@@ -53,7 +53,7 @@ export function ExceptionPanel({pid,state,setState,otherState,setOtherState,addL
             <div style={{color:"#999",fontSize:10,marginBottom:5,fontWeight:700}}>{ZONE_LABELS[z]} ({(state[stateKey(z)]||[]).length}枚)</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               {(state[stateKey(z)]||[]).map(c=>z==="deck"?<CardBack key={c.uid} small onClick={()=>toggleSel(z,c.uid)} label={isSel(z,c.uid)?"✓":""}/>:<CardFace key={c.uid} card={c} small selected={isSel(z,c.uid)} onClick={()=>toggleSel(z,c.uid)}/>)}
-              {(state[stateKey(z)]||[]).length===0&&<span style={{color:"#777",fontSize:10}}>空</span>}
+              {(state[stateKey(z)]||[]).length===0&&<span style={{color:"#888",fontSize:10}}>空</span>}
             </div>
           </div>
         ))}

@@ -66,7 +66,7 @@ export function HandPlayModal({ pid, plays, onPlay, onSkip }) {
 
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={() => picks.length && onPlay(picks)} disabled={!picks.length}
-            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:picks.length?"linear-gradient(135deg,#ff446633,#ff446611)":"#111", border:`1px solid ${picks.length?"#ff4466":"#555"}`, color:picks.length?"#ff8899":"#777", cursor:picks.length?"pointer":"not-allowed" }}>
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:picks.length?"linear-gradient(135deg,#ff446633,#ff446611)":"#111", border:`1px solid ${picks.length?"#ff4466":"#555"}`, color:picks.length?"#ff8899":"#aaa", cursor:picks.length?"pointer":"not-allowed" }}>
             {one
               ? (one.cost ? `${costLabel(one.cost)} を支払って${verb}` : `コストを支払わずに${verb}`)
               : `${picks.length}枚をプレイする`}

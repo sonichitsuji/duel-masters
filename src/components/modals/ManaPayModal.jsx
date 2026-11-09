@@ -107,7 +107,7 @@ export function ManaPayModal({ card, mana, ownerState, selfBattle, costOpts, onC
         {/* Buttons */}
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={() => canConfirm && onConfirm(selectedUids)} disabled={!canConfirm}
-            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#555"}`, color:canConfirm?c.textColor:"#777", cursor:canConfirm?"pointer":"not-allowed" }}>
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#555"}`, color:canConfirm?c.textColor:"#aaa", cursor:canConfirm?"pointer":"not-allowed" }}>
             ✓ 決定
           </button>
           <button onClick={onCancel} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #444", color:"#888", cursor:"pointer", fontSize:12 }}>

@@ -165,7 +165,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
 
   // 攻撃宣言はここでは「誰で攻撃するか」を決めるだけ。
   // 革命チェンジ・アタックトリガーは攻撃先を決めた後に BattleScreen 側で処理する。
-  const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#777":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
+  const Btn=({children,onClick,col,disabled})=>(<button onClick={onClick} disabled={disabled} style={{padding:"6px 12px",borderRadius:5,border:`1px solid ${col}44`,background:disabled?"#111":`${col}18`,color:disabled?"#aaa":col,cursor:disabled?"not-allowed":"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</button>);
   return(
     <div style={{display:"flex",flexDirection:"column",overflowY:"auto",minHeight:large?"100%":undefined,background:`rgba(${pid==="p1"?"10,30,80":"80,15,10"},0.1)`,border:`1px solid ${color}22`,borderRadius:12,padding:"10px 12px"}}>
       {selBattleCard&&<CreatureDetailPanel card={selBattleCard} isActive={isActive} drewThisTurn={drewThisTurn} battleZone={state.battle} ownerState={state} onHyperUnlock={onHyperUnlock} onAttack={()=>{onStartAttack(selBattleCard.uid);setSelBattle(null);}} onClose={()=>setSelBattle(null)}/>}
@@ -270,7 +270,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
               ||isUnselectableByOpponent(c,state)||isUnattackable(c,state));
             return state.battle.map(c=><CardFace key={c.uid} card={c} inBattle small={!large} selected={selBattle===c.uid||attackingUid===c.uid} dimmed={!!(attackingUid&&attackingUid!==c.uid&&isActive)||notTargetable(c)} onClick={()=>handleBattleClick(c)} grantedKeywords={getGranted(c)}/>);
           })()}
-          {state.battle.length===0&&<span style={{color:"#777",fontSize:10,alignSelf:"center"}}>空</span>}
+          {state.battle.length===0&&<span style={{color:"#888",fontSize:10,alignSelf:"center"}}>空</span>}
         </div>
       </div>
       {/* Mana + Hand row */}
@@ -290,7 +290,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
           <div style={{fontSize:10,fontWeight:400,color:"#ca8",marginBottom:4,flexShrink:0}}>手札</div>
           <div style={{display:"flex",gap:5,overflowX:"auto",flexWrap:"nowrap",flex:1,alignItems:"flex-end"}}>
             {state.hand.map((c,i)=>!isActive?<CardBack key={c.uid} tiny onClick={()=>handleHandClick(i)}/>:<CardFace key={c.uid} card={c} small selected={selHand===i} onClick={()=>handleHandClick(i)}/>)}
-            {state.hand.length===0&&<span style={{color:"#777",fontSize:10,alignSelf:"center"}}>空</span>}
+            {state.hand.length===0&&<span style={{color:"#888",fontSize:10,alignSelf:"center"}}>空</span>}
           </div>
         </div>
       </div>

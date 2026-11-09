@@ -48,7 +48,7 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onRecycle, 
                     title={e.recyclePayable ? "リサイクルで唱える" : "マナが足りません"}
                     style={{ width:"100%", padding:"3px 0", borderRadius:4, fontSize:10, fontWeight:700,
                              background:e.recyclePayable?"#66ddff22":"#111", border:`1px solid ${e.recyclePayable?"#66ddff":"#555"}`,
-                             color:e.recyclePayable?"#66ddff":"#777", cursor:e.recyclePayable?"pointer":"not-allowed" }}>
+                             color:e.recyclePayable?"#66ddff":"#aaa", cursor:e.recyclePayable?"pointer":"not-allowed" }}>
                     リサイクル ({e.recycle.cost})
                   </button>
                 )}
@@ -57,7 +57,7 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onRecycle, 
                     title={e.payable ? e.perm.label || "召喚する" : "マナが足りません"}
                     style={{ width:"100%", padding:"3px 0", borderRadius:4, fontSize:10, fontWeight:700,
                              background:e.payable?`${c.color}22`:"#111", border:`1px solid ${e.payable?c.color:"#555"}`,
-                             color:e.payable?c.textColor:"#777", cursor:e.payable?"pointer":"not-allowed" }}>
+                             color:e.payable?c.textColor:"#aaa", cursor:e.payable?"pointer":"not-allowed" }}>
                     召喚 ({cost})
                   </button>
                 )}
