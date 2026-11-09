@@ -79,7 +79,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
           };
           return (
             <div>
-              <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
+              <div style={{ fontSize:10, color:"#999", marginBottom:4 }}>
                 数字を1つ選択：{hi == null ? `${lo}以上の好きな数字` : `${lo}〜${hi}`}
               </div>
               <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:6 }}>
@@ -87,11 +87,11 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
                   value={chosenNumber ?? ""} onChange={e => onInput(e.target.value)}
                   placeholder="数字"
                   style={{ width:96, padding:"9px 10px", borderRadius:8, fontSize:16, fontWeight:900, textAlign:"center",
-                    background:"#111", border:`1px solid ${chosenNumber != null ? c.color : "#333"}`,
+                    background:"#111", border:`1px solid ${chosenNumber != null ? c.color : "#555"}`,
                     color: chosenNumber != null ? c.textColor : "#888" }}/>
                 {chosenNumber != null && (
                   <button onClick={() => setChosenNumber(null)}
-                    style={{ padding:"8px 10px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:11 }}>
+                    style={{ padding:"8px 10px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#999", cursor:"pointer", fontSize:11 }}>
                     クリア
                   </button>
                 )}
@@ -103,7 +103,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
                     <button key={n} onClick={() => setChosenNumber(on ? null : n)}
                       style={{ width:34, padding:"7px 0", borderRadius:6, cursor:"pointer", fontSize:13, fontWeight:900,
                         background: on ? `${c.color}33` : "#111",
-                        border:`1px solid ${on ? c.color : "#333"}`, color: on ? c.textColor : "#888" }}>
+                        border:`1px solid ${on ? c.color : "#555"}`, color: on ? c.textColor : "#888" }}>
                       {n}
                     </button>
                   );
@@ -116,7 +116,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
         {/* プレイヤーを1人選ぶ（カードではなくプレイヤーを選ばせる） */}
         {choosePlayer && (
           <div>
-            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>プレイヤーを1人選択：</div>
+            <div style={{ fontSize:10, color:"#999", marginBottom:4 }}>プレイヤーを1人選択：</div>
             <div style={{ display:"flex", gap:8 }}>
               {["p1", "p2"].map(pid => {
                 const on = chosenPlayer === pid;
@@ -125,7 +125,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
                   <button key={pid} onClick={() => setChosenPlayer(on ? null : pid)}
                     style={{ flex:1, padding:"12px 10px", borderRadius:8, cursor:"pointer",
                       background: on ? `${c.color}33` : "#111",
-                      border:`1px solid ${on ? c.color : "#333"}`, color: on ? c.textColor : "#888" }}>
+                      border:`1px solid ${on ? c.color : "#555"}`, color: on ? c.textColor : "#888" }}>
                     <div style={{ fontSize:14, fontWeight:900 }}>{pid.toUpperCase()}</div>
                     <div style={{ fontSize:10, marginTop:2 }}>{mine ? "自分" : "相手"}</div>
                   </button>
@@ -138,7 +138,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
         {/* Card grid */}
         {shown.length > 0 && (
           <div style={{ overflowY:"auto", maxHeight:220 }}>
-            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
+            <div style={{ fontSize:10, color:"#999", marginBottom:4 }}>
               {previewOnly ? "このカードが対象になります：" : isAuto ? "公開カード：" : (step.any ? `好きな枚数を選択（${selected.length}/${maxSel}）：` : `選択（${selected.length}/${maxSel}）：`)}
               {ordered && <span style={{ color: "#ffcc66", marginLeft: 6 }}>選んだ順に上から置かれます</span>}
               {step.onePlayer && <span style={{ color: "#ffcc66", marginLeft: 6 }}>プレイヤー1人からだけ選べます</span>}
@@ -148,7 +148,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
                 step.type === "breakShield" ? (
                   <div key={card.uid}
                     onClick={() => toggleSelect(card.uid)}
-                    style={{width:52,height:72,borderRadius:7,flexShrink:0,border:`2px solid ${selected.includes(card.uid)?"#ffe066":"#888"}`,background:"linear-gradient(135deg,#1a3050,#0a1828)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,transform:selected.includes(card.uid)?"translateY(-8px) scale(1.07)":"none",transition:"all 0.15s",boxShadow:selected.includes(card.uid)?"0 0 18px #ffe066":"0 0 6px #44aaff44",userSelect:"none"}}>
+                    style={{width:52,height:72,borderRadius:7,flexShrink:0,border:`2px solid ${selected.includes(card.uid)?"#ffe066":"#555"}`,background:"linear-gradient(135deg,#1a3050,#0a1828)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,transform:selected.includes(card.uid)?"translateY(-8px) scale(1.07)":"none",transition:"all 0.15s",boxShadow:selected.includes(card.uid)?"0 0 18px #ffe066":"0 0 6px #44aaff44",userSelect:"none"}}>
                     <div style={{width:14,height:18,background:"linear-gradient(180deg,#3a6090,#1a3a5c)",borderRadius:"3px 3px 2px 2px",border:"1px solid #5a80aa",boxShadow:"0 0 6px #3a6090aa"}}/>
                     <span style={{fontSize:8,color:"#88aacc"}}>{i+1}</span>
                   </div>
@@ -173,7 +173,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
 
         {/* Empty state */}
         {candidates.length === 0 && !isAuto && !previewOnly && (
-          <div style={{ fontSize:11, color:"#555", textAlign:"center", padding:8 }}>対象カードがありません</div>
+          <div style={{ fontSize:11, color:"#999", textAlign:"center", padding:8 }}>対象カードがありません</div>
         )}
 
         {/* Buttons */}
@@ -182,7 +182,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
             onClick={() => canConfirm && onAdvance(selected,
               chosenNumber != null ? { chosenNumber } : chosenPlayer ? { chosenPlayer } : undefined)}
             disabled={!canConfirm}
-            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#555"}`, color:canConfirm?c.textColor:"#aaa", cursor:canConfirm?"pointer":"not-allowed" }}>
             {isAuto ? "確認" : "実行"}
           </button>
           {isOptional && (
@@ -190,7 +190,7 @@ export function EffectStepModal({ activeSteps, p1, setP1, p2, setP2, addLog, onA
               スキップ
             </button>
           )}
-          <button onClick={() => setExceptionOpen(true)} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
+          <button onClick={() => setExceptionOpen(true)} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#999", cursor:"pointer", fontSize:12 }}>
             例外処理
           </button>
         </div>

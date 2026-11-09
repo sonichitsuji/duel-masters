@@ -50,25 +50,25 @@ export function ExceptionPanel({pid,state,setState,otherState,setOtherState,addL
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
         {ZONES.map(z=>(
           <div key={z} style={{background:"rgba(255,255,255,0.02)",borderRadius:8,padding:"8px 10px",border:"1px solid #141428"}}>
-            <div style={{color:"#555",fontSize:10,marginBottom:5,fontWeight:700}}>{ZONE_LABELS[z]} ({(state[stateKey(z)]||[]).length}枚)</div>
+            <div style={{color:"#999",fontSize:10,marginBottom:5,fontWeight:700}}>{ZONE_LABELS[z]} ({(state[stateKey(z)]||[]).length}枚)</div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               {(state[stateKey(z)]||[]).map(c=>z==="deck"?<CardBack key={c.uid} small onClick={()=>toggleSel(z,c.uid)} label={isSel(z,c.uid)?"✓":""}/>:<CardFace key={c.uid} card={c} small selected={isSel(z,c.uid)} onClick={()=>toggleSel(z,c.uid)}/>)}
-              {(state[stateKey(z)]||[]).length===0&&<span style={{color:"#1e1e2e",fontSize:10}}>空</span>}
+              {(state[stateKey(z)]||[]).length===0&&<span style={{color:"#888",fontSize:10}}>空</span>}
             </div>
           </div>
         ))}
       </div>
       <div style={{background:"rgba(255,224,102,0.06)",border:"1px solid #ffe06622",borderRadius:6,padding:"6px 10px",marginBottom:10,minHeight:28}}>
         <span style={{color:"#ffe066",fontSize:10,fontWeight:600}}>選択中 {selCards.length}枚: {selCards.map(x=>(state[stateKey(x.zone)]||[]).find(c=>c.uid===x.uid)?.name).filter(Boolean).join(", ")||"なし"}</span>
-        {selCards.length>0&&<button onClick={clearSel} style={{marginLeft:8,fontSize:9,color:"#555",background:"none",border:"none",cursor:"pointer"}}>クリア</button>}
+        {selCards.length>0&&<button onClick={clearSel} style={{marginLeft:8,fontSize:9,color:"#999",background:"none",border:"none",cursor:"pointer"}}>クリア</button>}
       </div>
       <div style={{marginBottom:10}}>
-        <div style={{color:"#444",fontSize:10,marginBottom:4}}>移動先:</div>
+        <div style={{color:"#888",fontSize:10,marginBottom:4}}>移動先:</div>
         <div style={{display:"flex",gap:4,marginBottom:6}}>
-          {["self","other"].map(p=><button key={p} onClick={()=>setTargetPid(p)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",border:`1px solid ${targetPid===p?color:"#333"}`,background:targetPid===p?`${color}22`:"#0a0a14",color:targetPid===p?color:"#555"}}>{p==="self"?"自分":"相手"}</button>)}
+          {["self","other"].map(p=><button key={p} onClick={()=>setTargetPid(p)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",border:`1px solid ${targetPid===p?color:"#555"}`,background:targetPid===p?`${color}22`:"#0a0a14",color:targetPid===p?color:"#aaa"}}>{p==="self"?"自分":"相手"}</button>)}
         </div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-          {ZONES.map(z=><button key={z} onClick={()=>setTargetZone(z)} style={{padding:"4px 10px",borderRadius:4,fontSize:10,fontWeight:600,cursor:"pointer",border:`1px solid ${targetZone===z?"#ffe066":"#222"}`,background:targetZone===z?"rgba(255,224,102,0.1)":"#0a0a14",color:targetZone===z?"#ffe066":"#555"}}>{ZONE_LABELS[z]}</button>)}
+          {ZONES.map(z=><button key={z} onClick={()=>setTargetZone(z)} style={{padding:"4px 10px",borderRadius:4,fontSize:10,fontWeight:600,cursor:"pointer",border:`1px solid ${targetZone===z?"#ffe066":"#555"}`,background:targetZone===z?"rgba(255,224,102,0.1)":"#0a0a14",color:targetZone===z?"#ffe066":"#aaa"}}>{ZONE_LABELS[z]}</button>)}
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,marginBottom:10}}>
@@ -80,13 +80,13 @@ export function ExceptionPanel({pid,state,setState,otherState,setOtherState,addL
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span style={{color:"#555",fontSize:10,width:76}}>パワー変更:</span>
-          <input type="number" value={powerDelta} step={1000} onChange={e=>setPowerDelta(Number(e.target.value))} style={{width:70,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11}}/>
+          <span style={{color:"#999",fontSize:10,width:76}}>パワー変更:</span>
+          <input type="number" value={powerDelta} step={1000} onChange={e=>setPowerDelta(Number(e.target.value))} style={{width:70,background:"#111",border:"1px solid #555",color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11}}/>
           <Btn onClick={doPower} col="#f88">選択BZに適用</Btn>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span style={{color:"#555",fontSize:10,width:76}}>ドロー枚数:</span>
-          <input type="number" value={drawN} min={1} max={20} onChange={e=>setDrawN(Number(e.target.value))} style={{width:50,background:"#111",border:"1px solid #333",color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11}}/>
+          <span style={{color:"#999",fontSize:10,width:76}}>ドロー枚数:</span>
+          <input type="number" value={drawN} min={1} max={20} onChange={e=>setDrawN(Number(e.target.value))} style={{width:50,background:"#111",border:"1px solid #555",color:"#fff",borderRadius:4,padding:"3px 6px",fontSize:11}}/>
           <Btn onClick={doDrawN} col="#4f8">ドロー実行</Btn>
         </div>
       </div>

@@ -19,14 +19,14 @@ export function ManaDisplay({mana}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:4}}>
       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-        <span style={{fontSize:10,color:"#555"}}>マナ:</span>
+        <span style={{fontSize:10,color:"#999"}}>マナ:</span>
         <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>{available}</span>
-        <span style={{fontSize:10,color:"#333"}}>/ {mana.length}</span>
+        <span style={{fontSize:10,color:"#888"}}>/ {mana.length}</span>
         {Object.entries(civCounts).map(([civ,cnt])=>{const c=CIV[civ];if(!c)return null;return(
           <div key={civ} style={{display:"flex",alignItems:"center",gap:2,background:`${c.color}18`,border:`1px solid ${c.color}44`,borderRadius:4,padding:"1px 5px"}}>
             <span style={{fontSize:9,fontWeight:900,color:c.textColor,fontFamily:"'Noto Sans JP',sans-serif"}}>{c.label}</span>
-            <span style={{fontSize:11,fontWeight:700,color:cnt.available>0?c.textColor:"#333"}}>{cnt.available}</span>
-            {cnt.total>cnt.available&&<span style={{fontSize:9,color:"#333"}}>/{cnt.total}</span>}
+            <span style={{fontSize:11,fontWeight:700,color:cnt.available>0?c.textColor:"#888"}}>{cnt.available}</span>
+            {cnt.total>cnt.available&&<span style={{fontSize:9,color:"#888"}}>/{cnt.total}</span>}
           </div>
         );})}
       </div>

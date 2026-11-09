@@ -44,7 +44,7 @@ function ZoneRow({ pid, mine, state, onPick }) {
   const zones = VIEW_ZONES.filter(z => !z.selfOnly || mine);
   return (
     <div>
-      <div style={{ fontSize: 10, color: "#666", marginBottom: 4, fontWeight: 700 }}>
+      <div style={{ fontSize: 10, color: "#999", marginBottom: 4, fontWeight: 700 }}>
         {pid.toUpperCase()}（{mine ? "自分" : "相手"}）
       </div>
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -53,8 +53,8 @@ function ZoneRow({ pid, mine, state, onPick }) {
           return (
             <button key={z.key} onClick={() => onPick(z.key)}
               style={{ padding: "7px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer",
-                background: "#111", border: "1px solid #333", color: n ? "#ccc" : "#555" }}>
-              {z.label} <span style={{ color: "#777" }}>({n})</span>
+                background: "#111", border: "1px solid #555", color: n ? "#ccc" : "#888" }}>
+              {z.label} <span style={{ color: "#aaa" }}>({n})</span>
             </button>
           );
         })}
@@ -80,7 +80,7 @@ export function StepExceptionMenu({ p1, p2, ownerPid, onCancelEffect, onClose })
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, overflowY: "auto",
           alignContent: "flex-start", minHeight: 80 }}>
-          {cards.length === 0 && <div style={{ fontSize: 11, color: "#444", alignSelf: "center" }}>カードがありません</div>}
+          {cards.length === 0 && <div style={{ fontSize: 11, color: "#888", alignSelf: "center" }}>カードがありません</div>}
           {cards.map(card => (
             <div key={card.uid} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, width: 56 }}>
               <CardFace card={card} small />
@@ -104,7 +104,7 @@ export function StepExceptionMenu({ p1, p2, ownerPid, onCancelEffect, onClose })
         <div style={{ fontFamily: "'Cinzel',serif", color: "#ddd", fontSize: 14, fontWeight: 900, letterSpacing: 1 }}>
           例外処理
         </div>
-        <div style={{ fontSize: 10, color: "#666", marginTop: 3 }}>
+        <div style={{ fontSize: 10, color: "#999", marginTop: 3 }}>
           公開ゾーンの中身を確認できます（相手の手札と山札は非公開なので出せません）
         </div>
       </div>
@@ -114,7 +114,7 @@ export function StepExceptionMenu({ p1, p2, ownerPid, onCancelEffect, onClose })
         <ZoneRow pid={oppPid} mine={false} state={stateOf(oppPid)} onPick={z => setViewing({ pid: oppPid, zone: z })} />
       </div>
 
-      <div style={{ display: "flex", gap: 8, borderTop: "1px solid #222", paddingTop: 12 }}>
+      <div style={{ display: "flex", gap: 8, borderTop:"1px solid #444", paddingTop: 12 }}>
         <button onClick={onCancelEffect}
           style={{ flex: 1, padding: "10px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer",
             background: "#1a0a0a", border: "1px solid #aa5555", color: "#e88" }}>

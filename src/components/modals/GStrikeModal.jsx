@@ -14,20 +14,20 @@ export function GStrikeModal({ cards, attackerBattle, onConfirm, onSkip }) {
           相手の攻撃クリーチャーを1体選んでください。<br/>
           選んだクリーチャーはこのターン攻撃できません。
         </div>
-        <div style={{ fontSize:10, color:"#555", marginBottom:6 }}>攻撃側のクリーチャー:</div>
+        <div style={{ fontSize:10, color:"#999", marginBottom:6 }}>攻撃側のクリーチャー:</div>
         <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:14 }}>
           {(attackerBattle || []).map(c => (
             <div key={c.uid} onClick={() => setSelected(selected === c.uid ? null : c.uid)} style={{ cursor:"pointer" }}>
               <CardFace card={c} small selected={selected === c.uid} />
             </div>
           ))}
-          {(attackerBattle || []).length === 0 && <div style={{ color:"#444", fontSize:11 }}>対象なし</div>}
+          {(attackerBattle || []).length === 0 && <div style={{ color:"#888", fontSize:11 }}>対象なし</div>}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={() => onConfirm(selected)} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:selected?"linear-gradient(135deg,#ff44ff33,#ff44ff11)":"#111", border:`1px solid ${selected?"#ff44ff":"#333"}`, color:selected?"#ff88ff":"#444", cursor:selected?"pointer":"not-allowed" }}>
+          <button onClick={() => onConfirm(selected)} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:selected?"linear-gradient(135deg,#ff44ff33,#ff44ff11)":"#111", border:`1px solid ${selected?"#ff44ff":"#555"}`, color:selected?"#ff88ff":"#aaa", cursor:selected?"pointer":"not-allowed" }}>
             決定
           </button>
-          <button onClick={onSkip} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
+          <button onClick={onSkip} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#999", cursor:"pointer", fontSize:12 }}>
             スキップ
           </button>
         </div>

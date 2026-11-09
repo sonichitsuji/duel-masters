@@ -35,7 +35,7 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onRecycle, 
         </div>
 
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, overflowY:"auto", alignContent:"flex-start", minHeight:60 }}>
-          {entries.length === 0 && <div style={{ fontSize:11, color:"#444", alignSelf:"center" }}>カードがありません</div>}
+          {entries.length === 0 && <div style={{ fontSize:11, color:"#888", alignSelf:"center" }}>カードがありません</div>}
           {entries.map(e => {
             const civs = getCardCivs(e.card);
             const c = CIV[civs[0]] || CIV.fire;
@@ -47,8 +47,8 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onRecycle, 
                   <button onClick={() => e.recyclePayable && onRecycle(e)} disabled={!e.recyclePayable}
                     title={e.recyclePayable ? "リサイクルで唱える" : "マナが足りません"}
                     style={{ width:"100%", padding:"3px 0", borderRadius:4, fontSize:10, fontWeight:700,
-                             background:e.recyclePayable?"#66ddff22":"#111", border:`1px solid ${e.recyclePayable?"#66ddff":"#333"}`,
-                             color:e.recyclePayable?"#66ddff":"#444", cursor:e.recyclePayable?"pointer":"not-allowed" }}>
+                             background:e.recyclePayable?"#66ddff22":"#111", border:`1px solid ${e.recyclePayable?"#66ddff":"#555"}`,
+                             color:e.recyclePayable?"#66ddff":"#aaa", cursor:e.recyclePayable?"pointer":"not-allowed" }}>
                     リサイクル ({e.recycle.cost})
                   </button>
                 )}
@@ -56,8 +56,8 @@ export function ZoneViewModal({ zone, entries, ownerState, onSummon, onRecycle, 
                   <button onClick={() => e.payable && onSummon(e)} disabled={!e.payable}
                     title={e.payable ? e.perm.label || "召喚する" : "マナが足りません"}
                     style={{ width:"100%", padding:"3px 0", borderRadius:4, fontSize:10, fontWeight:700,
-                             background:e.payable?`${c.color}22`:"#111", border:`1px solid ${e.payable?c.color:"#333"}`,
-                             color:e.payable?c.textColor:"#444", cursor:e.payable?"pointer":"not-allowed" }}>
+                             background:e.payable?`${c.color}22`:"#111", border:`1px solid ${e.payable?c.color:"#555"}`,
+                             color:e.payable?c.textColor:"#aaa", cursor:e.payable?"pointer":"not-allowed" }}>
                     召喚 ({cost})
                   </button>
                 )}

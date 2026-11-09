@@ -18,7 +18,7 @@ export function HyperUntapModal({ modal, onSelect, onSkip }) {
           ))}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={() => selected && onSelect(selected)} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:selected?"linear-gradient(135deg,#ffcc0055,#ffcc0022)":"#111", border:`1px solid ${selected?"#ffcc00":"#333"}`, color:selected?"#ffcc00":"#444", cursor:selected?"pointer":"not-allowed", fontFamily:"'Cinzel',serif" }}>
+          <button onClick={() => selected && onSelect(selected)} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:selected?"linear-gradient(135deg,#ffcc0055,#ffcc0022)":"#111", border:`1px solid ${selected?"#ffcc00":"#555"}`, color:selected?"#ffcc00":"#aaa", cursor:selected?"pointer":"not-allowed", fontFamily:"'Cinzel',serif" }}>
             {actionLabel || "UNTAP"}
           </button>
           <button onClick={onSkip} style={{ padding:"10px 14px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>
@@ -38,7 +38,7 @@ export function HyperTargetedModal({ modal, attackerShields, onUse, onSkip }) {
         <div style={{ fontFamily:"'Cinzel',serif", color:"#ffcc00", fontSize:13, fontWeight:900, marginBottom:4, letterSpacing:2 }}>HYPER MODE</div>
         <div style={{ fontSize:11, color:"#ccc", marginBottom:6 }}>相手がこのクリーチャーを選んだ時：</div>
         <div style={{ fontSize:12, fontWeight:700, color:"#ffcc00", marginBottom:4 }}>相手のシールドを{amount}つブレイクしてもよい</div>
-        <div style={{ fontSize:10, color:"#666", marginBottom:14 }}>相手シールド残り: {attackerShields}枚</div>
+        <div style={{ fontSize:10, color:"#999", marginBottom:14 }}>相手シールド残り: {attackerShields}枚</div>
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={onUse} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:"linear-gradient(135deg,#ffcc0055,#ffcc0022)", border:"1px solid #ffcc00", color:"#ffcc00", cursor:"pointer", fontFamily:"'Cinzel',serif" }}>
             {Math.min(amount, attackerShields)}枚 BREAK

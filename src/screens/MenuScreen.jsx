@@ -78,8 +78,8 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
           padding:"10px 14px", borderRadius:4,
           textAlign:"left",
           background: selected ? `linear-gradient(90deg,${color}22,${color}08)` : hovered ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.3)",
-          border: selected ? `1px solid ${color}88` : `1px solid ${hovered?"#333":"#1a1a2a"}`,
-          color: selected ? color : "#666",
+          border: selected ? `1px solid ${color}88` : `1px solid ${hovered?"#555":"#1a1a2a"}`,
+          color: selected ? color : "#aaa",
           cursor:"pointer", fontSize:12,
           fontWeight: selected ? 700 : 400,
           display:"flex", justifyContent:"space-between", alignItems:"center",
@@ -89,7 +89,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
       >
         <span>{deck.name}</span>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span style={{fontSize:10,color:"#444"}}>{deck.ids.length}枚</span>
+          <span style={{fontSize:10,color:"#888"}}>{deck.ids.length}枚</span>
           {selected&&<span style={{fontSize:10,color,fontWeight:700}}>✓ 選択中</span>}
         </div>
       </button>
@@ -102,7 +102,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel+Decorative:wght@700;900&family=Rajdhani:wght@500;600;700&display=swap');
         *{box-sizing:border-box;}
         ::-webkit-scrollbar{width:3px;background:#000;}
-        ::-webkit-scrollbar-thumb{background:#222;border-radius:2px;}
+        ::-webkit-scrollbar-thumb{background:#444;border-radius:2px;}
         @keyframes scanline{0%{transform:translateY(-100%);}100%{transform:translateY(100vh);}}
         @keyframes flicker{0%,100%{opacity:1;}92%{opacity:1;}93%{opacity:0.8;}94%{opacity:1;}}
         @keyframes pulse{0%,100%{opacity:0.6;}50%{opacity:1;}}
@@ -135,7 +135,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
           <div style={{position:"absolute",top:0,left:"10%",right:"10%",height:1,background:"linear-gradient(90deg,transparent,#6633ff88,#ff333388,transparent)"}}/>
 
           {/* Sub label */}
-          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:11,letterSpacing:6,color:"#4433aa",marginBottom:10,fontWeight:600}}>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:11,letterSpacing:6,color:"#8877cc",marginBottom:10,fontWeight:600}}>
             — CARD GAME SIMULATOR —
           </div>
 
@@ -168,7 +168,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
           </div>
 
           {/* Version tag */}
-          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#332255",letterSpacing:3,marginTop:8}}>SIMULATOR v6.0</div>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#8877cc",letterSpacing:3,marginTop:8}}>SIMULATOR v6.0</div>
 
           {/* Bottom accent */}
           <div style={{marginTop:16,height:1,background:"linear-gradient(90deg,transparent,#6633ff44,#ff333344,transparent)"}}/>
@@ -198,7 +198,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
                           <span style={{fontFamily:"'Rajdhani',sans-serif",fontSize:12,fontWeight:700,letterSpacing:3,color}}>{icon} {label}</span>
                         </div>
                         {decks.length===0?(
-                          <div style={{fontSize:11,color:"#333",padding:"10px 12px",background:"#050510",borderRadius:2,border:"1px solid #111",fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>
+                          <div style={{fontSize:11,color:"#888",padding:"10px 12px",background:"#050510",borderRadius:2,border:"1px solid #111",fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>
                             デッキがありません
                           </div>
                         ):(
@@ -228,7 +228,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
                     : "#0a0a14",
                   border: canStart ? "none" : "1px solid #1a1a2a",
                   borderRadius:2,
-                  color: canStart ? "#000" : "#222",
+                  color: canStart ? "#000" : "#aaa",
                   cursor: canStart ? "pointer" : "not-allowed",
                   fontFamily:"'Cinzel Decorative',serif",
                   fontSize:16,
@@ -276,14 +276,14 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
                   <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid #1a1a2a",borderRadius:2,borderLeft:"2px solid #ffe06633"}}>
                     <div style={{flex:1}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#ddd",fontFamily:"'Rajdhani',sans-serif",letterSpacing:1}}>{dk.name}</div>
-                      <div style={{fontSize:10,color:"#444",letterSpacing:1}}>{dk.ids.length} CARDS</div>
+                      <div style={{fontSize:10,color:"#888",letterSpacing:1}}>{dk.ids.length} CARDS</div>
                     </div>
                     <button onClick={()=>openEditDeck(i)} style={{padding:"4px 10px",borderRadius:2,background:"rgba(255,224,102,0.08)",border:"1px solid #ffe06633",color:"#ffe066",cursor:"pointer",fontSize:11}}>編集</button>
                     <button onClick={()=>setConfirmDeleteDeck(i)} style={{padding:"4px 10px",borderRadius:2,background:"rgba(255,80,80,0.08)",border:"1px solid #f8444433",color:"#f84",cursor:"pointer",fontSize:11}}>削除</button>
                   </div>
                 ))}
                 {decks.length===0&&(
-                  <div style={{color:"#222",fontSize:12,textAlign:"center",padding:32,fontFamily:"'Rajdhani',sans-serif",letterSpacing:2}}>NO DECKS FOUND</div>
+                  <div style={{color:"#888",fontSize:12,textAlign:"center",padding:32,fontFamily:"'Rajdhani',sans-serif",letterSpacing:2}}>NO DECKS FOUND</div>
                 )}
               </div>
             </div>
@@ -293,7 +293,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
         {/* Footer */}
         <div style={{padding:"12px 16px 0",textAlign:"center"}}>
           <div style={{height:1,background:"linear-gradient(90deg,transparent,#1a1a3a,transparent)",marginBottom:10}}/>
-          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#1a1a2a",letterSpacing:3}}>DUEL MASTERS SIMULATOR — LOCAL 2P EDITION</div>
+          <div style={{fontFamily:"'Rajdhani',sans-serif",fontSize:10,color:"#888",letterSpacing:3}}>DUEL MASTERS SIMULATOR — LOCAL 2P EDITION</div>
         </div>
       </div>
 
@@ -305,7 +305,7 @@ export function MenuScreen({cardDb,setCardDb,decks,setDecks,p1DeckIdx,setP1DeckI
             <div style={{color:"#888",fontSize:12,marginBottom:20}}>「{decks[confirmDeleteDeck]?.name}」を削除しますか？</div>
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>{setDecks(d=>d.filter((_,i)=>i!==confirmDeleteDeck));if(p1DeckIdx===confirmDeleteDeck)setP1DeckIdx(null);if(p2DeckIdx===confirmDeleteDeck)setP2DeckIdx(null);setConfirmDeleteDeck(null);}} style={{flex:1,padding:"9px",borderRadius:2,background:"#1a0505",border:"1px solid #f84",color:"#f84",cursor:"pointer",fontWeight:700,fontSize:12}}>削除する</button>
-              <button onClick={()=>setConfirmDeleteDeck(null)} style={{flex:1,padding:"9px",borderRadius:2,background:"#0a0a14",border:"1px solid #222",color:"#555",cursor:"pointer",fontSize:12}}>キャンセル</button>
+              <button onClick={()=>setConfirmDeleteDeck(null)} style={{flex:1,padding:"9px",borderRadius:2,background:"#0a0a14",border:"1px solid #444",color:"#999",cursor:"pointer",fontSize:12}}>キャンセル</button>
             </div>
           </div>
         </div>

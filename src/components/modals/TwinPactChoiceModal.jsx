@@ -22,10 +22,10 @@ export function TwinPactChoiceModal({ card, onSelectCreature, onSelectSpell, onC
             <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>呪文として唱える</div>
             <div style={{ fontSize:11, color:"#aaa", marginTop:2 }}>コスト {card.spellSide?.cost} / {card.spellSide?.name}</div>
             {card.spellSide?.subtype&&<div style={{ fontSize:10, color:"#88aacc", marginTop:1, fontStyle:"italic" }}>{card.spellSide.subtype}</div>}
-            <div style={{ fontSize:10, color:"#666", marginTop:2 }}><EffectText text={card.spellSide?.effect}/></div>
+            <div style={{ fontSize:10, color:"#999", marginTop:2 }}><EffectText text={card.spellSide?.effect}/></div>
           </button>
         </div>
-        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+        <button onClick={onCancel} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#888", cursor:"pointer", fontSize:12 }}>
           キャンセル
         </button>
       </div>

@@ -33,7 +33,7 @@ export function FinalRevolutionModal({ selfState, onConfirm, onSkip }) {
         </div>
         {handCands.length > 0 && (
           <>
-            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>手札から:</div>
+            <div style={{ fontSize:10, color:"#999", marginBottom:4 }}>手札から:</div>
             <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:8 }}>
               {handCands.map(c => (
                 <div key={c.uid} onClick={() => toggle(c.uid, "hand")} style={{ opacity: (!isSel(c.uid) && totalCost + c.cost > 6) ? 0.3 : 1, cursor:"pointer" }}>
@@ -46,7 +46,7 @@ export function FinalRevolutionModal({ selfState, onConfirm, onSkip }) {
         )}
         {manaCands.length > 0 && (
           <>
-            <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>マナから:</div>
+            <div style={{ fontSize:10, color:"#999", marginBottom:4 }}>マナから:</div>
             <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:8 }}>
               {manaCands.map(c => (
                 <div key={c.uid} onClick={() => toggle(c.uid, "mana")} style={{ opacity: (!isSel(c.uid) && totalCost + c.cost > 6) ? 0.3 : 1, cursor:"pointer" }}>
@@ -58,13 +58,13 @@ export function FinalRevolutionModal({ selfState, onConfirm, onSkip }) {
           </>
         )}
         {handCands.length === 0 && manaCands.length === 0 && (
-          <div style={{ fontSize:11, color:"#555", marginBottom:12 }}>対象カードなし</div>
+          <div style={{ fontSize:11, color:"#999", marginBottom:12 }}>対象カードなし</div>
         )}
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={() => onConfirm(selected)} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:"linear-gradient(135deg,#44ff8833,#44ff8811)", border:"1px solid #44ff88", color:"#44ff88", cursor:"pointer" }}>
             バトルゾーンに出す ({selected.length}枚)
           </button>
-          <button onClick={onSkip} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#666", cursor:"pointer", fontSize:12 }}>
+          <button onClick={onSkip} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#999", cursor:"pointer", fontSize:12 }}>
             スキップ
           </button>
         </div>

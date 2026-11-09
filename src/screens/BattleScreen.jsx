@@ -1943,7 +1943,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
 
   return(
     <div className="battle-ui" style={{height:"calc(100vh / var(--ui-scale))",overflow:"hidden",background:"#04040e",fontFamily:"'Noto Sans JP','Segoe UI',sans-serif",color:"#fff",display:"flex",flexDirection:"column"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}::-webkit-scrollbar{width:4px;background:#111;}::-webkit-scrollbar-thumb{background:#333;border-radius:4px;}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Cinzel:wght@700;900&display=swap');*{box-sizing:border-box;}::-webkit-scrollbar{width:4px;background:#111;}::-webkit-scrollbar-thumb{background:#555;border-radius:4px;}`}</style>
       {cutin&&<CutIn cutin={cutin} onDone={()=>setCutin(null)}/>}
       {hyperModeCutIn&&<HyperModeCutIn creature={hyperModeCutIn} onDismiss={()=>setHyperModeCutIn(null)}/>}
       {winner&&(
@@ -1962,7 +1962,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
           })()}
           <div style={{display:"flex",gap:12,marginTop:32}}>
             <button onClick={()=>{setP1(initPlayerState(p1DeckIds,cardDb,p1HyperIds));setP2(initPlayerState(p2DeckIds,cardDb,p2HyperIds));setActive("p1");setDrewThisTurn(true);setChargedThisTurn(false);setAttackingUid(null);setWinner(null);setWinReason(null);setHandoff(null);setTurn(1);setCutin(null);setLogs(["ゲーム開始！"]);setMessage("P1: マナチャージorカードをプレイ");}} style={{padding:"14px 32px",borderRadius:8,background:"linear-gradient(135deg,#ffe066,#ff9900)",border:"none",color:"#000",fontWeight:900,fontSize:16,cursor:"pointer"}}>再戦</button>
-            <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #333",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
+            <button onClick={onBackToMenu} style={{padding:"14px 32px",borderRadius:8,background:"#111",border:"1px solid #555",color:"#888",fontWeight:700,fontSize:16,cursor:"pointer"}}>メニューへ</button>
           </div>
         </div>
       )}
@@ -2104,8 +2104,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       }}/>}
       <div style={{background:"linear-gradient(90deg,#08001a,#100520,#08001a)",borderBottom:"1px solid #2a1a4a",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:900,color:"#ffe066",textShadow:"0 0 10px #ffe066",letterSpacing:3}}>DUEL MASTERS</div>
-        <div style={{fontSize:11,color:"#555"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
-        <button onClick={onBackToMenu} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:11}}>← メニュー</button>
+        <div style={{fontSize:11,color:"#999"}}>T{turn} ｜ <span style={{color:active==="p1"?"#4af":"#f84"}}>{active.toUpperCase()} のターン</span>{isFirstTurn&&<span style={{color:"#f84",marginLeft:6,fontSize:10}}>先行</span>}</div>
+        <button onClick={onBackToMenu} style={{padding:"3px 10px",borderRadius:4,background:"#111",border:"1px solid #555",color:"#999",cursor:"pointer",fontSize:11}}>← メニュー</button>
       </div>
       <div style={{background:"rgba(20,20,50,0.6)",borderBottom:"1px solid #141428",padding:"5px 14px",fontSize:11,color:"#9ae"}}>{message}</div>
       {isPC?(

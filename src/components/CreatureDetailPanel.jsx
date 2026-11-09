@@ -97,7 +97,7 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
                   <div key={bc.uid||i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                     <CardFace card={bc} small/>
                     <div style={{fontSize:8,color:"#aaa",textAlign:"center",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{i+1}. {bc.name}</div>
-                    {bc.race&&<div style={{fontSize:7,color:"#777",textAlign:"center"}}>{bc.race}</div>}
+                    {bc.race&&<div style={{fontSize:7,color:"#aaa",textAlign:"center"}}>{bc.race}</div>}
                   </div>
                 ))}
               </div>
@@ -110,8 +110,8 @@ export function CreatureDetailPanel({card,isActive,drewThisTurn,onAttack,onClose
           {isActive&&drewThisTurn&&effectiveCard(card).hyperUnlock&&!card.hyperMode&&onHyperUnlock&&(
             <button onClick={()=>{onHyperUnlock(card.uid);onClose();}} style={{padding:"10px 12px",borderRadius:6,fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#ffcc0055,#ffcc0022)",border:"1px solid #ffcc00",color:"#ffcc00",cursor:"pointer",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>ハイパー化</button>
           )}
-          {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#333"}`,color:canAtk?c.textColor:"#444",cursor:canAtk?"pointer":"not-allowed",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>{canAtk?"ATTACK":`攻撃不可 (${reason})`}</button>}
-          <button onClick={onClose} style={{padding:"10px 16px",borderRadius:6,background:"#111",border:"1px solid #333",color:"#666",cursor:"pointer",fontSize:12}}>閉じる</button>
+          {isActive&&<button onClick={()=>{if(canAtk)onAttack();}} style={{flex:1,padding:"10px",borderRadius:6,fontWeight:700,fontSize:13,background:canAtk?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111",border:`1px solid ${canAtk?c.color:"#555"}`,color:canAtk?c.textColor:"#aaa",cursor:canAtk?"pointer":"not-allowed",letterSpacing:1,fontFamily:"'Cinzel',serif"}}>{canAtk?"ATTACK":`攻撃不可 (${reason})`}</button>}
+          <button onClick={onClose} style={{padding:"10px 16px",borderRadius:6,background:"#111",border:"1px solid #555",color:"#999",cursor:"pointer",fontSize:12}}>閉じる</button>
         </div>
       </div>
     </div>

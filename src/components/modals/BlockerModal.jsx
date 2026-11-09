@@ -57,7 +57,7 @@ export function BlockerModal({ blockers, guards, attackerName, targetName, onBlo
         )}
 
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={confirm} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:13, background:selected?"linear-gradient(135deg,#6688ff55,#6688ff22)":"#111", border:`1px solid ${selected?"#6688ff":"#333"}`, color:selected?"#aaccff":"#444", cursor:selected?"pointer":"not-allowed", fontFamily:"'Cinzel',serif", letterSpacing:1 }}>
+          <button onClick={confirm} disabled={!selected} style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:13, background:selected?"linear-gradient(135deg,#6688ff55,#6688ff22)":"#111", border:`1px solid ${selected?"#6688ff":"#555"}`, color:selected?"#aaccff":"#aaa", cursor:selected?"pointer":"not-allowed", fontFamily:"'Cinzel',serif", letterSpacing:1 }}>
             {btnLabel}
           </button>
           <button onClick={onDecline} style={{ padding:"10px 16px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#aaa", cursor:"pointer", fontSize:12 }}>

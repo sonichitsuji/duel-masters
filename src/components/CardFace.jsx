@@ -69,8 +69,8 @@ export function CardBack({small,tiny,onClick,label}){
   return(
     <div onClick={onClick} style={{width:w,height:h,borderRadius:7,border:"2px solid #2a2a4a",flexShrink:0,background:"linear-gradient(135deg,#080814,#111830,#080814)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",userSelect:"none",gap:3,position:"relative",overflow:"hidden",boxShadow:"inset 0 0 12px rgba(100,100,255,0.08)"}}>
       <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.015) 8px,rgba(255,255,255,0.015) 9px)"}}/>
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,fontSize:tiny?7:small?9:11,color:"#2a2a5a",letterSpacing:2,textTransform:"uppercase",zIndex:1}}>DM</div>
-      {label&&<span style={{fontSize:8,color:"#3a3a6a",zIndex:1}}>{label}</span>}
+      <div style={{fontFamily:"'Cinzel',serif",fontWeight:900,fontSize:tiny?7:small?9:11,color:"#4a4a8a",letterSpacing:2,textTransform:"uppercase",zIndex:1}}>DM</div>
+      {label&&<span style={{fontSize:8,color:"#ffe066",zIndex:1}}>{label}</span>}
     </div>
   );
 }

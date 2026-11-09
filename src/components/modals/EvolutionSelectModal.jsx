@@ -53,7 +53,7 @@ export function EvolutionSelectModal({ candidates, card, spec, ownerState, onCon
             {exact ? `${need}体` : `${need}体以上`}選んでください
             {isNeo && <span style={{ color:"#7fe" }}>（重ねずに出すこともできます）</span>}
           </div>
-          <div style={{ fontSize:10, color:"#666", marginTop:2 }}>
+          <div style={{ fontSize:10, color:"#999", marginTop:2 }}>
             条件: {describeFilter(spec?.filter)}
             {need > 1 && <span style={{ color:"#ffcc66" }}>／選んだ順に下から重なります</span>}
             {spec?.zone === "mana" && <span style={{ color:"#4a8" }}>／タップ済みでも選べます</span>}
@@ -90,7 +90,7 @@ export function EvolutionSelectModal({ candidates, card, spec, ownerState, onCon
 
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={() => canConfirm && onConfirm(picked)} disabled={!canConfirm}
-            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#333"}`, color:canConfirm?c.textColor:"#444", cursor:canConfirm?"pointer":"not-allowed" }}>
+            style={{ flex:1, padding:"10px", borderRadius:6, fontWeight:700, fontSize:12, background:canConfirm?`linear-gradient(135deg,${c.color}55,${c.color}22)`:"#111", border:`1px solid ${canConfirm?c.color:"#555"}`, color:canConfirm?c.textColor:"#aaa", cursor:canConfirm?"pointer":"not-allowed" }}>
             ✓ 決定 ({picked.length}/{exact ? need : `${need}+`})
           </button>
           {isNeo && (

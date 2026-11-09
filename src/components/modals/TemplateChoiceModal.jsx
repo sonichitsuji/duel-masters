@@ -25,7 +25,7 @@ export function TemplateChoiceModal({ modal, onChoose, onAbandon }) {
             </button>
           ))}
         </div>
-        <button onClick={onAbandon} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #333", color:"#888", cursor:"pointer", fontSize:12 }}>
+        <button onClick={onAbandon} style={{ width:"100%", padding:"9px", borderRadius:6, background:"#111", border:"1px solid #555", color:"#888", cursor:"pointer", fontSize:12 }}>
           {repeated ? "残りを放棄（例外処理）" : "選ばない（例外処理）"}
         </button>
       </div>
