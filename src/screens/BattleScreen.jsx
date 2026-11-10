@@ -624,7 +624,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       if(!face) continue;
       // 呪文を唱えられない状態なら、呪文の S・トリガーは使えない（ラフルル・ラブ等）。
       // sTriggerSide が呪文面を返した場合は side:"spell" が付いている（クリーチャーのSTは対象外）
-      const deny=spellDenyReason(face,st,stateRef.current[oPid]);
+      const deny=spellDenyReason(face,st,stateRef.current[oPid])
+        // クリーチャーの S・トリガーは「出す」ので、出せない状態なら使えない。
+        // 相手のターン中でも、縛られている側の「このターン出した数」で数える
+        ||(isCreatureSide(face)?creaturePutDeny(stateRef.current,ownerPid,"hand",c):null);
       if(deny){addLog(`ST 「${face.name}」は${deny}`);continue;}
       // 手札に残っていないカードは実行できない（別の効果で動いた場合）
       if(!st.hand.some(h=>h.uid===c.uid)) continue;
@@ -909,6 +912,18 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   // 「何を実行するか」は face、「どのカードを手札から動かすか」は card で見る。
   const playFromHandDeclared=(pid,play,srcEvent,paidManaUids)=>{
     const {card,kind}=play;
+    // 宣言した時点では使えても、解決までの間に使えなくなっていることがある。
+    // シールドを2枚ブレイクして2枚ともクリーチャーの S・トリガーを宣言した場合、
+    // 1枚目が出た時点で「各ターン1体」の枠を使い切っているので2枚目は出せない。
+    // 宣言はまとめて、解決は1枚ずつなので、ここでもう一度見る
+    {
+      const face0=play.face||card;
+      const from=play.fromZone||"hand";
+      const stop=isCreatureSide(face0)
+        ? creaturePutDeny(stateRef.current,pid,from,card)
+        : spellDenyReason(face0,stateRef.current[pid],stateRef.current[pid==="p1"?"p2":"p1"]);
+      if(stop){ addLog(`[${handPlayLabel(kind)}] ${pid}: ${stop}（中止）`); return; }
+    }
     // 革命チェンジは「出す」のではなく攻撃クリーチャーとの入れ替えなので、専用の処理へ回す。
     // 攻撃先（intent）は攻撃宣言の時に預けてあるものを使う
     if(kind==="revolutionChange"||kind==="invasion"||kind==="jCrime"){

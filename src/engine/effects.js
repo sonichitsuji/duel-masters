@@ -529,6 +529,20 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     : targetPids(tgt, ownerPid, ctx);
   // 選ばれたカードを対象プレイヤーごとにまとめる。
   // all:true なら選択の代わりに filter 一致すべてを対象にする（「すべて〜する」）。
+  // 「クリーチャーを出せない／各ターン◯体まで」を、出す直前にもう一度見る。
+  // 候補を外す側（getEffectCandidates）だけでは、takeAll や「2体出す」のように
+  // 選択を伴わない経路が素通りするため。1回の効果で複数体出す時は、残り枠のぶんだけに絞る
+  const limitPut = (pidx, cards, from) => {
+    const [own, oth] = pidx === "p1" ? [p1, p2] : [p2, p1];
+    let put = 0;
+    return cards.filter(c => {
+      if (!isCreatureSide(c)) return true;
+      const st = put ? { ...own, creaturesPutThisTurn: (own.creaturesPutThisTurn || 0) + put } : own;
+      if (creaturePutDenyReason(st, oth, from, c)) return false;
+      put++;
+      return true;
+    });
+  };
   const pickSelected = (zone) => {
     const out = [];
     for (const pidx of pids) {
@@ -736,9 +750,11 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const matched = pool.filter(c => matchFilter(c, effect.filter, ctx));
       // revealedToDeckBottom は「残りをすべて」戻すのが既定。
       // order:"choose"（好きな順序で置く）なら、選んだ順がそのまま並び順になる。
-      const take = (type === "revealedToDeckBottom")
+      const chosen = (type === "revealedToDeckBottom")
         ? (effect.order === "choose" ? selectedUids.map(uid => pool.find(c => c.uid === uid)).filter(Boolean) : pool)
         : (effect.takeAll ? matched : matched.filter(c => selectedUids.includes(c.uid)));
+      // takeAll は選択を伴わないので、出せない状態はここで間引く（出所は山札）
+      const take = type === "revealedToBz" ? limitPut(ownerPid, chosen, "deck") : chosen;
       if (take.length > 0) {
         setSelf(s => {
           const b = { ...s };
@@ -769,7 +785,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     // ---------- 手札から ----------
     case "handToBz": {
-      for (const { pidx, cards } of pickSelected("hand")) {
+      for (const { pidx, cards: picked } of pickSelected("hand")) {
+        const cards = limitPut(pidx, picked, "hand");
+        if (!cards.length) continue;
         const uids = cards.map(c => c.uid);
         const kw = effect.tempKeyword;
         setOf(pidx)(s => { const r = withNeoBases({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)) }, cards);
@@ -834,9 +852,18 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const fromZone = effect.zone || "hand";
       const key = ZONE_STATE_KEY[fromZone] || "hand";
       for (const { pidx, cards } of pickSelected(fromZone)) {
+        let putCount = 0;
         for (const card of cards) {
           const uid = card.uid;
           const take = s => ({ ...s, [key]: s[key].filter(c => c.uid !== uid) });
+          // 「クリーチャーを出せない／各ターン◯体まで」。複数体まとめて召喚する時も
+          // 残り枠のぶんで止まるよう、ここまでに出した数を足して見る
+          if (playSide(effect, card) !== "spell" && card.type !== "castle") {
+            const [own, oth] = pidx === "p1" ? [p1, p2] : [p2, p1];
+            const st = putCount ? { ...own, creaturesPutThisTurn: (own.creaturesPutThisTurn || 0) + putCount } : own;
+            if (isCreatureSide(card) && creaturePutDenyReason(st, oth, fromZone, card)) continue;
+            putCount++;
+          }
           const zoneLabel = fromZone === "hand" ? "" : `${ZONE_LABELS[fromZone] || fromZone}から`;
           const freeLabel = effect.free ? "コストを支払わずに" : "";
           if (playSide(effect, card) === "spell") {
@@ -872,7 +899,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     // ---------- マナから ----------
     case "manaToBz": {
-      for (const { pidx, cards } of pickSelected("mana")) {
+      for (const { pidx, cards: picked } of pickSelected("mana")) {
+        const cards = limitPut(pidx, picked, "mana");
+        if (!cards.length) continue;
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => { const r = withNeoBases({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)) }, cards);
           return { ...r.state,
@@ -1137,12 +1166,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const picked = zones.map(z => ({ z, key: ZONE_STATE_KEY[z] || z }))
         .map(({ z, key }) => ({ z, key, cards: (st[key] || []).filter(c => selectedUids.includes(c.uid)) }))
         .filter(x => x.cards.length);
-      const cards = picked.flatMap(x => x.cards);
+      // 出所は複数ありうる（zonesToBz）。出所を見る常在型は hand 側に倒してある（→ PUT_BZ_FROM_ZONE）
+      const cards = limitPut(owner, picked.flatMap(x => x.cards), zones.length === 1 ? zones[0] : "hand");
       if (!cards.length) break;
+      const keep = new Set(cards.map(c => c.uid));
       setOf(owner)(s => {
         let b = { ...s };
         for (const { key, cards: cs } of picked) {
-          const uids = cs.map(c => c.uid);
+          const uids = cs.filter(c => keep.has(c.uid)).map(c => c.uid);
           b[key] = (b[key] || []).filter(c => !uids.includes(c.uid));
         }
         const r = withNeoBases(b, cards);

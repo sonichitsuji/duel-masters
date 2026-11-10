@@ -1061,6 +1061,9 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
       if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid, kind)) continue;
       // 呪文を唱えられない状態なら呪文は提示しない（ラフルル・ラブ等）
       if(spellDenyReason(card, state, otherState)) continue;
+      // クリーチャーを出せない状態なら、クリーチャーも提示しない。
+      // 革命チェンジ／侵略／Jクライムも「このクリーチャーを出す」ので同じく止まる
+      if(isCreatureSide(card) && creaturePutDenyReason(state, otherState, fromZone, card)) continue;
       if(kind === "oniEnd"){
         // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
         if(!oniEndActive(state, otherState)) continue;
