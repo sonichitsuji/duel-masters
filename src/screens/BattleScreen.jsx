@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, returnPsychicsHome, invasionCanStack, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, returnPsychicsHome, invasionCanStack, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, creaturePutDenyReason, creaturePutDenyLabel, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -36,6 +36,9 @@ const DEFAULT_TRIGGER_SCOPE = {
   castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self",
   startOfTurn:"self", endOfTurn:"self",
 };
+// このターン何回やったかを数えるイベント → プレイヤー状態のキー。
+// staticDeny の maxPerTurn（「相手は各ターン1回しか呪文を唱えられない」等）が読む
+const TURN_COUNT_KEY = { castSpell:"spellsCastThisTurn", creaturePutBz:"creaturesPutThisTurn" };
 // 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
 // （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
 const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd", "battleWin", "battle", "break"]);
@@ -89,25 +92,13 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
   return true;
 }
 
-// #3 常在型能力の事前適用（枠組み）。例: 相手の「クリーチャーを出せない」常在型を、
-// クリーチャーを出す処理に先んじてチェックして中止する。現状は該当カードが無いため常に false。
-// データ形: カードに staticDeny:{ type:"cantPutCreature", filter? } を持たせ、その支配者の「相手」に効く。
-// 判定対象は「出るクリーチャー自身の出所(fromZone)」だけ。進化元のゾーンは一切見ない
-// （進化元はバトルゾーンに出たことにならないため）。
-function checkStaticDeny(state, targetPid, type, fromZone="hand"){
-  for(const pid of ["p1","p2"]){
-    if(pid===targetPid) continue; // 自分の常在型は自分のプレイを止めない（「相手は〜できない」想定）
-    const st=state?.[pid]; if(!st) continue;
-    const sources=[...(st.battle||[]),...((st.shields||[]).filter(s=>s.faceUp))];
-    if(sources.some(c=>{
-      const d=c.staticDeny;
-      if(d?.type!==type) return false;
-      // 「手札以外からバトルゾーンに出せない」は手札から出す場合には効かない
-      if(type==="cantPutCreatureFromNonHand") return fromZone!=="hand";
-      return true;
-    })) return true;
-  }
-  return false;
+// 常在型能力（staticDeny）で「クリーチャーを出せない」かを、出す処理に先んじて見る。
+// 中身の判定は gameLogic の creaturePutDenyReason（呪文側の spellDenyReason と対になる）。
+// 自分の常在型は自分のプレイを止めない（「相手は〜できない」想定）ので、相手側の盤面だけを見る。
+function creaturePutDeny(state, targetPid, fromZone, card){
+  const other=state?.[targetPid==="p1"?"p2":"p1"];
+  const hit=creaturePutDenyReason(state?.[targetPid], other, fromZone, card);
+  return hit ? creaturePutDenyLabel(hit) : null;
 }
 
 // ===========================
@@ -758,6 +749,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   // ev: { sourcePid, subjectCard?, method?("summon"|"put"), firstThisTurn? }
   const fireTrigger=(event,evIn={})=>{
     const cur=stateRef.current;
+    // 「各ターン◯回しか〜できない」（staticDeny の maxPerTurn）が見る回数をここで数える。
+    // 唱えた／出たの入口は複数あるが、どれも最後はこの誘発を通るので、数えるのはここ1か所でよい。
+    // ターンごとに数え直す（advanceToNextTurn で両者ぶん0に戻す）
+    if(TURN_COUNT_KEY[event]&&evIn.sourcePid){
+      const key=TURN_COUNT_KEY[event];
+      (evIn.sourcePid==="p1"?setP1:setP2)(s=>({...s,[key]:(s[key]||0)+1}));
+    }
     // turnOf 判定用に「今どちらのターンか」を載せる。
     // 複数枚のイベント（subjectCards）でも subjectCard を先頭に揃えておき、
     // 「このカード自身に起きた時」の経路が単数・複数のどちらでも同じに書けるようにする
@@ -1251,10 +1249,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
       // #3 常在型: 相手の「クリーチャーを出せない」常在型を解決に先んじて適用（枠組み・現状該当カード無し）
       const isCre=isCreatureSide(card);
-      if(isCre&&(checkStaticDeny(stateRef.current,active,"cantPutCreature",fromZone)
-              ||checkStaticDeny(stateRef.current,active,"cantPutCreatureFromNonHand",fromZone))){
-        addLog(`${active}: 相手の常在型能力によりクリーチャーを出せない`);setMessage("相手の常在型能力でクリーチャーを出せません");return true;
-      }
+      const putDeny=isCre?creaturePutDeny(stateRef.current,active,fromZone,card):null;
+      if(putDeny){ addLog(`${active}: ${putDeny}`);setMessage(putDeny);return true; }
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
       // クリーチャー側でプレイされたツインパクトもクリーチャーとして扱う（召喚酔い・出た時の誘発）
       const isCreature=isCreatureSide(card);
@@ -1896,9 +1892,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       addLog(`${active}: 能力を無視する効果が切れた`);
     }
     setAttackingUid(null);setUsedFinalRevThisTurn(false);setUsedThisTurn(new Set());
-    // 攻撃／ブロックの行動回数は各ターンで数え直す。相手のターン中もブロックで増えるので両者ぶん戻す
-    setP1(s=>s.attackBlockThisTurn?{ ...s, attackBlockThisTurn: 0 }:s);
-    setP2(s=>s.attackBlockThisTurn?{ ...s, attackBlockThisTurn: 0 }:s);
+    // 行動回数は各ターンで数え直す。相手のターン中もブロックやS・トリガーで増えるので両者ぶん戻す
+    //（攻撃／ブロック＝limitAttackBlock、唱えた／出た＝staticDeny の maxPerTurn が読む）
+    const clearCounts=s=>(s.attackBlockThisTurn||s.spellsCastThisTurn||s.creaturesPutThisTurn)
+      ? { ...s, attackBlockThisTurn:0, spellsCastThisTurn:0, creaturesPutThisTurn:0 } : s;
+    setP1(clearCounts);setP2(clearCounts);
     // 「そのターン限り」の召喚許可と使用回数をリセット
     setSummonUsed({});setP1(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);setP2(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;

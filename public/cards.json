@@ -5973,5 +5973,46 @@
       ]
     },
     "id": 150
+  },
+  {
+    "name": "一音の妖精",
+    "race": "ジャイアント/スノーフェアリー",
+    "cost": 2,
+    "power": 2500,
+    "type": "creature",
+    "civ": "light",
+    "keywords": [
+      "gStrike"
+    ],
+    "effect": "G・ストライク\nNEO進化：光、水、または自然のクリーチャー1体の上に置いてもよい。（カードが下にあれば、これをNEO進化クリーチャーとして扱う）\n相手は各ターン1回しか呪文を唱えられない。\nこれが進化クリーチャーなら、相手は各ターン1体しかクリーチャーを出せない。",
+    "evolution": {
+      "zone": "bz",
+      "count": 1,
+      "neo": true,
+      "filter": {
+        "civ": [
+          "light",
+          "water",
+          "nature"
+        ],
+        "creatureOnly": true
+      }
+    },
+    "staticDeny": [
+      {
+        "type": "cantCastSpell",
+        "maxPerTurn": 1,
+        "label": "「一音の妖精」により各ターン1回しか呪文を唱えられない"
+      },
+      {
+        "type": "cantPutCreature",
+        "maxPerTurn": 1,
+        "condition": {
+          "type": "isEvolution"
+        },
+        "label": "「一音の妖精」により各ターン1体しかクリーチャーを出せない"
+      }
+    ],
+    "id": 151
   }
 ]

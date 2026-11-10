@@ -667,10 +667,45 @@ export function addRestriction(state, rule) {
 const restrictionsOf = (ownerState, kind) => (ownerState?.restrictions || []).filter(r => r.kind === kind);
 const MODE_LABEL = { attack: "攻撃", block: "ブロック", both: "攻撃もブロックも" };
 
+// ===========================
+// 常在型のプレイ制限（staticDeny）
+// ===========================
+// カード直下の staticDeny は、そのカードの持ち主から見た**相手**のプレイを止める。
+//   staticDeny: { type, filter?, label?, maxPerTurn?, condition? }   （複数なら配列）
+//     type        … cantCastSpell / cantPutCreature / cantPutCreatureFromNonHand
+//     maxPerTurn  … 書かなければ全面禁止。1 なら「各ターン1回しか〜できない」
+//     condition   … そのカード自身を見る条件（checkGrantCondition。例「これが進化クリーチャーなら」）
+// 超魂Xで与えられたぶんも拾うので、読み出しは必ず effectiveCard を通す。
+const staticDenyRules = card => {
+  const d = effectiveCard(card)?.staticDeny;
+  return !d ? [] : Array.isArray(d) ? d : [d];
+};
+// その種類の制限にかかっているか。かかっていれば {card, rule} を返す。
+//   state  … 制限をかける側（staticDeny を持つカードの持ち主）の状態
+//   done   … 縛られる側がこのターンすでに行った回数（maxPerTurn の判定に使う）
+//   accept … 回数以外の個別条件（出所を見る cantPutCreatureFromNonHand 用）
+function staticDenyHit(state, type, done, accept, matchCard) {
+  const sources = [...(state?.battle || []), ...((state?.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    for (const d of staticDenyRules(c)) {
+      if (d.type !== type) continue;
+      if (accept && !accept(d)) continue;
+      if (d.condition && !checkGrantCondition(d.condition, state, c)) continue;
+      if (matchCard && d.filter && !matchCard(d.filter)) continue;
+      // maxPerTurn があれば「その回数までは通す」。無ければ全面禁止
+      if (d.maxPerTurn != null && done < d.maxPerTurn) continue;
+      return { card: c, rule: d };
+    }
+  }
+  return null;
+}
+const denyLabel = (hit, fallback) => hit.rule.label
+  || (hit.rule.maxPerTurn != null ? `「${hit.card.name}」により各ターン${hit.rule.maxPerTurn}回しか${fallback}` : `「${hit.card.name}」により${fallback}`);
+
 // 呪文を唱えられない（ラフルル・ラブ等）。
 // 2通りある。どちらも「唱えようとする側」から見て理由を1つ返す（唱えられるなら null）。
 //   - 期限付き: restrictions の kind:"spell"（効果 denySpell が積む）
-//   - 常在型  : 相手のバトルゾーン／表向きシールドの staticDeny:{ type:"cantCastSpell", filter? }
+//   - 常在型  : 相手のバトルゾーン／表向きシールドの staticDeny:{ type:"cantCastSpell", … }
 // ツインパクトは面が確定して初めて呪文になるので、判定は side:"spell" か type:"spell" の時だけ。
 export function spellDenyReason(card, ownerState, otherState) {
   if (!card) return null;
@@ -679,15 +714,22 @@ export function spellDenyReason(card, ownerState, otherState) {
     if (d.filter && !matchCardFilter(card, d.filter)) continue;
     return d.label || "相手の効果により呪文を唱えられない";
   }
-  const sources = [...(otherState?.battle || []), ...((otherState?.shields || []).filter(s => s.faceUp))];
-  for (const c of sources) {
-    const d = effectiveCard(c).staticDeny;
-    if (d?.type !== "cantCastSpell") continue;
-    if (d.filter && !matchCardFilter(card, d.filter)) continue;
-    return d.label || `「${c.name}」により呪文を唱えられない`;
-  }
-  return null;
+  const hit = staticDenyHit(otherState, "cantCastSpell", ownerState?.spellsCastThisTurn || 0,
+    null, f => matchCardFilter(card, f));
+  return hit ? denyLabel(hit, "呪文を唱えられない") : null;
 }
+
+// クリーチャーをバトルゾーンに出せない理由（出せるなら null）。
+// 判定対象は「出るクリーチャー自身の出所(fromZone)」だけ。進化元のゾーンは一切見ない
+// （進化元はバトルゾーンに出たことにならないため）。
+export function creaturePutDenyReason(ownerState, otherState, fromZone = "hand", card = null) {
+  const done = ownerState?.creaturesPutThisTurn || 0;
+  const m = card ? f => matchCardFilter(card, f) : null;
+  return (staticDenyHit(otherState, "cantPutCreature", done, null, m)
+    // 「手札以外からバトルゾーンに出せない」は手札から出す場合には効かない
+    || staticDenyHit(otherState, "cantPutCreatureFromNonHand", done, () => fromZone !== "hand", m));
+}
+export const creaturePutDenyLabel = hit => denyLabel(hit, "クリーチャーを出せない");
 // 攻撃／ブロックができない理由（できるなら null）。mode: "attack" / "block"。
 // 「攻撃もブロックもできない」と「各ターンに一度しか〜できない」は、呼ぶ側から見れば
 // 「今このクリーチャーで攻撃（ブロック）できるか」という同じ問いなので1本にまとめてある。
@@ -1113,6 +1155,8 @@ export function checkGrantCondition(cond, ownerState, card, otherState){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
   if(cond.type === "stackCount") return stackCount(card) >= cond.count;
+  // 「これが進化クリーチャーなら」。NEO進化は下にカードがある間だけ進化クリーチャー
+  if(cond.type === "isEvolution") return isEvolutionNow(card) === (cond.value !== false);
   if(cond.type === "shieldCount") return shieldCountMatches(cond, ownerState, otherState);
   if(cond.type === "cardCount") return cardCountMatches(cond, ownerState, otherState);
   if(cond.type === "shieldsBroken") return shieldsBrokenMatches(cond, ownerState, otherState);

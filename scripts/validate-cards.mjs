@@ -93,6 +93,8 @@ const CONDITION_TYPES = new Set(["civicCount","stackCount"]);
 const RANGE_CONDITION_TYPES = new Set(["shieldCount","shieldsBroken"]);
 // 引数を取らない condition。
 const COUNTLESS_CONDITION_TYPES = new Set(["oniEnd"]);
+// 引数を取らず、そのカード自身だけを見る condition（相手の盤面を見ないのでどこにでも書ける）
+const SELF_ONLY_CONDITION_TYPES = new Set(["isEvolution"]);
 // 相手の盤面を見る condition は triggers / activated でしか書けない
 // （継続能力の評価経路は otherState を受け取らないため）。
 const CONDITION_WHO = ["self","opponent","any"];
@@ -360,6 +362,14 @@ function checkCondition(cond, where, allowBothSides = false) {
   if (!cond || typeof cond !== "object") return;
   if (cond.flag) return; // 任意のプレイヤー状態フラグ
   if (!cond.type) { errors.push(`${where}: condition に type も flag もありません`); return; }
+  // そのカード自身を見るだけの condition は、継続能力（staticDeny など）にも書ける
+  if (SELF_ONLY_CONDITION_TYPES.has(cond.type)) {
+    for (const k of Object.keys(cond)) {
+      if (!["type", "value"].includes(k)) errors.push(`${where}: condition "${cond.type}" の未知のキー "${k}"`);
+    }
+    if (cond.value != null && typeof cond.value !== "boolean") errors.push(`${where}: condition の value は真偽値`);
+    return;
+  }
   const needsOpponent = cond.who === "opponent" || cond.who === "any" || COUNTLESS_CONDITION_TYPES.has(cond.type);
   if (needsOpponent && !allowBothSides) {
     errors.push(`${where}: 相手の盤面を見る condition は triggers / activated でのみ使えます`);
@@ -586,16 +596,25 @@ function checkAbilityFields(obj, where) {
     checkFilterKeys(r.filter, `${where}.spellAfterCast`);
   }
   // staticDeny: 相手のプレイを止める常在型能力
+  // 1つならオブジェクト、複数の常在型を持つなら配列で書ける
   if (obj.staticDeny != null) {
-    const d = obj.staticDeny;
-    if (typeof d !== "object" || Array.isArray(d)) errors.push(`${where}.staticDeny: オブジェクトで書いてください`);
-    else {
+    const list = Array.isArray(obj.staticDeny) ? obj.staticDeny : [obj.staticDeny];
+    list.forEach((d, i) => {
+      const w = Array.isArray(obj.staticDeny) ? `${where}.staticDeny[${i}]` : `${where}.staticDeny`;
+      if (!d || typeof d !== "object" || Array.isArray(d)) { errors.push(`${w}: オブジェクトで書いてください`); return; }
       for (const k of Object.keys(d)) {
-        if (!["type", "filter", "label"].includes(k)) errors.push(`${where}.staticDeny: 未知のキー "${k}"（綴り違い？）`);
+        if (!["type", "filter", "label", "maxPerTurn", "condition"].includes(k)) {
+          errors.push(`${w}: 未知のキー "${k}"（綴り違い？）`);
+        }
       }
-      if (!STATIC_DENY_TYPES.has(d.type)) errors.push(`${where}.staticDeny: 未知の type "${d.type}"（${[...STATIC_DENY_TYPES].join("/")}）`);
-      checkFilterKeys(d.filter, `${where}.staticDeny`);
-    }
+      if (!STATIC_DENY_TYPES.has(d.type)) errors.push(`${w}: 未知の type "${d.type}"（${[...STATIC_DENY_TYPES].join("/")}）`);
+      // maxPerTurn を書かなければ全面禁止、書けば「各ターンその回数まで」
+      if (d.maxPerTurn != null && (typeof d.maxPerTurn !== "number" || d.maxPerTurn < 1)) {
+        errors.push(`${w}.maxPerTurn: 1以上の数値で書いてください`);
+      }
+      checkFilterKeys(d.filter, w);
+      checkCondition(d.condition, w);
+    });
   }
   // ddd: D・D・D（手札から、指定のコストを支払ってプレイする）
   if (obj.ddd != null) {

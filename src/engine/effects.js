@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, creaturePutDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -149,6 +149,12 @@ const PSEUDO_ZONES = new Set(["revealed", "lastMoved", "eventCards", "wasUnder"]
 const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", bzCards: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper", eventCards: "grave", wasUnder: "grave" };
 // バトルゾーンを見るゾーン。"bz" はエレメント単位、"bzCards" はカード単位
 const BZ_ZONES = new Set(["bz", "battle", "bzCards"]);
+
+// クリーチャーをバトルゾーンに出す効果と、その「出所」。
+// staticDeny の cantPutCreatureFromNonHand が出所を見るので型ごとに持たせる。
+// zonesToBz は手札を含むことがあり1つに決められないので、出所を見ない側（hand）に倒す。
+const PUT_BZ_FROM_ZONE = { handToBz: "hand", graveToBz: "grave", manaToBz: "mana",
+  revealedToBz: "deck", zonesToBz: "hand", playFromHand: "hand" };
 
 function zoneCards(state, zone, ctx) {
   switch (zone) {
@@ -438,6 +444,18 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   // 呪文を唱えられない状態なら、唱える候補から呪文を外す（見せてから弾かない）
   if (type === "playFromHand") {
     cards = cards.filter(c => !spellDenyReason(faceFor(c), selfState, otherState));
+  }
+  // クリーチャーを出せない状態（staticDeny の cantPutCreature／各ターンの回数制限）なら、
+  // 出す候補からクリーチャーを外す。呪文と同じく「見せてから弾かない」
+  if (PUT_BZ_FROM_ZONE[type]) {
+    const from = type === "playFromHand" ? (effect.zone || "hand") : PUT_BZ_FROM_ZONE[type];
+    cards = cards.filter(c => {
+      if (!isCreatureSide(faceFor(c))) return true;
+      // 出す先は「そのカードの持ち主」。owners に無ければこの効果の持ち主のもの
+      const op = owners[c.uid] || (selfState === p1 ? "p1" : "p2");
+      const [own, oth] = op === "p1" ? [p1, p2] : [p2, p1];
+      return !creaturePutDenyReason(own, oth, from, c);
+    });
   }
   // 「好きな順序で置く」は選んだ順がそのまま並び順になるので、all 指定でも必ず選択させる
   if (effect.order === "choose") {

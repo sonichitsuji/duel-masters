@@ -1569,6 +1569,32 @@ DMでは、**同じイベントを置換する効果が2つ以上あっても、
 `staticDeny` は**相手**に効きます（バトルゾーン＋表向きシールドで有効）。
 `type` は `cantPutCreature` / `cantPutCreatureFromNonHand` / `cantCastSpell`。
 
+| キー | 説明 |
+|---|---|
+| `type` | 上の3つ |
+| `filter` | 対象の条件（省略すると全部） |
+| `maxPerTurn` | **書かなければ全面禁止。** `1` なら「各ターン1回しか〜できない」 |
+| `condition` | そのカード自身を見る条件（`checkGrantCondition`）。満たさない間は効かない |
+| `label` | 弾いた時にUIに出す理由（省略時は既定文言にカード名が入る） |
+
+**1枚で複数の常在型を持つなら配列**で書きます（一音の妖精）。
+
+```jsonc
+"staticDeny": [
+  { "type": "cantCastSpell", "maxPerTurn": 1 },
+  // 「これが進化クリーチャーなら、相手は各ターン1体しかクリーチャーを出せない」
+  { "type": "cantPutCreature", "maxPerTurn": 1, "condition": { "type": "isEvolution" } }
+]
+```
+
+> **`condition: {"type":"isEvolution"}`** は「これが進化クリーチャーなら」。
+> NEO進化（§7.26）は**下にカードがある間だけ**進化クリーチャーなので、
+> 重ねずに出せばこの制限はかかりません。`{"value":false}` を書けば「進化でないなら」。
+
+> **`maxPerTurn` の回数は、唱えた／出たの誘発（`castSpell` / `creaturePutBz`）で数えます。**
+> 入口がいくつあっても最後はそこを通るので、数える場所は1か所です。
+> 回数は**各ターン、両プレイヤーぶん**数え直します（相手のターン中もS・トリガーなどで増えるため）。
+
 **効く場所は5つ**あり、どれも「見せてから弾く」のではなく**先に外す**ようにしてあります。
 
 | 経路 | 挙動 |
