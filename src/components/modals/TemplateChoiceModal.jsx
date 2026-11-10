@@ -1,12 +1,13 @@
 import { CIV } from "../../constants";
 import { getCardCivs } from "../../gameLogic";
+import { CardFace } from "../CardFace";
 
 // ===========================
 // TEMPLATE CHOICE MODAL (chooseTimes)
 // ===========================
 export function TemplateChoiceModal({ modal, onChoose, onAbandon }) {
   if (!modal) return null;
-  const { templates, srcCard, count } = modal;
+  const { templates, srcCard, count, revealed } = modal;
   const civs = getCardCivs(srcCard || {});
   const c = CIV[civs[0]] || CIV.fire;
   // count があるのは chooseTimes（○回選ぶ）。無ければ chooseMode（いずれか1つを選ぶ）
@@ -18,6 +19,14 @@ export function TemplateChoiceModal({ modal, onChoose, onAbandon }) {
         <div style={{ fontSize:11, color:"#aaa", marginBottom:12 }}>
           {repeated ? `残り${count}回選択（同じものを選んでもよい）` : "次のうちいずれか1つを選ぶ"}
         </div>
+        {revealed?.length ? (
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:10, color:"#999", marginBottom:5 }}>公開されているカード</div>
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+              {revealed.map(rc => <CardFace key={rc.uid} card={rc} small/>)}
+            </div>
+          </div>
+        ) : null}
         <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
           {templates.map((tpl, i) => (
             <button key={i} onClick={() => onChoose(i)} style={{ padding:"12px 14px", borderRadius:8, background:`${c.color}14`, border:`1px solid ${c.color}55`, cursor:"pointer", textAlign:"left", fontSize:12, color:"#fff" }}>

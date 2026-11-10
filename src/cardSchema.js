@@ -53,7 +53,7 @@ export const ENUMS = {
   summonFromZone: { grave: "墓地", mana: "マナゾーン" },
   side: { creature: "クリーチャー面", spell: "呪文面" },
   order: { choose: "好きな順序で選ぶ" },
-  expires: { endOfTurn: "ターンの終わりまで" },
+  expires: { endOfTurn: "ターンの終わりまで", ownTurnStart: "次の自分のターンのはじめまで" },
   denySpellUntil: { endOfNextTurn: "次のターンの終わりまで" },
   denyMode: { both: "攻撃もブロックも", attack: "攻撃だけ", block: "ブロックだけ" },
   owner: { destroyed: "破壊されたクリーチャーの持ち主" },
@@ -87,6 +87,7 @@ export const FILTER_SCHEMA = {
   multiColor: { kind: "bool", label: "多色" },
   tapped: { kind: "bool", label: "タップされている" },
   evolution: { kind: "bool", label: "いま進化クリーチャー" },
+  neo: { kind: "bool", label: "NEO進化能力を持つ（NEOクリーチャー）" },
   notNameSelf: { kind: "bool", label: "このカードと同じ名前ではない" },
   side: { kind: "enum:side", label: "ツインパクトのどちらの面か" },
   hasCip: { kind: "bool", label: "「出た時」能力を持つ" },
@@ -211,7 +212,7 @@ export const EFFECT_SCHEMA = {
     keys: { target: "enum:target", count: "num", amount: "num", perUnit: "num",
             subject: "bool", filter: "filter", expires: "enum:expires" } },
   grant: { group: "bz", label: "キーワード能力を与える",
-    keys: { target: "enum:target", count: "num", all: "bool", filter: "filter",
+    keys: { target: "enum:target", self: "bool", count: "num", all: "bool", filter: "filter",
             keywords: "keywords", untap: "bool", untapAfterAttack: "bool",
             destroyAtEndOfTurn: "bool", expires: "enum:expires" } },
   battle: { group: "bz", label: "バトルする",
@@ -258,6 +259,7 @@ export const EFFECT_SCHEMA = {
   awaken: { group: "misc", label: "覚醒させる（裏返す）", keys: {} },
   unawaken: { group: "misc", label: "解除する（裏返して戻す）", keys: {} },
   scheduleReviveSubjectEndOfTurn: { group: "misc", label: "ターンの終わりに戻すことを予約する", keys: {} },
+  usePlayTrigger: { group: "misc", label: "このクリーチャーの「出た時」能力を1つ使う", keys: {} },
 };
 
 // ---------------------------------------------------------------------------

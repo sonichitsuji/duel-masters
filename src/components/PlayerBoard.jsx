@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { CIV } from "../constants";
-import { getCardCivs, canPayCost, computeGrantedKeywords, collectSummonPermissions, summonPermissionFor, recycleSpecFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable, spellDenyReason, displayPower } from "../gameLogic";
+import { getCardCivs, canPayCost, alternateCostAvailable, computeGrantedKeywords, collectSummonPermissions, summonPermissionFor, recycleSpecFor, evolutionSpec, evolutionCandidates, maxEvolutionBases, collectFreeCastPermissions, freeCastPermissionFor, isCreatureSide, cardDisplayName, isUnselectableByOpponent, isUnattackable, spellDenyReason, displayPower } from "../gameLogic";
 import { CardFace, CardBack } from "./CardFace";
 import { ShieldPile } from "./BoardWidgets";
 import { CardEffectText } from "./EffectText";
@@ -27,7 +27,9 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
   const availMana=state.mana.filter(c=>!c.tapped).length;
   useEffect(()=>{setSelHand(null);setSelBattle(null);setManaPayModal(null);},[isActive]);
   const selectedCard=selHand!==null?state.hand[selHand]:null;
-  const altCostAvailable=selectedCard?.alternateCost&&selectedCard.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=selectedCard.alternateCost.condition.amount;
+  // 代替コストが使えるか。condition の判定は gameLogic にまとめてある（共通語彙）
+  const altCost=selectedCard?alternateCostAvailable(selectedCard,state):null;
+  const altCostAvailable=!!altCost;
   // 「進化元1体につきコスト-1」のように、重ねる枚数でコストが変わるカードがある。
   // 進化元を選ぶ前の判定では最大枚数（＝最も軽くなるケース）で見積もり、実際の枚数は支払い画面で確定させる。
   const costOptsFor=(card,bases)=>({ evolutionBaseCount: bases!=null?bases.length:maxEvolutionBases(card,state) });
@@ -116,7 +118,7 @@ export function PlayerBoard({pid,state,setState,otherState,setOtherState,isActiv
       if(!openEvolutionSelect({handIdx:selHand,card}))return;
     }else if(card.cost===0&&(!card.spellSide||card.spellSide.cost===0)){const ok=onPlayCard(selHand,[]);if(ok!==false)setSelHand(null);}
     else if(card.type==="twinpact"){setTwinPactModal({handIdx:selHand,card});}
-    else if(card.alternateCost&&card.alternateCost.condition?.type==="graveCountAtLeast"&&state.grave.length>=card.alternateCost.condition.amount){setAltCostModal({handIdx:selHand,card});}
+    else if(alternateCostAvailable(card,state)){setAltCostModal({handIdx:selHand,card});}
     else{setManaPayModal({handIdx:selHand,card});}
   };
   const handleManaConfirm=uids=>{

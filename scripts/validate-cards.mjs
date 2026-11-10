@@ -18,7 +18,7 @@ const root = path.join(__dirname, "..");
 // --- 実装済み語彙（出典: constants.js / engine/steps.js / engine/effects.js / screens/BattleScreen.jsx） ---
 const TYPES = new Set(["creature","evo_creature","spell","twinpact","tamaseed","castle","field"]);
 const CIVS = new Set(["light","water","darkness","fire","nature","colorless"]);
-const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","invasion","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable"]);
+const KEYWORDS = new Set(["speedAttacker","wBreaker","tBreaker","blocker","cantAttack","sTrigger","drawOnPlay","revolutionChange","invasion","gStrike","charger","zRush","escape","slayer","guardman","unselectable","machFighter","worldBreaker","justDiver","unattackable","cantLeave"]);
 const TRIGGER_ONS = new Set(["cast","creaturePutBz","castSpell","leave","destroyed","battleDestroy","battleWin","battle","break","attack","block","attackEnd","draw","discard","shieldAdded","shieldLeave","startOfTurn","endOfTurn"]);
 const TRIGGER_SCOPES = ["this","self","opponent","both"];
 // 旧トリガー名（廃止済み）
@@ -51,7 +51,7 @@ const EFFECT_TYPES = new Set([
   // 召喚元ゾーンの拡張
   "grantSummonFrom",
   // 覚醒／解除（サイキック・クリーチャーを裏返す）
-  "awaken","unawaken",
+  "awaken","unawaken","usePlayTrigger",
   // 遅延
   "scheduleReviveSubjectEndOfTurn",
 ]);
@@ -70,7 +70,7 @@ const LEGACY_TYPES = new Set(["draw","destroyUnder","handDestroy","sendToMana","
 const ABILITY_KEYS = new Set([
   "keywords","triggers","activated","summonFrom","freeCast","replaceLose","replaceLeave","replaceEnter","replaceShieldAdd","recycle","costReduce","condPower","grantKeywords","grantRace","grantPowerBoost",
   "grantPowerBoostGrave","selfPowerBoostGrave","powerAttacker","poweredBreaker",
-  "hyperKeywords","hyperPower",
+  "hyperKeywords","hyperPower","grantShieldSTrigger",
 ]);
 // 覚醒後の面に書けるキー。カード直下と同じ語彙のうち、面として入れ替わるものだけ
 const AWAKEN_SIDE_KEYS = new Set([...ABILITY_KEYS, "name","cost","power","race","civ","effect"]);
@@ -95,6 +95,8 @@ const RANGE_CONDITION_TYPES = new Set(["shieldCount","shieldsBroken"]);
 const COUNTLESS_CONDITION_TYPES = new Set(["oniEnd"]);
 // 引数を取らず、そのカード自身だけを見る condition（相手の盤面を見ないのでどこにでも書ける）
 const SELF_ONLY_CONDITION_TYPES = new Set(["isEvolution"]);
+// 自分のゾーンだけを見る condition。manaHas は filters（それぞれ1枚以上必要な条件）を取る
+const MANA_HAS_TYPE = "manaHas";
 // 相手の盤面を見る condition は triggers / activated でしか書けない
 // （継続能力の評価経路は otherState を受け取らないため）。
 const CONDITION_WHO = ["self","opponent","any"];
@@ -145,7 +147,7 @@ const EFFECT_KEYS = new Set([
 const FILTER_KEYS = new Set([
   "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
   "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self","psychic","evolution",
-  "cost","maxCost","minCost","maxPower","minPower","maxCostSelf","not","uid",
+  "cost","maxCost","minCost","maxPower","minPower","maxCostSelf","neo","not","uid",
 ]);
 // costOver:「あるゾーンのカードの枚数よりコストが大きい」（キャディ・ビートル）
 function checkCostOver(spec, where) {
@@ -368,6 +370,24 @@ function checkCondition(cond, where, allowBothSides = false) {
       if (!["type", "value"].includes(k)) errors.push(`${where}: condition "${cond.type}" の未知のキー "${k}"`);
     }
     if (cond.value != null && typeof cond.value !== "boolean") errors.push(`${where}: condition の value は真偽値`);
+    return;
+  }
+  // manaHas:「自分のマナゾーンに光・水・自然の各文明があれば」（鬼エンドと同じ読み方）
+  if (cond.type === MANA_HAS_TYPE) {
+    for (const k of Object.keys(cond)) {
+      if (!["type", "filters"].includes(k)) errors.push(`${where}: condition "manaHas" の未知のキー "${k}"`);
+    }
+    if (!Array.isArray(cond.filters) || !cond.filters.length) {
+      errors.push(`${where}: condition "manaHas" に filters（配列）が必要です`);
+    } else cond.filters.forEach((f2, i) => checkFilterKeys(f2, `${where}.condition.filters[${i}]`));
+    return;
+  }
+  // graveCountAtLeast:「自分の墓地にカードがN枚以上あれば」
+  if (cond.type === "graveCountAtLeast") {
+    for (const k of Object.keys(cond)) {
+      if (!["type", "amount"].includes(k)) errors.push(`${where}: condition "graveCountAtLeast" の未知のキー "${k}"`);
+    }
+    if (typeof cond.amount !== "number") errors.push(`${where}: condition "graveCountAtLeast" に amount(数値) が必要です`);
     return;
   }
   const needsOpponent = cond.who === "opponent" || cond.who === "any" || COUNTLESS_CONDITION_TYPES.has(cond.type);
@@ -616,6 +636,32 @@ function checkAbilityFields(obj, where) {
       checkCondition(d.condition, w);
     });
   }
+  // alternateCost: 「〜であれば、このカードを[X]支払って召喚／唱えてもよい」
+  if (obj.alternateCost != null) {
+    const a = obj.alternateCost;
+    if (typeof a !== "object" || Array.isArray(a)) errors.push(`${where}.alternateCost: オブジェクトで書いてください`);
+    else {
+      for (const k of Object.keys(a)) {
+        if (!["cost", "civs", "condition"].includes(k)) errors.push(`${where}.alternateCost: 未知のキー "${k}"（綴り違い？）`);
+      }
+      if (typeof a.cost !== "number" || a.cost < 0) errors.push(`${where}.alternateCost.cost: 0以上の数値で書いてください`);
+      if (!Array.isArray(a.civs) || !a.civs.length) errors.push(`${where}.alternateCost.civs: 文明の配列が必要です（文明を問わないなら ["colorless"]）`);
+      else for (const c of a.civs) if (!CIVS.has(c)) errors.push(`${where}.alternateCost.civs: 未知の文明 "${c}"`);
+      checkCondition(a.condition, `${where}.alternateCost`);
+    }
+  }
+  // grantShieldSTrigger: シールドゾーンの**他の**カードに S・トリガーを与える（配列＝OR）
+  if (obj.grantShieldSTrigger != null) {
+    const list = obj.grantShieldSTrigger;
+    if (!Array.isArray(list)) errors.push(`${where}.grantShieldSTrigger: 配列で書いてください（要素どうしは OR）`);
+    else list.forEach((r, i) => {
+      const w = `${where}.grantShieldSTrigger[${i}]`;
+      if (!r || typeof r !== "object" || Array.isArray(r)) { errors.push(`${w}: オブジェクトで書いてください`); return; }
+      for (const k of Object.keys(r)) if (k !== "filter") errors.push(`${w}: 未知のキー "${k}"（綴り違い？）`);
+      if (!r.filter) errors.push(`${w}: filter が必要です（何に与えるか）`);
+      checkFilterKeys(r.filter, w);
+    });
+  }
   // ddd: D・D・D（手札から、指定のコストを支払ってプレイする）
   if (obj.ddd != null) {
     const d = obj.ddd;
@@ -738,7 +784,7 @@ function checkAbilityFields(obj, where) {
 const CARD_KEYS = new Set([...ABILITY_KEYS,
   "id","name","race","cost","power","type","civ","effect","psychic",
   "evolution","ssx","spellSide","awakenSide","finalRevolution","revolutionChangeCond","gZero",
-  "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","invasionCond","jCrime","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","powerPlus",
+  "alternateCost","oniEnd","ddd","attackChance","ninjaStrike","invasionCond","jCrime","staticDeny","reactivePassive","spellAfterCast","grantSelfSTrigger","grantShieldSTrigger","powerPlus",
   // ハイパーモード関連
   "hyperMode","hyperOnAttack","hyperOnTargeted","hyperUnlock","zRush",
   // その他の常在・置換

@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, creaturePutDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, creaturePutDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases, carryUpBaseBuffs } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -132,6 +132,8 @@ export function matchFilter(card, filter, ctx) {
   if (f.psychic != null && !!card.psychic !== !!f.psychic) return false;
   // evolution: 進化クリーチャーかどうか（type:"evo_creature" と NEO進化の両方）
   if (f.evolution != null && isEvolutionNow(card) !== !!f.evolution) return false;
+  // neo: NEO進化能力を持つカード（NEOクリーチャー）。→ gameLogic の matchCardFilter と同じ
+  if (f.neo != null && !!evolutionSpec(card)?.neo !== !!f.neo) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   // not: 「〜ではない」。中身は filter と同じ語彙で、1つでも一致したら弾く。
   // 配列を書けば「そのどれにも当てはまらない」＝ AND で否定する
@@ -274,7 +276,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","topToUnder","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck","awaken","unawaken"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck","awaken","unawaken","usePlayTrigger"]);
 // 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
 const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
 
@@ -423,7 +425,8 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
     }
   }
   // 「このクリーチャーを破壊する」は選択不要
-  if (type === "destroy" && effect.self) return { candidates: [], isAuto: true };
+  // destroy / grant の self:true は「このクリーチャー」を指すので選ばせない
+  if ((type === "destroy" || type === "grant") && effect.self) return { candidates: [], isAuto: true };
   // 「そのクリーチャー」＝誘発の主体。選ばせずに確認だけ出す
   if (effect.subject) {
     const subj = ctx?.subjectCard;
@@ -597,7 +600,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       if (!uids?.length) return c;
       const r = stackEvolutionBases(st, evolutionSpec(c) || { zone: "bz" }, uids);
       st = r.state;
-      return { ...c, evolutionBase: r.bases };
+      // 進化元に付いていた「離れない」などの保護は、同じクリーチャーのものとして上へ続く
+      return carryUpBaseBuffs({ ...c, evolutionBase: r.bases }, r.bases);
     });
     return { state: st, cards: out };
   };
@@ -1120,7 +1124,10 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "grant": {
-      const targets = selfState.battle.filter(c => selectedUids.includes(c.uid));
+      // self:true =「このクリーチャーに与える」（destroy の self と同じ読み方）
+      const targets = effect.self
+        ? selfState.battle.filter(c => c.uid === ctx?.srcCardUid)
+        : selfState.battle.filter(c => selectedUids.includes(c.uid));
       for (const card of targets) {
         setSelf(s => ({ ...s, battle: s.battle.map(c => c.uid === card.uid ? {
           ...c,
@@ -1282,6 +1289,13 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         addLog(`${pid}: 墓地の${cards.length}枚を${effect.order === "choose" ? "好きな順序で" : "シャッフルして"}山札の下へ`);
         ctx.lastMoved = cards;
       }
+      break;
+    }
+    // 「このクリーチャーの『出た時』能力を1つ使う」。能力の持ち主（超魂Xなら上のクリーチャー）の
+    // cip を数え上げて選ばせるのは盤面の仕事なので、ここでは合図を立てるだけにする
+    // （castSpell / creatureEnteredBz と同じ流儀）。BattleScreen の advanceStep が受け取る
+    case "usePlayTrigger": {
+      if (ctx.srcCardUid) ctx.usePlayTrigger = { ownerPid, cardUid: ctx.srcCardUid };
       break;
     }
     case "shuffleDeck": {

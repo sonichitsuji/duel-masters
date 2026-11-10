@@ -6014,5 +6014,216 @@
       }
     ],
     "id": 151
+  },
+  {
+    "name": "ソウルサンライト コハク",
+    "race": "ジャイアント/スノーフェアリー/フュージョナー",
+    "cost": 2,
+    "power": 2000,
+    "type": "creature",
+    "civ": "light",
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、次の自分のターンのはじめまで、このクリーチャーは離れない。\n超魂X（これがクリーチャーの下にあれば、そのクリーチャーにも以下の能力を与える）\n自分のNEOクリーチャーの召喚コストを1少なくする。ただし、コストは0以下にはならない。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "次の自分のターンのはじめまで、このクリーチャーは離れない",
+            "type": "grant",
+            "self": true,
+            "keywords": [
+              "cantLeave"
+            ],
+            "expires": "ownTurnStart"
+          }
+        ]
+      }
+    ],
+    "ssx": {
+      "costReduce": {
+        "amount": 1,
+        "min": 1,
+        "filter": {
+          "neo": true,
+          "creatureOnly": true
+        }
+      }
+    },
+    "id": 152
+  },
+  {
+    "name": "～歴史ある王騎士～",
+    "race": "グランド・デビル/スチーム・ナイト/フュージョナー",
+    "cost": 3,
+    "power": 3000,
+    "type": "creature",
+    "civ": "water",
+    "keywords": [],
+    "effect": "このクリーチャーが出た時、カードを1枚引いてもよい。\nこのクリーチャーが破壊される時、墓地に置くかわりに手札に戻す。\n超魂X（これがクリーチャーの下にあれば、そのクリーチャーにも以下の能力を与える）\nこのクリーチャーが攻撃する時、このクリーチャーの「このクリーチャーが出た時」で始まる能力を1つ使ってもよい。",
+    "replaceLeave": [
+      {
+        "from": "destroy",
+        "to": "hand",
+        "filter": {
+          "self": true
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "カードを1枚引いてもよい",
+            "type": "drawCards",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "ssx": {
+      "triggers": [
+        {
+          "on": "attack",
+          "effects": [
+            {
+              "label": "このクリーチャーの「出た時」能力を1つ使ってもよい",
+              "type": "usePlayTrigger",
+              "optional": true
+            }
+          ]
+        }
+      ]
+    },
+    "id": 153
+  },
+  {
+    "name": "～啓示ある天騎士～",
+    "race": "アポロニア・ドラゴン/スチーム・ナイト/フュージョナー",
+    "cost": 4,
+    "power": 4500,
+    "type": "creature",
+    "civ": "light",
+    "keywords": [
+      "blocker"
+    ],
+    "effect": "ブロッカー\nこのクリーチャーが出た時、自分の山札の上から1枚をシールド化してもよい。\n超魂X（これがクリーチャーの下にあれば、そのクリーチャーにも以下の能力を与える）\n自分のシールドゾーンにあるNEOクリーチャーと進化クリーチャーすべてに「S・トリガー」を与える。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の山札の上から1枚をシールド化してもよい",
+            "type": "topToShield",
+            "amount": 1,
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "ssx": {
+      "grantShieldSTrigger": [
+        {
+          "filter": {
+            "neo": true
+          }
+        },
+        {
+          "filter": {
+            "type": "evo_creature"
+          }
+        }
+      ]
+    },
+    "id": 154
+  },
+  {
+    "name": "大集合！アカネ＆アサギ＆コハク",
+    "race": "ジャイアント/スノーフェアリー",
+    "cost": 3,
+    "power": 3000,
+    "type": "creature",
+    "civ": [
+      "light",
+      "water",
+      "nature"
+    ],
+    "keywords": [],
+    "effect": "自分のマナゾーンに光、水、自然の各文明があれば、このクリーチャーを[無色(2)]支払って召喚してもよい。\nNEO進化：光、水、また自然のクリーチャー1体の上に置いてもよい。(カードが下にあれば、これをNEO進化クリーチャーとして扱う)\nこのクリーチャーが出た時、自分の山札の上から2枚を見る。その中から1枚を手札に加えるかマナゾーンに置き、残りの1枚を山札の下に置く。",
+    "alternateCost": {
+      "cost": 2,
+      "civs": [
+        "colorless"
+      ],
+      "condition": {
+        "type": "manaHas",
+        "filters": [
+          {
+            "civ": "light"
+          },
+          {
+            "civ": "water"
+          },
+          {
+            "civ": "nature"
+          }
+        ]
+      }
+    },
+    "evolution": {
+      "zone": "bz",
+      "count": 1,
+      "neo": true,
+      "filter": {
+        "civ": [
+          "light",
+          "water",
+          "nature"
+        ]
+      }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "自分の山札の上から2枚を見る",
+            "type": "reveal",
+            "amount": 2
+          },
+          {
+            "label": "1枚を手札に加えるかマナゾーンに置く",
+            "type": "chooseMode",
+            "templates": [
+              {
+                "label": "1枚を手札に加える",
+                "effects": [
+                  {
+                    "type": "revealedToHand",
+                    "amount": 1
+                  }
+                ]
+              },
+              {
+                "label": "1枚をマナゾーンに置く",
+                "effects": [
+                  {
+                    "type": "revealedToMana",
+                    "amount": 1
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "残りの1枚を山札の下に置く",
+            "type": "revealedToDeckBottom"
+          }
+        ]
+      }
+    ],
+    "id": 155
   }
 ]

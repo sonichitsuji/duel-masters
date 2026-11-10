@@ -139,8 +139,15 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 `evolution`(**いま**進化クリーチャーか。`type:"evo_creature"` と、下にカードのある進化／NEO進化)
 `notSelf`(「自分の**他の**〜」。その効果の持ち主自身を除く)
 `maxCostSelf`(「**このクリーチャー以下**のコスト」→ 下記)
+`neo`(**NEO進化能力を持つ**カード＝NEOクリーチャー。`evolution` とは別物 → 下記)
 `not`(「〜ではない」→ 下記)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
+
+> **`neo: true`** は「NEO進化能力を**持つ**カード」（NEOクリーチャー）。
+> `evolution` が「**いま**進化クリーチャーか（下にカードが積まれているか）」なのに対し、
+> `neo` は印刷された能力を見るので**手札や山札のカードにも効きます**。
+> 「自分のNEOクリーチャーの召喚コストを1少なくする」（ソウルサンライト コハク）のように、
+> 手札のカードを見るコスト軽減ではこちらを使います。
 
 > **`maxCostSelf: true`** は「このクリーチャー以下のコスト」。数値ではなく**能力の持ち主のコスト**と比べます。
 > 超魂X（§7.5）で上のクリーチャーに与えられた能力なら、持ち主はその上のクリーチャーなので、
@@ -1227,6 +1234,28 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 - 同じカードに複数の置換がかかりうる場合は、**エスケープ → G-NEO進化 → `replaceLeave`** の順に
   1つずつ聞きます。中止したものは同じ除去の中で聞き直しません
 
+### 「このクリーチャーは離れない」（キーワード `cantLeave`）
+
+> このクリーチャーが出た時、次の自分のターンのはじめまで、このクリーチャーは離れない。
+> （ソウルサンライト コハク）
+
+置換ではなく**禁止**ですが、他の置換と同じ窓口（`leaveReplacementFor`）に並べてあるので、
+**§0 のとおり必ず「例外処理で中止」で通常どおり離れさせられます**。
+
+```jsonc
+// 出た時に、自分自身へ「次の自分のターンのはじめまで」付ける
+{ "label":"次の自分のターンのはじめまで、このクリーチャーは離れない",
+  "type":"grant", "self":true, "keywords":["cantLeave"], "expires":"ownTurnStart" }
+```
+
+- **`grant` の `self:true`** =「このクリーチャーに与える」（`destroy` の `self` と同じ読み方）。
+  選ばせずに能力の持ち主へ付きます
+- **`expires:"ownTurnStart"`** = 次の自分のターンのはじめまで（ジャストダイバーと同じ期限）。
+  書かなければ `"endOfTurn"`（そのターンの終わりまで）
+- **上にカードが重なっても引き継がれます。** 付与された保護は「そのクリーチャー」のものなので、
+  NEO進化などで上に重ねた後も続きます（`carryUpBaseBuffs`）。
+  下に敷いたカードの `tempBuff` は普段は上から読まれないので、重ねる時に持ち上げています
+
 ## 7.17. 超次元ゾーンとサイキック・クリーチャー（`hyper` / `psychic` / `awakenSide`）
 
 **デッキ40枚の外**にある公開領域です。盤面にカウンタが出て、タップすると中身を閲覧できます
@@ -1674,6 +1703,24 @@ DMでは、**同じイベントを置換する効果が2つ以上あっても、
 `power` は数値のままで、**表示にだけ `+` が付きます**。パワーの計算には一切影響しません
 （革命0 が成立していれば `15000+` と出ます）。
 
+### シールドゾーンの**他の**カードに S・トリガーを与える（`grantShieldSTrigger`）
+
+> 自分のシールドゾーンにあるNEOクリーチャーと進化クリーチャーすべてに「S・トリガー」を与える。
+> （～啓示ある天騎士～）
+
+`grantSelfSTrigger` が「**このカード自身**に与える」のに対し、こちらは**他のカード**に配ります。
+通常の `grantKeywords` は受け手がバトルゾーンのカードに限られるので、シールドには届きません。
+
+```jsonc
+// 配列の各要素は OR（どれか1つに当てはまれば与える）
+"grantShieldSTrigger": [ { "filter": { "neo": true } },
+                         { "filter": { "type": "evo_creature" } } ]
+```
+
+- 付与元として有効なのは**バトルゾーン＋表向きシールド**（他の継続能力と同じ範囲）
+- `filter` は §2 の語彙がそのまま使えます（`grantKeywords` の7キー限定とは違います）
+- 能力フィールドなので `ssx` の中にも書け、`ignoreAbilities` で消えます
+
 ## 7.26. NEO進化 / G-NEO進化（`evolution.neo`）
 
 > NEO進化：自分の水のクリーチャー1体の上に置いてもよい。（クリーチャーが下にあれば、
@@ -1756,6 +1803,23 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 | その他 | `graveToBz` と同じ（`tempKeywords` / `summoningSickness` / `destroyAtEndOfTurn`） |
 
 1ゾーンだけなら `graveToBz` / `manaToBz` を使ってください（validator がエラーにします）。
+
+### 「このクリーチャーの『出た時』能力を1つ使う」（`usePlayTrigger`）
+
+> このクリーチャーが攻撃する時、このクリーチャーの「このクリーチャーが出た時」で始まる能力を
+> 1つ使ってもよい。（～歴史ある王騎士～ の超魂X）
+
+```jsonc
+{ "label":"このクリーチャーの「出た時」能力を1つ使ってもよい",
+  "type":"usePlayTrigger", "optional":true }
+```
+
+- 見るのは**能力の持ち主**（`ctx.srcCardUid`）の cip。超魂Xで上のクリーチャーに与えられていれば
+  **上のクリーチャーの**「出た時」能力になります（それがこのカードの狙い）
+- **「出た時」で*始まる*能力だけ**を拾います。「召喚によって出た時」のように出方の条件
+  （`method` / `paid` / `manaTapped` / `fromZone`）が付いた能力は外れます。
+  文面が「このクリーチャーがバトルゾーンに出た時」でも、条件が無ければ拾います
+- 候補が2つ以上あればモーダルで1つ選びます。0個なら何も起きません
 
 ## 7.26.5. 下にカードを置く（`topToUnder`）と、下にあったカード（`zone:"wasUnder"`）
 
@@ -2314,7 +2378,8 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
   W/Tブレイカーと併用した場合は**大きい方**が採用される
 - `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` /
   `{type:"cardCount",zone,filter?,min?,max?}` / `{type:"shieldCount",who?,min?,max?}` /
-  `{type:"oniEnd"}`（→ **§7.18**。triggers / activated でのみ使える） / `{flag:"…"}`
+  `{type:"oniEnd"}`（→ **§7.18**。triggers / activated でのみ使える） / `{flag:"…"}` /
+    `{type:"manaHas",filters:[…]}` / `{type:"isEvolution",value?}` / `{type:"graveCountAtLeast",amount}`
   - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
   - **`cardCount`** = 「あるゾーンに、ある条件のカードが N 枚以上／以下あれば」。
     `zone` は `bz` `shield` `mana` `grave` `hand` `deck`、`filter` は §2 の語彙。
@@ -2362,7 +2427,18 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
   > 「**1以下**にならない」なら `min:2` です。実際の下限はさらに文明数で抑えられます
   > （2色カードは最低2）。
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
-- `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
+- `finalRevolution`: `{effects:[…]}` ／ `gZero`: `{nameContains,raceContains}`
+- `alternateCost`: `{cost,civs,condition}` — 「〜であれば、このカードを[X]支払って召喚／唱えてもよい」
+  - `civs` は**それぞれ1枚以上必要な文明**。`["colorless"]` と書けば**文明を問わない枚数だけ**の支払い（[無色(2)] など）
+  - `condition` は上の**共通語彙**（`checkGrantCondition`）。マナゾーンの文明を見る
+    **`{type:"manaHas",filters:[…]}`**（鬼エンドの `manaHas` と同じ読み方＝各条件を1枚以上満たす）と、
+    墓地の枚数を見る `{type:"graveCountAtLeast",amount:N}` が使えます
+  ```jsonc
+  // 自分のマナゾーンに光、水、自然の各文明があれば、[無色(2)]支払って召喚してもよい
+  "alternateCost": { "cost":2, "civs":["colorless"],
+    "condition":{ "type":"manaHas",
+      "filters":[{"civ":"light"},{"civ":"water"},{"civ":"nature"}] } }
+  ```
 - `evolution`: 進化元のゾーンと枚数 → **§7.8**
 - `replaceLeave`: 離れる時の置換 → **§7.16**
 - `replaceEnter`: 出る時の置換（超次元ゾーン／マナ／墓地／手札へ送る） → **§7.29**
@@ -2377,6 +2453,7 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 - `spellAfterCast`: 唱えた後の行き先の置換 → **§7.22**
 - `staticDeny`: 相手のプレイを止める常在型（`cantCastSpell` 等） → **§7.23**
 - `grantSelfSTrigger`: 革命n（自分に S・トリガーを与える） → **§7.25**
+- `grantShieldSTrigger`: `[{filter}]` — シールドゾーンの**他の**カードに S・トリガーを与える（配列＝OR） → **§7.25**
 - `powerPlus`: 「5000+」の表示（数値は変えない） → **§7.25**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
   > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく

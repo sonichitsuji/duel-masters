@@ -208,6 +208,9 @@ export function matchCardFilter(card, filter) {
   if (filter.psychic != null && !!card.psychic !== !!filter.psychic) return false;
   // evolution: いま進化クリーチャーか。matchFilter と同じ語彙（→ isEvolutionNow）
   if (filter.evolution != null && isEvolutionNow(card) !== !!filter.evolution) return false;
+  // neo: NEO進化能力を**持つ**カードか（NEOクリーチャー）。evolution は「いま進化クリーチャーか」
+  // なので手札のカードには効かない。コスト軽減のように手札を見る用途はこちらを使う
+  if (filter.neo != null && !!evolutionSpec(card)?.neo !== !!filter.neo) return false;
   // not: 「〜ではない」。1つでも一致したら弾く（配列なら「そのどれにも当てはまらない」）
   if (filter.not && anyOf(filter.not, sub => matchCardFilter(card, sub))) return false;
   return true;
@@ -335,7 +338,8 @@ export function extractCardsFromBattle(battle, uids) {
 // シールドの枚数を見る条件なので、判定は「手札に加わった後」の状態で行うこと。
 export function sTriggerSide(card, ownerState) {
   if (!card) return null;
-  if (hasKeyword(card, "sTrigger") || selfSTriggerGranted(card, ownerState)) return card;
+  if (hasKeyword(card, "sTrigger") || selfSTriggerGranted(card, ownerState)
+    || shieldSTriggerGranted(card, ownerState)) return card;
   if (card.spellSide?.keywords?.includes("sTrigger")) return { ...card, ...card.spellSide, uid: card.uid, side: "spell" };
   return null;
 }
@@ -347,6 +351,32 @@ export function selfSTriggerGranted(card, ownerState) {
   const rule = effectiveCard(card)?.grantSelfSTrigger;
   if (!rule || !ownerState) return false;
   return checkGrantCondition(rule.condition, ownerState, card);
+}
+
+// 「自分のシールドゾーンにあるNEOクリーチャーと進化クリーチャーすべてに『S・トリガー』を与える」。
+// grantKeywords は受け手がバトルゾーンのカードに限られるので、シールドには届かない（→ computeGranted）。
+// grantSelfSTrigger が「自分1枚だけ」なのに対し、こちらは**他のカード**に配る。
+//   grantShieldSTrigger: [{ filter }]  … 配列は OR（どれか1つに当てはまれば与える）
+// 付与元はバトルゾーン＋表向きシールド（継続能力が働く場所。grantKeywords の granter と同じ）。
+export function shieldSTriggerGranted(card, ownerState) {
+  if (!card || !ownerState) return false;
+  const granters = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
+  for (const g of granters) {
+    for (const rule of effectiveCard(g)?.grantShieldSTrigger || []) {
+      if (matchCardFilter(card, rule.filter)) return true;
+    }
+  }
+  return false;
+}
+
+// 代替コスト:「〜であれば、このカードを[無色(2)]支払って召喚してもよい」。
+//   alternateCost: { cost, civs, condition }
+// condition は継続能力と同じ共通語彙（checkGrantCondition）で見る。
+// civs は「それぞれ1枚以上必要な文明」。["colorless"] と書けば文明を問わない枚数だけの支払いになる。
+export function alternateCostAvailable(card, ownerState) {
+  const alt = effectiveCard(card)?.alternateCost;
+  if (!alt) return null;
+  return checkGrantCondition(alt.condition, ownerState, card) ? alt : null;
 }
 
 // 革命チェンジ:「自分の指定のクリーチャーが攻撃する時、そのクリーチャーと
@@ -442,7 +472,7 @@ const IDENTITY_KEYS = new Set(["id","uid","name","cost","power","civ","type","ra
 // 「そのエレメントが持つ能力」なので一緒に消える。
 // evolutionBase は能力ではなくカードの構成なので残す（進化クリーチャーであることは変わらない）。
 const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
-  "summonFrom","freeCast","replaceLose","replaceLeave","spellAfterCast","staticDeny",
+  "summonFrom","freeCast","replaceLose","replaceLeave","spellAfterCast","staticDeny","grantShieldSTrigger",
   "costReduce","condPower","grantKeywords","grantRace","grantPowerBoost","grantPowerBoostGrave",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
@@ -522,6 +552,13 @@ export function spellMainEffect(card){
 // 「このカードが場に出た／置かれた時」の本体。cip は誘発型能力なので
 // 通常は fireTrigger("creaturePutBz") が拾うが、クリーチャー以外（城など）は
 // その経路を通らないので、自分自身のぶんだけ直接取り出せるようにしてある。
+// 「このクリーチャーが出た時」で**始まる**能力。つまり出方の条件が付いていないもの。
+// 「召喚によって出た時」「コストを支払って出た時」のように条件で絞った能力は含まない
+// （文面が「バトルゾーンに出た時」でも、条件が無ければ含む）。
+const PUT_CONDITION_KEYS = ["method", "paid", "manaTapped", "fromZone"];
+export function plainPutTriggers(card){
+  return selfPutTriggers(card).filter(tr => !PUT_CONDITION_KEYS.some(k => tr[k] != null));
+}
 export function selfPutTriggers(card){
   return (effectiveCard(card)?.triggers || [])
     .filter(tr => tr.on === "creaturePutBz" && (!tr.target || tr.target === "this"));
@@ -881,6 +918,22 @@ export function stackEvolutionBases(state, spec, baseUids) {
   return { state: { ...state, [key]: state[key].filter(c => !used.has(c.uid)) }, bases };
 }
 
+// 「このクリーチャーは離れない」のように、そのクリーチャーに付与された保護は、
+// 上にカードが重なっても同じクリーチャーのものとして続く（進化しても引き継がれる）。
+// 下に敷かれたカードの tempBuff は effectiveCard が上へ伝えない（伝わるのは ssx だけ）ので、
+// 重ねる時にここで持ち上げる。期限（expires）は一番長いもの＝ownTurnStart を優先する。
+const CARRIED_UP_KEYWORDS = ["cantLeave"];
+export function carryUpBaseBuffs(card, bases) {
+  const carried = [...new Set((bases || []).flatMap(b =>
+    (b.tempBuff?.keywords || []).filter(k => CARRIED_UP_KEYWORDS.includes(k))))];
+  if (!carried.length) return card;
+  const prev = card.tempBuff || {};
+  const expires = (bases || []).some(b => b.tempBuff?.expires === "ownTurnStart")
+    ? "ownTurnStart" : (prev.expires || "endOfTurn");
+  return { ...card, tempBuff: { ...prev, expires,
+    keywords: [...new Set([...(prev.keywords || []), ...carried])] } };
+}
+
 // 進化元が足りているか（＝そのカードを出せるか）。
 // NEO は重ねなくても出せるので、進化元の有無に関わらず true。
 export function canEvolve(card, ownerState) {
@@ -1158,6 +1211,11 @@ export function checkGrantCondition(cond, ownerState, card, otherState){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
   if(cond.type === "stackCount") return stackCount(card) >= cond.count;
+  // manaHas: 「自分のマナゾーンに光、水、自然の各文明があれば」。鬼エンドと同じ読み方
+  // （filters の各条件を1枚以上満たすこと）で、評価も同じ manaHasAll を使う
+  if(cond.type === "manaHas") return manaHasAll(ownerState, cond.filters);
+  // graveCountAtLeast: 「自分の墓地にカードがN枚以上あれば」（alternateCost が使う古い綴り）
+  if(cond.type === "graveCountAtLeast") return (ownerState?.grave?.length || 0) >= (cond.amount ?? 0);
   // 「これが進化クリーチャーなら」。NEO進化は下にカードがある間だけ進化クリーチャー
   if(cond.type === "isEvolution") return isEvolutionNow(card) === (cond.value !== false);
   if(cond.type === "shieldCount") return shieldCountMatches(cond, ownerState, otherState);
