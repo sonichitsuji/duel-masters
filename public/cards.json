@@ -5908,5 +5908,37 @@
       }
     ],
     "id": 148
+  },
+  {
+    "name": "白騎士の精霊HEAVEN・キッド",
+    "race": "エンジェル・コマンド",
+    "cost": 3,
+    "power": 3500,
+    "type": "creature",
+    "civ": "light",
+    "keywords": [
+      "gStrike"
+    ],
+    "effect": "G・ストライク\nこのクリーチャーが出た時、バトルゾーンにある他の、コスト3以下のカードを1枚選び、シールド化してもよい。",
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "バトルゾーンにある他の、コスト3以下のカードを1枚選び、シールド化してもよい",
+            "type": "bzToShield",
+            "zone": "bzCards",
+            "target": "both",
+            "amount": 1,
+            "filter": {
+              "maxCost": 3,
+              "notSelf": true
+            },
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "id": 149
   }
 ]
