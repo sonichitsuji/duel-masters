@@ -143,7 +143,7 @@ const EFFECT_KEYS = new Set([
 const FILTER_KEYS = new Set([
   "side","civ","civNot","raceContains","nameContains","notNameSelf","keyword","multiColor",
   "element","elementOnly","creatureOnly","notSelf","tapped","hasCip","type","self","psychic","evolution",
-  "cost","maxCost","minCost","maxPower","minPower","not","uid",
+  "cost","maxCost","minCost","maxPower","minPower","maxCostSelf","not","uid",
 ]);
 // costOver:「あるゾーンのカードの枚数よりコストが大きい」（キャディ・ビートル）
 function checkCostOver(spec, where) {

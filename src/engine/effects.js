@@ -119,6 +119,10 @@ export function matchFilter(card, filter, ctx) {
   if (f.tapped != null && !!card.tapped !== !!f.tapped) return false;
   if (f.cost != null && card.cost !== resolveAmount(ctx, f.cost, f.cost)) return false;
   if (f.maxCost != null && !(card.cost <= resolveAmount(ctx, f.maxCost, f.maxCost))) return false;
+  // maxCostSelf:「このクリーチャー以下のコスト」。比べる相手は能力の持ち主（srcCost）。
+  // 超魂Xで上のクリーチャーに与えられた場合、持ち主はその上のクリーチャーなので、
+  // 基準になるコストもそちらのものになる。持ち主が分からない時は何も通さない
+  if (f.maxCostSelf && !(card.cost <= (ctx?.srcCost ?? -1))) return false;
   if (f.minCost != null && !(card.cost >= resolveAmount(ctx, f.minCost, f.minCost))) return false;
   if (f.maxPower != null && !((card.power || 0) <= resolveAmount(ctx, f.maxPower, f.maxPower))) return false;
   if (f.minPower != null && !((card.power || 0) >= resolveAmount(ctx, f.minPower, f.minPower))) return false;
@@ -356,7 +360,7 @@ export const stepSelectsCards = type => !!SOURCE[type];
 
 export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, srcCard) {
   const type = effect.type;
-  const c2 = { ...ctx, srcName: srcCard?.name };
+  const c2 = { ...ctx, srcName: srcCard?.name, srcCost: cardFace(srcCard)?.cost };
   // 「数字を1つ選ぶ」。カードは選ばないので候補は空だが、数字を決めるまで確定できない。
   // max を書かなければ上限なし（DMの「数字を1つ選ぶ」は好きな数字を宣言できる）
   if (NUMBER_CHOICE_TYPES.has(type)) {
@@ -477,7 +481,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const setOther   = ownerPid === "p1" ? setP2 : setP1;
   const oppPid     = ownerPid === "p1" ? "p2" : "p1";
   const pid = ownerPid === "p1" ? "P1" : "P2";
-  const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name };
+  const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name, srcCost: cardFace(srcCard)?.cost };
   // 「そうしたら」判定用。このステップを実際に行ったか。各 case が明示しなければ末尾で既定値を入れる
   ctx.stepDone = undefined;
   // 「〜してもよい」を見送った（モーダルの「スキップ」）。何も起こさず、「そうしたら」も繋がない。

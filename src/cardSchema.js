@@ -78,6 +78,7 @@ export const FILTER_SCHEMA = {
   minPower: { kind: "numVar", label: "パワーが〜以上" },
   notSelf: { kind: "bool", label: "このカード以外" },
   nameContains: { kind: "text", label: "名前に〜を含む", multi: true },
+  maxCostSelf: { kind: "bool", label: "このカード以下のコスト" },
   cost: { kind: "numVar", label: "コストがちょうど〜" },
   minCost: { kind: "numVar", label: "コストが〜以上" },
   keyword: { kind: "enum:keyword", label: "キーワード能力を持つ", multi: true },
