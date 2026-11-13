@@ -2939,16 +2939,16 @@
           "on": "cast",
           "effects": [
             {
-              "label": "カードを1枚引いてもよい（2枚まで・1枚目）",
-              "type": "drawCards",
-              "amount": 1,
-              "optional": true
+              "label": "0〜2の数字を1つ選ぶ",
+              "type": "chooseNumber",
+              "min": 0,
+              "max": 2,
+              "as": "n"
             },
             {
-              "label": "カードを1枚引いてもよい（2枚まで・2枚目）",
+              "label": "その枚数のカードを引く",
               "type": "drawCards",
-              "amount": 1,
-              "optional": true
+              "amount": "n"
             },
             {
               "label": "自分の手札を1枚捨てる",
@@ -6225,5 +6225,255 @@
       }
     ],
     "id": 155
+  },
+  {
+    "name": "～西方より来る激流の竜騎公～",
+    "race": "リキッド・ピープル/ポセイディア・ドラゴン/スチーム・ナイト",
+    "cost": 6,
+    "power": 6000,
+    "type": "creature",
+    "civ": "water",
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "NEO進化：光、水、または闇のクリーチャー1体の上に置いてもよい。\nNEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを3少なくする。\nW・ブレイカー\nこのクリーチャーが出た時、カードを3枚引き、自分の手札を1枚、山札の上に置く。\n各ターンに一度、クリーチャーが自分を攻撃する時、自分の山札の上から1枚を見てもよい。それが自分の手札の枚数以下のコストを持つカードなら、コストを支払わずに実行してもよい。実行しないなら、自分の手札に加える。",
+    "evolution": {
+      "zone": "bz",
+      "count": 1,
+      "neo": true,
+      "filter": {
+        "civ": [
+          "light",
+          "water",
+          "darkness"
+        ]
+      }
+    },
+    "costReduce": {
+      "amount": 3,
+      "min": 1,
+      "zones": [
+        "hand"
+      ],
+      "filter": {
+        "self": true
+      },
+      "condition": {
+        "type": "cardCount",
+        "zone": "evolutionBase",
+        "min": 1
+      }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "カードを3枚引く",
+            "type": "drawCards",
+            "amount": 3
+          },
+          {
+            "label": "自分の手札を1枚、山札の上に置く",
+            "type": "handToDeck",
+            "to": "top",
+            "target": "self",
+            "amount": 1
+          }
+        ]
+      },
+      {
+        "on": "attack",
+        "target": "opponent",
+        "attackTarget": "player",
+        "oncePerTurn": true,
+        "optional": true,
+        "label": "自分の山札の上から1枚を見てもよい",
+        "effects": [
+          {
+            "label": "自分の手札の枚数を数える",
+            "type": "count",
+            "zone": "hand",
+            "target": "self"
+          },
+          {
+            "label": "自分の山札の上から1枚を見る",
+            "type": "reveal",
+            "amount": 1
+          },
+          {
+            "label": "手札の枚数以下のコストを持つカードなら、コストを支払わずに実行してもよい",
+            "type": "playFromHand",
+            "zone": "revealed",
+            "filter": {
+              "maxCost": "count"
+            },
+            "free": true,
+            "optional": true
+          },
+          {
+            "label": "実行しないなら、自分の手札に加える",
+            "type": "revealedToHand",
+            "takeAll": true
+          }
+        ]
+      }
+    ],
+    "id": 156
+  },
+  {
+    "name": "回転の精霊ナイッショエル",
+    "race": "ジャイアント/エンジェル・コマンド",
+    "cost": 6,
+    "power": 7500,
+    "type": "creature",
+    "civ": "light",
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "NEO進化：光、水、または自然のクリーチャー1体の上に置いてもよい。\nNEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを2少なくする。\nW・ブレイカー\nこのクリーチャーが出た時、相手のクリーチャーをすべてタップする。次の相手のターンのはじめに、それらはアンタップしない。\n自分の進化クリーチャーが破壊される時、墓地に置くかわりにシールド化してもよい。",
+    "evolution": {
+      "zone": "bz",
+      "count": 1,
+      "neo": true,
+      "filter": {
+        "civ": [
+          "light",
+          "water",
+          "nature"
+        ]
+      }
+    },
+    "costReduce": {
+      "amount": 2,
+      "min": 1,
+      "zones": [
+        "hand"
+      ],
+      "filter": {
+        "self": true
+      },
+      "condition": {
+        "type": "cardCount",
+        "zone": "evolutionBase",
+        "min": 1
+      }
+    },
+    "replaceLeave": [
+      {
+        "from": "destroy",
+        "to": "shield",
+        "filter": {
+          "evolution": true
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "相手のクリーチャーをすべてタップする（次の相手のターンにアンタップしない）",
+            "type": "tap",
+            "target": "opponent",
+            "all": true,
+            "filter": {
+              "creatureOnly": true
+            },
+            "noUntapNextTurn": true
+          }
+        ]
+      }
+    ],
+    "id": 157
+  },
+  {
+    "name": "竜社長 ゴルファウンデーション",
+    "race": "ジャイアント/ドラゴン",
+    "cost": 6,
+    "power": 8500,
+    "type": "creature",
+    "civ": [
+      "light",
+      "water",
+      "nature"
+    ],
+    "keywords": [
+      "wBreaker"
+    ],
+    "effect": "G-NEO進化：光、水、または自然のクリーチャー1体の上に置いてもよい。\nW・ブレイカー\nこのクリーチャーが出た時、カードを3枚まで引く。\nこのクリーチャーが攻撃する時、光と水と自然の、コスト5以下のクリーチャーを最大1体ずつ、自分の手札から出してもよい。",
+    "evolution": {
+      "zone": "bz",
+      "count": 1,
+      "neo": "g",
+      "filter": {
+        "civ": [
+          "light",
+          "water",
+          "nature"
+        ]
+      }
+    },
+    "triggers": [
+      {
+        "on": "creaturePutBz",
+        "effects": [
+          {
+            "label": "0〜3の数字を1つ選ぶ",
+            "type": "chooseNumber",
+            "min": 0,
+            "max": 3,
+            "as": "n"
+          },
+          {
+            "label": "その枚数のカードを引く",
+            "type": "drawCards",
+            "amount": "n"
+          }
+        ]
+      },
+      {
+        "on": "attack",
+        "effects": [
+          {
+            "label": "光のコスト5以下のクリーチャーを1体、自分の手札から出してもよい",
+            "type": "handToBz",
+            "target": "self",
+            "amount": 1,
+            "filter": {
+              "type": "creature",
+              "civ": "light",
+              "maxCost": 5
+            },
+            "optional": true
+          },
+          {
+            "label": "水のコスト5以下のクリーチャーを1体、自分の手札から出してもよい",
+            "type": "handToBz",
+            "target": "self",
+            "amount": 1,
+            "filter": {
+              "type": "creature",
+              "civ": "water",
+              "maxCost": 5
+            },
+            "optional": true
+          },
+          {
+            "label": "自然のコスト5以下のクリーチャーを1体、自分の手札から出してもよい",
+            "type": "handToBz",
+            "target": "self",
+            "amount": 1,
+            "filter": {
+              "type": "creature",
+              "civ": "nature",
+              "maxCost": 5
+            },
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "id": 158
   }
 ]

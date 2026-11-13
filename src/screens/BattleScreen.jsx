@@ -87,6 +87,9 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
     if(tr.turnOf === "opponent" && onOwnTurn) return false;
   }
   if(tr.firstEachTurn && !ev.firstThisTurn) return false;
+  // attackTarget: 攻撃先がプレイヤーかクリーチャーか（on:"attack" 専用）。
+  // 「クリーチャーが自分を攻撃する時」= target:"opponent" ＋ attackTarget:"player"
+  if(tr.attackTarget && ev.attackTarget && tr.attackTarget !== ev.attackTarget) return false;
   // filter は「起きたカード」に掛かる。複数枚のイベントなら1枚でも一致すれば誘発する
   if(tr.filter && subjects.length && !subjects.some(c => matchFilter(c, tr.filter, {}))) return false;
   return true;
@@ -112,7 +115,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   const [chargedThisTurn,setChargedThisTurn]=useState(false);
   const [attackingUid,setAttackingUid]=useState(null);
   // 攻撃先を決めてから「攻撃する時」の誘発を解決するので、解決が終わるまで攻撃先を預かる。
-  // { intent } … intent は withBlockStep と同じ形（shield / creature+targetUid / direct）
+  // { intent } … intent は withBlockStep と同じ形（{kind:"creature",targetUid} / {kind:"player"}）
   const [pendingAttack,setPendingAttack]=useState(null);
   // 「待っている誘発を解決しきってから続きを行う」ための待ち行列。
   // ターンの終わり・バトル・ブレイクはどれも「誘発を積んでから、解決しきったところで
@@ -1485,7 +1488,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     if(!swapped) setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn,
-        noHandPlays:swapped});
+        attackTarget:intent.kind,noHandPlays:swapped});
       pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
@@ -1625,6 +1628,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   // leave（バトルゾーンを離れた）だけ誘発する。下に敷かれたカードも一緒に離れる。
   const moveLeavingCard=(card,ownerPid,to)=>{
     const setSt=ownerPid==="p1"?setP1:setP2;
+    // 実際に移るのは本体＋下に敷かれたカード全部。シールド化の置換（replaceShieldAdd）は
+    // 置かれた枚数ぶん見なければならないので、setSt の前にスタックを読む（sacrificeGNeoBases と同じ）
+    const stack=stateRef.current[ownerPid].battle.find(c=>c.uid===card.uid);
+    const placed=stack?[stack,...(stack.evolutionBase||[])]:[card];
     setSt(s=>{
       const {newBattle,extracted}=extractFromBattle(s.battle,card.uid);
       if(!extracted.length) return s;
@@ -1636,7 +1643,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     });
     addLog(`[置換] ${card.name} は破壊されるかわりに${LEAVE_TO_LABELS[to]||"マナゾーン"}へ`);
     setTimeout(()=>fireTrigger("leave",{sourcePid:ownerPid,subjectCard:card}),0);
-    if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,[card]),0);
+    if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,placed),0);
   };
 
   // 「このクリーチャーがバトルする時」。バトルの勝敗を決める**前**に誘発させ、

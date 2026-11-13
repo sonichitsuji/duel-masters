@@ -15,7 +15,7 @@ export const CIVS = Object.keys(CIV);
 export const COLOR_CIVS = CIVS.filter(c => c !== "colorless");
 
 export const ZONES = ["hand","battle","mana","grave","shield","deck","hyper"];
-export const ZONE_LABELS = { hand:"手札", battle:"バトルゾーン", mana:"マナゾーン", grave:"墓地", shield:"シールド", deck:"山札", hyper:"超次元ゾーン" };
+export const ZONE_LABELS = { hand:"手札", battle:"バトルゾーン", mana:"マナゾーン", grave:"墓地", shield:"シールド", deck:"山札", hyper:"超次元ゾーン", revealed:"公開したカード" };
 
 // カード種別ラベル（タマシード/G城など、パワーを持たない永続/シールド系を含む）
 export const CARD_TYPE_LABELS = { creature:"クリーチャー", evo_creature:"進化クリーチャー", spell:"呪文", twinpact:"ツインパクト", tamaseed:"タマシード", castle:"城", field:"フィールド" };

@@ -854,12 +854,16 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "playFromHand": {
       // 型名は playFromHand のままだが、zone で唱える場所を選べる（既定 "hand"、"grave" など）
       const fromZone = effect.zone || "hand";
+      // zone:"revealed" は「公開したカードをそのまま実行する」。公開カードは reveal の時点で
+      // 山札から抜けていてどのゾーンにも居ないので、ゾーンからは取り除かず ctx.revealed から外す
+      const fromRevealed = fromZone === "revealed";
       const key = ZONE_STATE_KEY[fromZone] || "hand";
       for (const { pidx, cards } of pickSelected(fromZone)) {
         let putCount = 0;
         for (const card of cards) {
           const uid = card.uid;
-          const take = s => ({ ...s, [key]: s[key].filter(c => c.uid !== uid) });
+          const take = fromRevealed ? (s => s) : (s => ({ ...s, [key]: s[key].filter(c => c.uid !== uid) }));
+          if (fromRevealed) ctx.revealed = (ctx.revealed || []).filter(c => c.uid !== uid);
           // 「クリーチャーを出せない／各ターン◯体まで」。複数体まとめて召喚する時も
           // 残り枠のぶんで止まるよう、ここまでに出した数を足して見る
           if (playSide(effect, card) !== "spell" && card.type !== "castle") {
@@ -875,7 +879,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             const face = spellFace(card);
             // 唱えている間、呪文はどのゾーンにもいない。元のゾーンから取り除くだけにして、
             // 解決しきった時に墓地へ置くのは BattleScreen 側（ctx.castSpell を受けて後始末する）
-            setOf(pidx)(take);
+            if (!fromRevealed) setOf(pidx)(take);
             addLog(`${pid}: 「${face.name}」を${zoneLabel}${freeLabel}唱えた`);
             // card = 実際に動かす元のカード（ツインパクトなら本体）、face = 唱えている面
             // afterCast =「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る

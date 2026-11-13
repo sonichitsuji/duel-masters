@@ -217,19 +217,15 @@ export function matchCardFilter(card, filter) {
 }
 const costReduceMatches = matchCardFilter;
 
-// ゾーン内の該当カード枚数（costReduce.amountPer 等、「〜1枚につき」の分母）
-export function countCardsInZone(state, spec) {
+// ゾーン内の該当カード枚数（costReduce.amountPer や condition の cardCount の「〜枚」）。
+// zone:"evolutionBase" は「今回の召喚で実際に重ねる進化元の数」で、盤面のゾーンではなく
+// opts から取る（プレイ時にしか決まらない値なので、渡されなければ 0）。
+export function countCardsInZone(state, spec, opts) {
+  if (spec?.zone === "evolutionBase") return opts?.evolutionBaseCount || 0;
   if (!state || !spec) return 0;
   const list = { grave: state.grave, mana: state.mana, hand: state.hand,
                  bz: state.battle, shield: state.shields, deck: state.deck }[spec.zone] || [];
   return list.filter(c => matchCardFilter(c, spec.filter)).length;
-}
-
-// amountPer の分母。zone:"evolutionBase" は「今回の召喚で実際に重ねる進化元の数」を参照するので、
-// ゾーンではなく opts から取る（プレイ時にしか決まらない値）。
-function amountPerCount(ownerState, spec, opts) {
-  if (spec?.zone === "evolutionBase") return opts?.evolutionBaseCount || 0;
-  return countCardsInZone(ownerState, spec);
 }
 
 // card をプレイする際の実効コスト。
@@ -247,10 +243,11 @@ export function getEffectiveCost(card, source, opts = {}) {
     // filter.self: 「このクリーチャーの召喚コストを〜」= 軽減元自身にだけ効く
     if (filter?.self && c.uid !== card.uid) continue;
     if (!costReduceMatches(card, filter)) continue;
-    // condition:「〜であれば」。継続能力なので相手の盤面は見られない（who:"self" 相当）
-    if (condition && !checkGrantCondition(condition, ownerState, c)) continue;
+    // condition:「〜であれば」。継続能力なので相手の盤面は見られない（who:"self" 相当）。
+    // opts を渡すのはここだけ（「NEO進化として召喚するなら」が今回重ねる枚数を見るため）
+    if (condition && !checkGrantCondition(condition, ownerState, c, null, opts)) continue;
     // amountPer: 「〜1枚につき1少なくする」のような可変軽減
-    const n = amountPer ? amountPerCount(ownerState, amountPer, opts) : (amount || 0);
+    const n = amountPer ? countCardsInZone(ownerState, amountPer, opts) : (amount || 0);
     cost = Math.max(min ?? 0, cost - n);
   }
   // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）。
@@ -1173,9 +1170,9 @@ export function findOniEndPlays(state, otherState, event, ev = {}, ownerPid){
 
 // ゾーンの枚数を見る条件。「自分のマナゾーンにドラゴン・カードが4枚以上あれば」など。
 // 数えるのは countCardsInZone（amountPer と同じ関数）なので、zone / filter の語彙もそこと同じ。
-export function cardCountMatches(spec, ownerState, otherState){
+export function cardCountMatches(spec, ownerState, otherState, opts){
   const inRange = state => {
-    const n = countCardsInZone(state, spec);
+    const n = countCardsInZone(state, spec, opts);
     if(spec.min != null && n < spec.min) return false;
     if(spec.max != null && n > spec.max) return false;
     return true;
@@ -1207,7 +1204,9 @@ function shieldsBrokenMatches(spec, ownerState, otherState){
 // grant規則やパワー強化に付く condition の評価。
 // otherState は「相手の盤面も見る条件」専用。渡せる呼び出し元だけが渡す
 // （triggers / activated だけが渡している。validator が書ける場所を制限する）。
-export function checkGrantCondition(cond, ownerState, card, otherState){
+// opts は「プレイ時にしか決まらない値」専用で、いま渡しているのは getEffectiveCost だけ
+// （cardCount の zone:"evolutionBase"。validator が costReduce.condition の中だけに制限する）。
+export function checkGrantCondition(cond, ownerState, card, otherState, opts){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
   if(cond.type === "stackCount") return stackCount(card) >= cond.count;
@@ -1219,7 +1218,7 @@ export function checkGrantCondition(cond, ownerState, card, otherState){
   // 「これが進化クリーチャーなら」。NEO進化は下にカードがある間だけ進化クリーチャー
   if(cond.type === "isEvolution") return isEvolutionNow(card) === (cond.value !== false);
   if(cond.type === "shieldCount") return shieldCountMatches(cond, ownerState, otherState);
-  if(cond.type === "cardCount") return cardCountMatches(cond, ownerState, otherState);
+  if(cond.type === "cardCount") return cardCountMatches(cond, ownerState, otherState, opts);
   if(cond.type === "shieldsBroken") return shieldsBrokenMatches(cond, ownerState, otherState);
   // 鬼エンド: シールドが1つもないプレイヤーがいる。shieldCount の別名
   if(cond.type === "oniEnd") return shieldCountMatches({ who: "any", max: 0 }, ownerState, otherState);

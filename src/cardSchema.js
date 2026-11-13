@@ -45,7 +45,10 @@ export const ENUMS = {
   // 「こうして墓地に置いたカードの中から」。候補をその効果で動かしたカードに絞る
   graveToBzZone: { grave: "墓地すべて（既定）", lastMoved: "直前に動かしたカードの中から" },
   pickZone: { bz: "バトルゾーン", hand: "手札", mana: "マナゾーン", grave: "墓地", shield: "シールド" },
-  playZone: { hand: "手札", grave: "墓地", eventCards: "その出来事のカード" },
+  // playFromHand の zone（実行する元）。"revealed" は reveal で公開したカードをそのまま実行する
+  playZone: { hand: "手札", grave: "墓地", eventCards: "その出来事のカード", revealed: "公開したカード" },
+  // castSpell トリガーの fromZone（どこから唱えた呪文か）。実行する元とは選べる値が違う
+  castFromZone: { hand: "手札", grave: "墓地" },
   searchDestination: { hand: "手札", deckTop: "山札の上", bz: "バトルゾーン", mana: "マナゾーン", under: "選んだカードの下" },
   zonesToBzFrom: { grave: "墓地", mana: "マナゾーン", hand: "手札", hyper: "超次元ゾーン" },
   meteorBurnTo: { grave: "墓地", mana: "マナゾーン", hand: "手札", shield: "シールド", deck: "山札の下" },
@@ -59,6 +62,8 @@ export const ENUMS = {
   owner: { destroyed: "破壊されたクリーチャーの持ち主" },
   selfFrom: { lastPut: "直前に出したクリーチャー" },
   // トリガーの target は「このカード自身」も書ける（効果ステップの target には無い値）
+  // 攻撃先（on:"attack" の attackTarget）。シールドブレイクもダイレクトアタックも "player"
+  attackTarget: { creature: "クリーチャー", player: "プレイヤー" },
   triggerTarget: { this: "このカード自身", self: "自分", opponent: "相手", both: "おたがい" },
 };
 
@@ -269,7 +274,7 @@ export const TRIGGER_SCHEMA = {
   creaturePutBz: { label: "出た時（cip）", scope: "this", keys: ["method", "paid", "manaTapped"] },
   cast: { label: "唱えた時（呪文の本体）", scope: null, keys: [] },
   castSpell: { label: "呪文を唱えた時", scope: "self", keys: ["method", "paid", "manaTapped", "fromZone"] },
-  attack: { label: "攻撃する時", scope: "this", keys: ["firstEachTurn"] },
+  attack: { label: "攻撃する時", scope: "this", keys: ["firstEachTurn", "attackTarget"] },
   attackEnd: { label: "攻撃の後で", scope: "this", keys: [] },
   block: { label: "ブロックした時", scope: "this", keys: [] },
   battle: { label: "バトルする時", scope: "this", keys: [] },
@@ -299,7 +304,8 @@ export const TRIGGER_KEY_SCHEMA = {
   method: { kind: "text", label: "出た方法（summon など）" },
   paid: { kind: "bool", label: "コストを支払った時だけ" },
   manaTapped: { kind: "bool", label: "マナをタップしたか" },
-  fromZone: { kind: "enum:playZone", label: "どのゾーンから唱えたか" },
+  fromZone: { kind: "enum:castFromZone", label: "どのゾーンから唱えたか" },
+  attackTarget: { kind: "enum:attackTarget", label: "攻撃先（プレイヤー / クリーチャー）" },
   lastCard: { kind: "bool", label: "最後に引いたカードだけ" },
   filter: { kind: "filter", label: "契機の条件（どのカードか）" },
   condition: { kind: "json", label: "誘発の条件（condition）" },
@@ -321,7 +327,7 @@ export const triggerLabel = on => TRIGGER_SCHEMA[on]?.label || on;
 export const TRIGGER_KEYS = new Set([
   "on", "target", "effects", "label", "optional", "oncePerTurn", "oncePerGame",
   "condition", "filter", "method", "paid", "manaTapped", "fromZone", "lastCard",
-  "turnOf", "firstEachTurn", "hyperOnly",
+  "turnOf", "firstEachTurn", "attackTarget", "hyperOnly",
   // 「○回選んで実行」の特殊形
   "type", "count", "templates",
 ]);
@@ -417,7 +423,7 @@ export function orderCardSteps(value) {
 export const CARD_KEY_ORDER = ["id", "name", "race", "cost", "power", "type", "civ",
   "keywords", "effect", "triggers"];
 export const TRIGGER_KEY_ORDER = ["on", "label", "target", "turnOf", "filter", "condition",
-  "method", "paid", "manaTapped", "fromZone", "lastCard", "firstEachTurn", "hyperOnly",
+  "method", "paid", "manaTapped", "fromZone", "lastCard", "attackTarget", "firstEachTurn", "hyperOnly",
   "oncePerTurn", "oncePerGame", "optional", "type", "count", "templates", "effects"];
 
 // 決めた並びにキーを揃える。並びに無いキーは末尾に、元の順のまま残す（sort は安定）

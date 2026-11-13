@@ -80,6 +80,8 @@ const COST_REDUCE_ZONES = new Set(["bz","shield","mana","grave","hand"]);
 const COUNT_ZONES = new Set(["bz","shield","mana","grave","hand","deck"]);
 // costReduce.amountPer 専用。「今回の召喚で重ねる進化元の枚数」を数える
 const AMOUNT_PER_ZONES = new Set([...COUNT_ZONES, "evolutionBase"]);
+// on:"attack" の attackTarget（攻撃先）。シールドブレイクもダイレクトアタックも "player"
+const ATTACK_TARGETS = new Set(["creature","player"]);
 const EVOLUTION_ZONES = new Set(["bz","grave","mana"]);
 const EVOLUTION_KEYS = new Set(["zone","count","min","neo","filter"]);
 // zonesToBz が候補を集められるゾーン
@@ -117,8 +119,9 @@ const ENTER_WHO = ["self","opponent","both"];
 // playFromHand で唱えられる（＝出せる）元のゾーン
 // on:"castSpell" の fromZone（どこから唱えた呪文か）
 const CAST_FROM_ZONES = new Set(["hand","grave"]);
-// playFromHand の zone。eventCards は「その誘発の元になった出来事のカード」（捨てたその呪文 等）
-const PLAY_FROM_ZONES = new Set(["hand","grave","eventCards"]);
+// playFromHand の zone。eventCards は「その誘発の元になった出来事のカード」（捨てたその呪文 等）、
+// revealed は reveal で公開したカード（そのまま実行する）
+const PLAY_FROM_ZONES = new Set(["hand","grave","eventCards","revealed"]);
 // zone:"bzCards"（バトルゾーンのカードを1枚ずつ）を書ける効果
 const BZ_CARDS_TYPES = new Set(["destroy","bzToHand","bzToMana","bzToShield"]);
 // search の行き先。"under" は pick で選んだカードの下
@@ -294,6 +297,10 @@ function checkOne(e, where) {
     errors.push(`${where}: search destination:"under" は under（pick で選んだカードの変数名）が必要です`);
   }
 
+  if (e.type === "playFromHand" && e.zone === "revealed" && e.target != null && e.target !== "self") {
+    errors.push(`${where}: playFromHand の zone:"revealed" に target は書けません（公開カードは`
+      + `プレイヤーごとに分かれていないので、"self" 以外だと同じカードを2回実行してしまう）`);
+  }
   if (e.type === "playFromHand" && e.zone != null && !PLAY_FROM_ZONES.has(e.zone)) {
     errors.push(`${where}: playFromHand の zone は ${[...PLAY_FROM_ZONES].join("/")}`);
   }
@@ -360,7 +367,9 @@ function checkEffect(eff, where) {
 
 // allowBothSides: 相手の盤面も見られる文脈か（triggers / activated）。
 // who が "opponent"/"any" の条件は継続能力（condPower / grantKeywords）には書けない。
-function checkCondition(cond, where, allowBothSides = false) {
+// allowEvolutionBase: cardCount の zone:"evolutionBase"（今回の召喚で重ねる進化元の枚数）を
+// 書ける文脈か。この値はプレイ時にしか決まらず、costReduce の評価にだけ渡している。
+function checkCondition(cond, where, allowBothSides = false, allowEvolutionBase = false) {
   if (!cond || typeof cond !== "object") return;
   if (cond.flag) return; // 任意のプレイヤー状態フラグ
   if (!cond.type) { errors.push(`${where}: condition に type も flag もありません`); return; }
@@ -398,7 +407,12 @@ function checkCondition(cond, where, allowBothSides = false) {
   // cardCount:「あるゾーンの、ある条件のカードが N 枚以上／以下」。zone と min/max を取る
   if (cond.type === "cardCount") {
     if (cond.who != null && !CONDITION_WHO.includes(cond.who)) errors.push(`${where}: condition の who は ${CONDITION_WHO.join("/")}`);
-    if (!COUNT_ZONES.has(cond.zone)) errors.push(`${where}: condition "cardCount" の zone が不正です（${[...COUNT_ZONES].join("/")}）`);
+    if (cond.zone === "evolutionBase") {
+      // 「NEO進化クリーチャーとして召喚するなら」。盤面のゾーンではなく今回重ねる枚数を見るので、
+      // プレイ時の文脈を受け取る costReduce の中でしか意味を持たない（他では常に 0 になる）
+      if (!allowEvolutionBase) errors.push(`${where}: condition "cardCount" の zone:"evolutionBase" は costReduce.condition でのみ使えます`);
+      if (cond.who != null) errors.push(`${where}: condition "cardCount" の zone:"evolutionBase" に who は書けません（盤面を見ないので無意味です）`);
+    } else if (!COUNT_ZONES.has(cond.zone)) errors.push(`${where}: condition "cardCount" の zone が不正です（${[...COUNT_ZONES].join("/")}/evolutionBase）`);
     if (cond.min == null && cond.max == null) errors.push(`${where}: condition "cardCount" に min か max が必要です`);
     for (const k of ["min","max"]) if (cond[k] != null && typeof cond[k] !== "number") errors.push(`${where}: condition の ${k} は数値`);
     checkFilterKeys(cond.filter, `${where}.condition(cardCount)`);
@@ -444,6 +458,16 @@ function checkTrigger(tr, where) {
     if (tr.on !== "draw") errors.push(`${where}(${tr.on}): lastCard は on:"draw" でのみ使えます`);
   }
   if (tr.oncePerGame != null && typeof tr.oncePerGame !== "boolean") errors.push(`${where}(${tr.on}): oncePerGame は真偽値`);
+  if (tr.firstEachTurn != null) {
+    if (typeof tr.firstEachTurn !== "boolean") errors.push(`${where}(${tr.on}): firstEachTurn は真偽値`);
+    if (tr.on !== "attack") errors.push(`${where}(${tr.on}): firstEachTurn は on:"attack" でのみ使えます`);
+  }
+  // attackTarget: 攻撃先がプレイヤーかクリーチャーか。「クリーチャーが自分を攻撃する時」は
+  // target:"opponent" ＋ attackTarget:"player"（シールドブレイクもダイレクトアタックも "player"）
+  if (tr.attackTarget != null) {
+    if (tr.on !== "attack") errors.push(`${where}(${tr.on}): attackTarget は on:"attack" でのみ使えます`);
+    if (!ATTACK_TARGETS.has(tr.attackTarget)) errors.push(`${where}(${tr.on}): attackTarget は ${[...ATTACK_TARGETS].join("/")}`);
+  }
   if (tr.fromZone != null) {
     if (tr.on !== "castSpell") errors.push(`${where}(${tr.on}): fromZone は on:"castSpell" でのみ使えます`);
     else if (!CAST_FROM_ZONES.has(tr.fromZone)) errors.push(`${where}(${tr.on}): fromZone は ${[...CAST_FROM_ZONES].join("/")}`);
@@ -775,7 +799,7 @@ function checkAbilityFields(obj, where) {
     if (cr.amount == null && cr.amountPer == null) errors.push(`${where}.costReduce: amount か amountPer が必要です`);
     if (cr.amount != null && typeof cr.amount !== "number") errors.push(`${where}.costReduce: amount は数値`);
     if (cr.amountPer && !AMOUNT_PER_ZONES.has(cr.amountPer.zone)) errors.push(`${where}.costReduce.amountPer: 未知のzone "${cr.amountPer.zone}"`);
-    checkCondition(cr.condition, `${where}.costReduce`);
+    checkCondition(cr.condition, `${where}.costReduce`, false, true);
   }
 }
 
