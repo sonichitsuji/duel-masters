@@ -459,7 +459,10 @@
           {
             "type": "tap",
             "target": "opponent",
-            "all": true
+            "all": true,
+            "filter": {
+              "creatureOnly": true
+            }
           }
         ]
       }
@@ -1054,7 +1057,10 @@
           {
             "type": "tap",
             "target": "opponent",
-            "all": true
+            "all": true,
+            "filter": {
+              "creatureOnly": true
+            }
           }
         ]
       }
@@ -1473,7 +1479,10 @@
             "label": "相手のクリーチャーをすべてタップする",
             "type": "tap",
             "target": "opponent",
-            "all": true
+            "all": true,
+            "filter": {
+              "creatureOnly": true
+            }
           }
         ]
       }
@@ -1717,7 +1726,10 @@
         {
           "type": "tap",
           "target": "opponent",
-          "all": true
+          "all": true,
+          "filter": {
+            "creatureOnly": true
+          }
         },
         {
           "label": "相手のタップ数を数える",
@@ -4735,7 +4747,10 @@
             "label": "相手のクリーチャーをすべてタップする",
             "type": "tap",
             "target": "opponent",
-            "all": true
+            "all": true,
+            "filter": {
+              "creatureOnly": true
+            }
           }
         ]
       },
