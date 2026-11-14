@@ -1,4 +1,4 @@
-import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases } from "../gameLogic";
+import { shuffle, extractFromBattle, extractManyFromBattle, extractCardsFromBattle, getEffectivePower, getCardCivs, isElement, hasKeyword, isUnselectableByOpponent, hasPlayTrigger, isEvolutionNow, withJustDiver, spellDenyReason, creaturePutDenyReason, addRestriction, cardFace, cardHasRace, computeGrantedRaces, evolutionSpec, stackEvolutionBases, carryUpBaseBuffs } from "../gameLogic";
 import { KEYWORD_LABELS, ZONE_LABELS } from "../constants";
 
 // ===========================
@@ -119,6 +119,10 @@ export function matchFilter(card, filter, ctx) {
   if (f.tapped != null && !!card.tapped !== !!f.tapped) return false;
   if (f.cost != null && card.cost !== resolveAmount(ctx, f.cost, f.cost)) return false;
   if (f.maxCost != null && !(card.cost <= resolveAmount(ctx, f.maxCost, f.maxCost))) return false;
+  // maxCostSelf:「このクリーチャー以下のコスト」。比べる相手は能力の持ち主（srcCost）。
+  // 超魂Xで上のクリーチャーに与えられた場合、持ち主はその上のクリーチャーなので、
+  // 基準になるコストもそちらのものになる。持ち主が分からない時は何も通さない
+  if (f.maxCostSelf && !(card.cost <= (ctx?.srcCost ?? -1))) return false;
   if (f.minCost != null && !(card.cost >= resolveAmount(ctx, f.minCost, f.minCost))) return false;
   if (f.maxPower != null && !((card.power || 0) <= resolveAmount(ctx, f.maxPower, f.maxPower))) return false;
   if (f.minPower != null && !((card.power || 0) >= resolveAmount(ctx, f.minPower, f.minPower))) return false;
@@ -128,6 +132,8 @@ export function matchFilter(card, filter, ctx) {
   if (f.psychic != null && !!card.psychic !== !!f.psychic) return false;
   // evolution: 進化クリーチャーかどうか（type:"evo_creature" と NEO進化の両方）
   if (f.evolution != null && isEvolutionNow(card) !== !!f.evolution) return false;
+  // neo: NEO進化能力を持つカード（NEOクリーチャー）。→ gameLogic の matchCardFilter と同じ
+  if (f.neo != null && !!evolutionSpec(card)?.neo !== !!f.neo) return false;
   if (f.type && !anyOf(f.type, t => matchesType(card, t))) return false;
   // not: 「〜ではない」。中身は filter と同じ語彙で、1つでも一致したら弾く。
   // 配列を書けば「そのどれにも当てはまらない」＝ AND で否定する
@@ -145,6 +151,12 @@ const PSEUDO_ZONES = new Set(["revealed", "lastMoved", "eventCards", "wasUnder"]
 const ZONE_STATE_KEY = { hand: "hand", bz: "battle", battle: "battle", bzCards: "battle", mana: "mana", grave: "grave", shield: "shields", deck: "deck", hyper: "hyper", eventCards: "grave", wasUnder: "grave" };
 // バトルゾーンを見るゾーン。"bz" はエレメント単位、"bzCards" はカード単位
 const BZ_ZONES = new Set(["bz", "battle", "bzCards"]);
+
+// クリーチャーをバトルゾーンに出す効果と、その「出所」。
+// staticDeny の cantPutCreatureFromNonHand が出所を見るので型ごとに持たせる。
+// zonesToBz は手札を含むことがあり1つに決められないので、出所を見ない側（hand）に倒す。
+const PUT_BZ_FROM_ZONE = { handToBz: "hand", graveToBz: "grave", manaToBz: "mana",
+  revealedToBz: "deck", zonesToBz: "hand", playFromHand: "hand" };
 
 function zoneCards(state, zone, ctx) {
   switch (zone) {
@@ -264,7 +276,7 @@ const SOURCE = {
 };
 // 選択を要さず自動実行される効果
 const AUTO_TYPES = new Set(["drawCards","reveal","topToGrave","topToMana","topToShield","topToUnder","count",
-  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck","awaken","unawaken"]);
+  "revealedToDeckBottom","scheduleReviveSubjectEndOfTurn","untapAllMana","grantSummonFrom","denySpell","limitAttackBlock","winGame","shuffleDeck","awaken","unawaken","usePlayTrigger"]);
 // 「数字を1つ選ぶ」。カードを選ばないので候補は空だが、選択は要る
 const NUMBER_CHOICE_TYPES = new Set(["chooseNumber"]);
 
@@ -356,7 +368,7 @@ export const stepSelectsCards = type => !!SOURCE[type];
 
 export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, srcCard) {
   const type = effect.type;
-  const c2 = { ...ctx, srcName: srcCard?.name };
+  const c2 = { ...ctx, srcName: srcCard?.name, srcCost: cardFace(srcCard)?.cost };
   // 「数字を1つ選ぶ」。カードは選ばないので候補は空だが、数字を決めるまで確定できない。
   // max を書かなければ上限なし（DMの「数字を1つ選ぶ」は好きな数字を宣言できる）
   if (NUMBER_CHOICE_TYPES.has(type)) {
@@ -413,7 +425,8 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
     }
   }
   // 「このクリーチャーを破壊する」は選択不要
-  if (type === "destroy" && effect.self) return { candidates: [], isAuto: true };
+  // destroy / grant の self:true は「このクリーチャー」を指すので選ばせない
+  if ((type === "destroy" || type === "grant") && effect.self) return { candidates: [], isAuto: true };
   // 「そのクリーチャー」＝誘発の主体。選ばせずに確認だけ出す
   if (effect.subject) {
     const subj = ctx?.subjectCard;
@@ -434,6 +447,18 @@ export function getEffectCandidates(effect, selfState, otherState, ctx, p1, p2, 
   // 呪文を唱えられない状態なら、唱える候補から呪文を外す（見せてから弾かない）
   if (type === "playFromHand") {
     cards = cards.filter(c => !spellDenyReason(faceFor(c), selfState, otherState));
+  }
+  // クリーチャーを出せない状態（staticDeny の cantPutCreature／各ターンの回数制限）なら、
+  // 出す候補からクリーチャーを外す。呪文と同じく「見せてから弾かない」
+  if (PUT_BZ_FROM_ZONE[type]) {
+    const from = type === "playFromHand" ? (effect.zone || "hand") : PUT_BZ_FROM_ZONE[type];
+    cards = cards.filter(c => {
+      if (!isCreatureSide(faceFor(c))) return true;
+      // 出す先は「そのカードの持ち主」。owners に無ければこの効果の持ち主のもの
+      const op = owners[c.uid] || (selfState === p1 ? "p1" : "p2");
+      const [own, oth] = op === "p1" ? [p1, p2] : [p2, p1];
+      return !creaturePutDenyReason(own, oth, from, c);
+    });
   }
   // 「好きな順序で置く」は選んだ順がそのまま並び順になるので、all 指定でも必ず選択させる
   if (effect.order === "choose") {
@@ -477,7 +502,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
   const setOther   = ownerPid === "p1" ? setP2 : setP1;
   const oppPid     = ownerPid === "p1" ? "p2" : "p1";
   const pid = ownerPid === "p1" ? "P1" : "P2";
-  const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name };
+  const ctx = { ...context, vars: { ...(context?.vars || {}) }, srcName: srcCard?.name, srcCost: cardFace(srcCard)?.cost };
   // 「そうしたら」判定用。このステップを実際に行ったか。各 case が明示しなければ末尾で既定値を入れる
   ctx.stepDone = undefined;
   // 「〜してもよい」を見送った（モーダルの「スキップ」）。何も起こさず、「そうしたら」も繋がない。
@@ -507,6 +532,20 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     : targetPids(tgt, ownerPid, ctx);
   // 選ばれたカードを対象プレイヤーごとにまとめる。
   // all:true なら選択の代わりに filter 一致すべてを対象にする（「すべて〜する」）。
+  // 「クリーチャーを出せない／各ターン◯体まで」を、出す直前にもう一度見る。
+  // 候補を外す側（getEffectCandidates）だけでは、takeAll や「2体出す」のように
+  // 選択を伴わない経路が素通りするため。1回の効果で複数体出す時は、残り枠のぶんだけに絞る
+  const limitPut = (pidx, cards, from) => {
+    const [own, oth] = pidx === "p1" ? [p1, p2] : [p2, p1];
+    let put = 0;
+    return cards.filter(c => {
+      if (!isCreatureSide(c)) return true;
+      const st = put ? { ...own, creaturesPutThisTurn: (own.creaturesPutThisTurn || 0) + put } : own;
+      if (creaturePutDenyReason(st, oth, from, c)) return false;
+      put++;
+      return true;
+    });
+  };
   const pickSelected = (zone) => {
     const out = [];
     for (const pidx of pids) {
@@ -561,7 +600,8 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       if (!uids?.length) return c;
       const r = stackEvolutionBases(st, evolutionSpec(c) || { zone: "bz" }, uids);
       st = r.state;
-      return { ...c, evolutionBase: r.bases };
+      // 進化元に付いていた「離れない」などの保護は、同じクリーチャーのものとして上へ続く
+      return carryUpBaseBuffs({ ...c, evolutionBase: r.bases }, r.bases);
     });
     return { state: st, cards: out };
   };
@@ -714,9 +754,11 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const matched = pool.filter(c => matchFilter(c, effect.filter, ctx));
       // revealedToDeckBottom は「残りをすべて」戻すのが既定。
       // order:"choose"（好きな順序で置く）なら、選んだ順がそのまま並び順になる。
-      const take = (type === "revealedToDeckBottom")
+      const chosen = (type === "revealedToDeckBottom")
         ? (effect.order === "choose" ? selectedUids.map(uid => pool.find(c => c.uid === uid)).filter(Boolean) : pool)
         : (effect.takeAll ? matched : matched.filter(c => selectedUids.includes(c.uid)));
+      // takeAll は選択を伴わないので、出せない状態はここで間引く（出所は山札）
+      const take = type === "revealedToBz" ? limitPut(ownerPid, chosen, "deck") : chosen;
       if (take.length > 0) {
         setSelf(s => {
           const b = { ...s };
@@ -747,7 +789,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     // ---------- 手札から ----------
     case "handToBz": {
-      for (const { pidx, cards } of pickSelected("hand")) {
+      for (const { pidx, cards: picked } of pickSelected("hand")) {
+        const cards = limitPut(pidx, picked, "hand");
+        if (!cards.length) continue;
         const uids = cards.map(c => c.uid);
         const kw = effect.tempKeyword;
         setOf(pidx)(s => { const r = withNeoBases({ ...s, hand: s.hand.filter(c => !uids.includes(c.uid)) }, cards);
@@ -810,11 +854,24 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
     case "playFromHand": {
       // 型名は playFromHand のままだが、zone で唱える場所を選べる（既定 "hand"、"grave" など）
       const fromZone = effect.zone || "hand";
+      // zone:"revealed" は「公開したカードをそのまま実行する」。公開カードは reveal の時点で
+      // 山札から抜けていてどのゾーンにも居ないので、ゾーンからは取り除かず ctx.revealed から外す
+      const fromRevealed = fromZone === "revealed";
       const key = ZONE_STATE_KEY[fromZone] || "hand";
       for (const { pidx, cards } of pickSelected(fromZone)) {
+        let putCount = 0;
         for (const card of cards) {
           const uid = card.uid;
-          const take = s => ({ ...s, [key]: s[key].filter(c => c.uid !== uid) });
+          const take = fromRevealed ? (s => s) : (s => ({ ...s, [key]: s[key].filter(c => c.uid !== uid) }));
+          if (fromRevealed) ctx.revealed = (ctx.revealed || []).filter(c => c.uid !== uid);
+          // 「クリーチャーを出せない／各ターン◯体まで」。複数体まとめて召喚する時も
+          // 残り枠のぶんで止まるよう、ここまでに出した数を足して見る
+          if (playSide(effect, card) !== "spell" && card.type !== "castle") {
+            const [own, oth] = pidx === "p1" ? [p1, p2] : [p2, p1];
+            const st = putCount ? { ...own, creaturesPutThisTurn: (own.creaturesPutThisTurn || 0) + putCount } : own;
+            if (isCreatureSide(card) && creaturePutDenyReason(st, oth, fromZone, card)) continue;
+            putCount++;
+          }
           const zoneLabel = fromZone === "hand" ? "" : `${ZONE_LABELS[fromZone] || fromZone}から`;
           const freeLabel = effect.free ? "コストを支払わずに" : "";
           if (playSide(effect, card) === "spell") {
@@ -822,7 +879,7 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
             const face = spellFace(card);
             // 唱えている間、呪文はどのゾーンにもいない。元のゾーンから取り除くだけにして、
             // 解決しきった時に墓地へ置くのは BattleScreen 側（ctx.castSpell を受けて後始末する）
-            setOf(pidx)(take);
+            if (!fromRevealed) setOf(pidx)(take);
             addLog(`${pid}: 「${face.name}」を${zoneLabel}${freeLabel}唱えた`);
             // card = 実際に動かす元のカード（ツインパクトなら本体）、face = 唱えている面
             // afterCast =「そうしたら、唱えた後、墓地に置くかわりに〜」。この1回の cast にだけ乗る
@@ -850,7 +907,9 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
 
     // ---------- マナから ----------
     case "manaToBz": {
-      for (const { pidx, cards } of pickSelected("mana")) {
+      for (const { pidx, cards: picked } of pickSelected("mana")) {
+        const cards = limitPut(pidx, picked, "mana");
+        if (!cards.length) continue;
         const uids = cards.map(c => c.uid);
         setOf(pidx)(s => { const r = withNeoBases({ ...s, mana: s.mana.filter(c => !uids.includes(c.uid)) }, cards);
           return { ...r.state,
@@ -1069,7 +1128,10 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       break;
     }
     case "grant": {
-      const targets = selfState.battle.filter(c => selectedUids.includes(c.uid));
+      // self:true =「このクリーチャーに与える」（destroy の self と同じ読み方）
+      const targets = effect.self
+        ? selfState.battle.filter(c => c.uid === ctx?.srcCardUid)
+        : selfState.battle.filter(c => selectedUids.includes(c.uid));
       for (const card of targets) {
         setSelf(s => ({ ...s, battle: s.battle.map(c => c.uid === card.uid ? {
           ...c,
@@ -1115,12 +1177,14 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
       const picked = zones.map(z => ({ z, key: ZONE_STATE_KEY[z] || z }))
         .map(({ z, key }) => ({ z, key, cards: (st[key] || []).filter(c => selectedUids.includes(c.uid)) }))
         .filter(x => x.cards.length);
-      const cards = picked.flatMap(x => x.cards);
+      // 出所は複数ありうる（zonesToBz）。出所を見る常在型は hand 側に倒してある（→ PUT_BZ_FROM_ZONE）
+      const cards = limitPut(owner, picked.flatMap(x => x.cards), zones.length === 1 ? zones[0] : "hand");
       if (!cards.length) break;
+      const keep = new Set(cards.map(c => c.uid));
       setOf(owner)(s => {
         let b = { ...s };
         for (const { key, cards: cs } of picked) {
-          const uids = cs.map(c => c.uid);
+          const uids = cs.filter(c => keep.has(c.uid)).map(c => c.uid);
           b[key] = (b[key] || []).filter(c => !uids.includes(c.uid));
         }
         const r = withNeoBases(b, cards);
@@ -1229,6 +1293,13 @@ export function executeEffect(effect, selectedUids, context, ownerPid, p1, setP1
         addLog(`${pid}: 墓地の${cards.length}枚を${effect.order === "choose" ? "好きな順序で" : "シャッフルして"}山札の下へ`);
         ctx.lastMoved = cards;
       }
+      break;
+    }
+    // 「このクリーチャーの『出た時』能力を1つ使う」。能力の持ち主（超魂Xなら上のクリーチャー）の
+    // cip を数え上げて選ばせるのは盤面の仕事なので、ここでは合図を立てるだけにする
+    // （castSpell / creatureEnteredBz と同じ流儀）。BattleScreen の advanceStep が受け取る
+    case "usePlayTrigger": {
+      if (ctx.srcCardUid) ctx.usePlayTrigger = { ownerPid, cardUid: ctx.srcCardUid };
       break;
     }
     case "shuffleDeck": {

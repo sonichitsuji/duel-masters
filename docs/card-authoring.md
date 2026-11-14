@@ -138,8 +138,22 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 `hasCip`(「このクリーチャーが出た時」で始まる能力を持つ) `psychic`(サイキック・クリーチャーかどうか)
 `evolution`(**いま**進化クリーチャーか。`type:"evo_creature"` と、下にカードのある進化／NEO進化)
 `notSelf`(「自分の**他の**〜」。その効果の持ち主自身を除く)
+`maxCostSelf`(「**このクリーチャー以下**のコスト」→ 下記)
+`neo`(**NEO進化能力を持つ**カード＝NEOクリーチャー。`evolution` とは別物 → 下記)
 `not`(「〜ではない」→ 下記)
 ※ `maxCost` `minCost` `maxPower` `minPower` には**変数名の文字列**も書けます。
+
+> **`neo: true`** は「NEO進化能力を**持つ**カード」（NEOクリーチャー）。
+> `evolution` が「**いま**進化クリーチャーか（下にカードが積まれているか）」なのに対し、
+> `neo` は印刷された能力を見るので**手札や山札のカードにも効きます**。
+> 「自分のNEOクリーチャーの召喚コストを1少なくする」（ソウルサンライト コハク）のように、
+> 手札のカードを見るコスト軽減ではこちらを使います。
+
+> **`maxCostSelf: true`** は「このクリーチャー以下のコスト」。数値ではなく**能力の持ち主のコスト**と比べます。
+> 超魂X（§7.5）で上のクリーチャーに与えられた能力なら、持ち主はその上のクリーチャーなので、
+> 基準になるコストもそちらのものになります（昇カオスマントラ）。
+> 「**マナゾーンの枚数**以下のコスト」のように数えた結果と比べる時は、`count` で変数に入れてから
+> `maxCost:"<変数名>"` を使ってください（§3）。
 
 > **キー名は `npm run validate-cards` が検査します。** 効果ステップと `filter` に未知のキーがあると
 > エラーになるので、`takeall`（正: `takeAll`）や `civs`（正: `civ`）のような綴り違いは検出されます。
@@ -401,6 +415,7 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
   - `as:"変数名"` … **捨てた枚数**を変数に控える（`manaToGrave` の `as` と同じ規約）
   - `asCost:"変数名"` … 捨てたカードのコストを変数に控える（`destroy` の `asCost` と同じ規約）
 - `playFromHand {free,filter,zone,side,subject}` — **実行**（呪文=唱える／クリーチャー=召喚／城=表向きシールド化）
+  - `zone`: `"hand"`(既定) / `"grave"` / `"eventCards"` / `"revealed"`（公開したカード → **§5.3**）
   - `zone`: 唱える（出す）元のゾーン。`"hand"`（既定）/ `"grave"` → **§5.2**
   - `side`: ツインパクトのどちらの面としてプレイするか（`"creature"` / `"spell"`）→ **§5.2**
   - `afterCast`: 「そうしたら、唱えた後、墓地に置くかわりに〜」（唱えた1枚だけに乗る置換）→ **§7.22**
@@ -529,7 +544,7 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 ```jsonc
 {
   "type": "playFromHand",
-  "zone": "grave",                              // "hand"(既定) / "grave"
+  "zone": "grave",                              // "hand"(既定) / "grave" / "revealed"
   "target": "self",
   "free": true,
   "optional": true,
@@ -561,6 +576,37 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 
 **`filter` は「プレイする面」に対して判定します。** ツインパクトは呪文面のコストが
 クリーチャー面と違うので、`{"type":"spell","maxCost":4}` は**呪文面のコスト**を見ます。
+
+### 5.3. 公開したカードをそのまま実行する（`playFromHand {zone:"revealed"}`）
+
+> 自分の山札の上から1枚を見てもよい。それが自分の手札の枚数以下のコストを持つカードなら、
+> **コストを支払わずに実行してもよい**。実行しないなら、自分の手札に加える。
+
+`reveal` で公開したカードは山札から抜けていて**どのゾーンにも居ません**。
+`zone:"revealed"` はその公開カードをそのまま実行します（呪文なら唱える、クリーチャーなら召喚）。
+
+```jsonc
+[ { "label": "自分の手札の枚数を数える", "type": "count", "zone": "hand", "target": "self" },
+  { "label": "自分の山札の上から1枚を見る", "type": "reveal", "amount": 1 },
+  { "label": "手札の枚数以下のコストを持つカードなら、コストを支払わずに実行してもよい",
+    "type": "playFromHand", "zone": "revealed",
+    "filter": { "maxCost": "count" }, "free": true, "optional": true },
+  { "label": "実行しないなら、自分の手札に加える", "type": "revealedToHand", "takeAll": true } ]
+```
+
+**3点セットで書きます。** `reveal` → `playFromHand {zone:"revealed"}` → `revealedTo*`。
+
+- **実行しなかったカードの行き先は必ず自分で書く。** `revealedTo*` は「公開カードの残り」を拾うので、
+  実行したカードは自動的に外れます。最後のステップを書き忘れると公開カードが宙に浮きます
+- **`ifPrevious` を書いてはいけません。** `ifPrevious` は「直前を**行った**時だけ続ける」なので、
+  最後のステップに付けると**見送った時に手札へ戻らず消えます**（否定形の `ifPrevious` はありません）
+- **`target` を書いてはいけません。** 公開カードはプレイヤーごとに分かれていないので、
+  `"self"`（既定）以外にすると同じカードを2回実行しようとします（validator が弾きます）
+- 公開した**ツインパクト**は常にクリーチャー面で召喚されます（面を選ばせる仕組みはありません）。
+  呪文面に固定したい時は `filter` に `"type":"nonCreature"` を足します
+- 唱えた呪文は解決後に墓地へ行きます。`castSpell` トリガーの `fromZone` は `"revealed"` になるので、
+  `fromZone:"hand"` を指定したカードは誘発しません
+- 山札が0枚なら公開は0枚で、後続2ステップは無害に空振りします
 
 ### 効果でバトルゾーンに出したクリーチャーの召喚酔い
 
@@ -634,7 +680,7 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 | `cast` | **この呪文を唱えた時＝呪文の本体**。誘発型能力ではないので `target` などは書けない（→ §2） |
 | `creaturePutBz` | クリーチャーがバトルゾーンに出た時（`method` 指定可）。既定 `target:"this"` なので、そのまま書けば **cip（出た時）** になる |
 | `castSpell` | 呪文を唱えた時（`fromZone` 指定可＝どこから唱えたか） |
-| `attack` | クリーチャーが攻撃する時（`firstEachTurn` 指定可） |
+| `attack` | クリーチャーが攻撃する時（`firstEachTurn` / `attackTarget` 指定可） |
 | `attackEnd` | **攻撃の終わり**（攻撃終了ステップ）。攻撃したクリーチャーが戦闘で破壊されていた場合、そのクリーチャー自身の能力は誘発しない |
 | `leave` | カードが離れた時 |
 | `destroyed` | 破壊された時 |
@@ -684,7 +730,8 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 | `method` | **どうやって出したか**。`"summon"` / `"put"`（`creaturePutBz` 専用）／ `"cast"`（`castSpell` 専用）→ **§7.6.5** |
 | `paid` | **コストを支払ったか**（`creaturePutBz` / `castSpell`）。`true` / `false` → **§7.6.5** |
 | `manaTapped` | **マナゾーンのカードを実際にタップしたか**（`creaturePutBz` / `castSpell`）。`paid` とは別物 → **§7.6.5** |
-| `firstEachTurn` | `attack` 等で「各ターン最初の1回のみ」 |
+| `firstEachTurn` | `attack` で「各ターン最初の1回のみ」（`attack` 専用） |
+| `attackTarget` | `attack` で攻撃先を絞る。`"player"` / `"creature"`（`attack` 専用） |
 | `optional` | 「〜してもよい」 |
 | `hyperOnly` | ハイパーモード時のみ発火 |
 | `oncePerTurn` | 「各ターンに一度」。実際に解決した時だけ消費（辞退しても消費しない） |
@@ -703,6 +750,12 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 
 // 各ターン、はじめて自分のクリーチャーが攻撃する時
 {"on":"attack","target":"self","firstEachTurn":true,"effects":[ … ]}
+
+// 各ターンに一度、クリーチャーが自分（プレイヤー）を攻撃する時
+// ＝ 相手のクリーチャーが攻撃し、その攻撃先がプレイヤーである時。シールドブレイクも
+//    ダイレクトアタックも攻撃先は "player" なので、両方とも拾える
+{"on":"attack","target":"opponent","attackTarget":"player","oncePerTurn":true,
+ "optional":true,"effects":[ … ]}
 
 // 相手が呪文を唱えた時
 {"on":"castSpell","target":"opponent","effects":[ … ]}
@@ -889,6 +942,12 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 
 > `oncePerTurn` は「実際に解決した時だけ消費」なので、「〜してもよい」を**辞退すると
 > 同じターンにもう一度誘発しえます**。本来は辞退しても打ち止めですが、この差は許容しています。
+
+> **`optional` はトリガー側に書きます。** 消費を決める `markAbilityUsed` は解決を始める時点で
+> 走るので、**ステップ側に `optional` を書くと「やらない」を選んでも `oncePerTurn` を使い切ります**。
+> トリガー側なら誘発順序モーダルの「発動しない」で消費せずに済みます。
+> 「各ターンに一度、〜してもよい」はトリガーに `optional:true`、
+> その中の「さらに〜してもよい」はステップに `optional:true`、という書き分けです。
 
 ## 7.7. 墓地・マナゾーンからの召喚（`summonFrom` / `grantSummonFrom`）
 
@@ -1157,7 +1216,7 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
 
 | キー | 説明 |
 |---|---|
-| `to` | `"mana"`(既定) / `"hand"` / `"shield"` / `"deck"`（**山札の下**） / `"effect"`（下記） |
+| `to` | `"mana"`(既定) / `"hand"` / `"shield"`（裏向き・下記） / `"deck"`（**山札の下**） / `"effect"`（下記） |
 | `from` | `"destroy"` と書くと**破壊される時だけ**に限定する（省略すると離れ方を問わない） |
 | `turnOf` | **誰のターンに起きた時か**。`"self"` / `"opponent"` / `"both"`（既定）。持ち主から見た関係 |
 | `filter` | どのカードに適用するか（省略で全部） |
@@ -1219,6 +1278,39 @@ JSON を手で書かずに作りたい時は、メニューの **カード管理
   `bzToMana` / `bzToShield`）。エスケープは「破壊されるかわりに」なので墓地へ送る効果にだけ効きます
 - 同じカードに複数の置換がかかりうる場合は、**エスケープ → G-NEO進化 → `replaceLeave`** の順に
   1つずつ聞きます。中止したものは同じ除去の中で聞き直しません
+- `to:"shield"` は**裏向き**のシールドになります。**進化クリーチャーなら本体と進化元の全部が
+  シールドになる**（＝枚数ぶんシールドが増える）ので、`replaceShieldAdd`（→ §7.29）の判定も
+  その全部に掛かります
+
+> **「自分の進化クリーチャーが破壊される時、墓地に置くかわりにシールド化してもよい」**
+> （回転の精霊ナイッショエル）は、`filter` に `self` を書かないので**自分の進化クリーチャー全体**に効きます。
+> ```jsonc
+> "replaceLeave": [ { "from":"destroy", "to":"shield", "filter":{ "evolution":true } } ]
+> ```
+> `filter.evolution` は「**いま**進化クリーチャーか」（`isEvolutionNow`）なので、
+> NEO進化クリーチャーは**下にカードが積まれている間だけ**対象になります。
+
+### 「このクリーチャーは離れない」（キーワード `cantLeave`）
+
+> このクリーチャーが出た時、次の自分のターンのはじめまで、このクリーチャーは離れない。
+> （ソウルサンライト コハク）
+
+置換ではなく**禁止**ですが、他の置換と同じ窓口（`leaveReplacementFor`）に並べてあるので、
+**§0 のとおり必ず「例外処理で中止」で通常どおり離れさせられます**。
+
+```jsonc
+// 出た時に、自分自身へ「次の自分のターンのはじめまで」付ける
+{ "label":"次の自分のターンのはじめまで、このクリーチャーは離れない",
+  "type":"grant", "self":true, "keywords":["cantLeave"], "expires":"ownTurnStart" }
+```
+
+- **`grant` の `self:true`** =「このクリーチャーに与える」（`destroy` の `self` と同じ読み方）。
+  選ばせずに能力の持ち主へ付きます
+- **`expires:"ownTurnStart"`** = 次の自分のターンのはじめまで（ジャストダイバーと同じ期限）。
+  書かなければ `"endOfTurn"`（そのターンの終わりまで）
+- **上にカードが重なっても引き継がれます。** 付与された保護は「そのクリーチャー」のものなので、
+  NEO進化などで上に重ねた後も続きます（`carryUpBaseBuffs`）。
+  下に敷いたカードの `tempBuff` は普段は上から読まれないので、重ねる時に持ち上げています
 
 ## 7.17. 超次元ゾーンとサイキック・クリーチャー（`hyper` / `psychic` / `awakenSide`）
 
@@ -1562,6 +1654,32 @@ DMでは、**同じイベントを置換する効果が2つ以上あっても、
 `staticDeny` は**相手**に効きます（バトルゾーン＋表向きシールドで有効）。
 `type` は `cantPutCreature` / `cantPutCreatureFromNonHand` / `cantCastSpell`。
 
+| キー | 説明 |
+|---|---|
+| `type` | 上の3つ |
+| `filter` | 対象の条件（省略すると全部） |
+| `maxPerTurn` | **書かなければ全面禁止。** `1` なら「各ターン1回しか〜できない」 |
+| `condition` | そのカード自身を見る条件（`checkGrantCondition`）。満たさない間は効かない |
+| `label` | 弾いた時にUIに出す理由（省略時は既定文言にカード名が入る） |
+
+**1枚で複数の常在型を持つなら配列**で書きます（一音の妖精）。
+
+```jsonc
+"staticDeny": [
+  { "type": "cantCastSpell", "maxPerTurn": 1 },
+  // 「これが進化クリーチャーなら、相手は各ターン1体しかクリーチャーを出せない」
+  { "type": "cantPutCreature", "maxPerTurn": 1, "condition": { "type": "isEvolution" } }
+]
+```
+
+> **`condition: {"type":"isEvolution"}`** は「これが進化クリーチャーなら」。
+> NEO進化（§7.26）は**下にカードがある間だけ**進化クリーチャーなので、
+> 重ねずに出せばこの制限はかかりません。`{"value":false}` を書けば「進化でないなら」。
+
+> **`maxPerTurn` の回数は、唱えた／出たの誘発（`castSpell` / `creaturePutBz`）で数えます。**
+> 入口がいくつあっても最後はそこを通るので、数える場所は1か所です。
+> 回数は**各ターン、両プレイヤーぶん**数え直します（相手のターン中もS・トリガーなどで増えるため）。
+
 **効く場所は5つ**あり、どれも「見せてから弾く」のではなく**先に外す**ようにしてあります。
 
 | 経路 | 挙動 |
@@ -1640,6 +1758,24 @@ DMでは、**同じイベントを置換する効果が2つ以上あっても、
 
 `power` は数値のままで、**表示にだけ `+` が付きます**。パワーの計算には一切影響しません
 （革命0 が成立していれば `15000+` と出ます）。
+
+### シールドゾーンの**他の**カードに S・トリガーを与える（`grantShieldSTrigger`）
+
+> 自分のシールドゾーンにあるNEOクリーチャーと進化クリーチャーすべてに「S・トリガー」を与える。
+> （～啓示ある天騎士～）
+
+`grantSelfSTrigger` が「**このカード自身**に与える」のに対し、こちらは**他のカード**に配ります。
+通常の `grantKeywords` は受け手がバトルゾーンのカードに限られるので、シールドには届きません。
+
+```jsonc
+// 配列の各要素は OR（どれか1つに当てはまれば与える）
+"grantShieldSTrigger": [ { "filter": { "neo": true } },
+                         { "filter": { "type": "evo_creature" } } ]
+```
+
+- 付与元として有効なのは**バトルゾーン＋表向きシールド**（他の継続能力と同じ範囲）
+- `filter` は §2 の語彙がそのまま使えます（`grantKeywords` の7キー限定とは違います）
+- 能力フィールドなので `ssx` の中にも書け、`ignoreAbilities` で消えます
 
 ## 7.26. NEO進化 / G-NEO進化（`evolution.neo`）
 
@@ -1723,6 +1859,49 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 | その他 | `graveToBz` と同じ（`tempKeywords` / `summoningSickness` / `destroyAtEndOfTurn`） |
 
 1ゾーンだけなら `graveToBz` / `manaToBz` を使ってください（validator がエラーにします）。
+
+### 「このクリーチャーの『出た時』能力を1つ使う」（`usePlayTrigger`）
+
+> このクリーチャーが攻撃する時、このクリーチャーの「このクリーチャーが出た時」で始まる能力を
+> 1つ使ってもよい。（～歴史ある王騎士～ の超魂X）
+
+```jsonc
+{ "label":"このクリーチャーの「出た時」能力を1つ使ってもよい",
+  "type":"usePlayTrigger", "optional":true }
+```
+
+- 見るのは**能力の持ち主**（`ctx.srcCardUid`）の cip。超魂Xで上のクリーチャーに与えられていれば
+  **上のクリーチャーの**「出た時」能力になります（それがこのカードの狙い）
+- **「出た時」で*始まる*能力だけ**を拾います。「召喚によって出た時」のように出方の条件
+  （`method` / `paid` / `manaTapped` / `fromZone`）が付いた能力は外れます。
+  文面が「このクリーチャーがバトルゾーンに出た時」でも、条件が無ければ拾います
+- 候補が2つ以上あればモーダルで1つ選びます。0個なら何も起きません
+
+### 「NEO進化クリーチャーとして召喚するなら、コストを N 少なくする」
+
+> NEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを3少なくする。
+> （～西方より来る激流の竜騎公～）
+
+重ねて出すなら**一律**で軽減します。枚数には比例しません。
+
+```jsonc
+"costReduce": { "amount": 3, "min": 1, "zones": ["hand"], "filter": { "self": true },
+                "condition": { "type": "cardCount", "zone": "evolutionBase", "min": 1 } }
+```
+
+`zone:"evolutionBase"` は「**今回の召喚で実際に重ねる進化元の枚数**」です。盤面のゾーンではなく
+プレイ時の文脈から取るので、**`costReduce.condition` の中でしか書けません**（他の継続能力の
+評価経路には渡らず、常に 0 になります）。同じ理由で `who` も書けません。
+
+`amountPer:{zone:"evolutionBase"}`（→ §8 `costReduce`）は「**進化元1枚につき1**」の比例軽減で、
+一律軽減には使えません。「一律は `condition`、比例は `amountPer`」の使い分けです。
+
+**UI の見え方**（既存の進化カードと同じ道を通ります）:
+
+- PLAY できるかの判定は**重ねられる最大枚数**（＝最も安いケース）で見積もる
+- 進化元選択モーダルに「重ねる枚数でコストが変わります — 現在のコスト N」が出る
+- マナ支払い画面で実際の枚数のコストに確定する。「重ねずに出す」を選んでマナが足りなければ、
+  キャンセルで盤面に戻って選び直す
 
 ## 7.26.5. 下にカードを置く（`topToUnder`）と、下にあったカード（`zone:"wasUnder"`）
 
@@ -1817,6 +1996,19 @@ S・トリガーのような手札からの宣言型プレイでも同じです�
 UI は**数字の入力欄**です（よく使う小さい数字だけクイックボタンとして並びます）。
 DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`max` は書かないのが既定**です。
 書いた場合だけ、その範囲に丸められます。
+
+#### 「N枚まで引く」はこれで書く
+
+> カードを3枚まで引く。（竜社長 ゴルファウンデーション）
+
+```jsonc
+[ { "label":"0〜3の数字を1つ選ぶ", "type":"chooseNumber", "min":0, "max":3, "as":"n" },
+  { "label":"その枚数のカードを引く", "type":"drawCards", "amount":"n" } ]
+```
+
+**`drawCards {amount:1, optional:true}` を N 個並べるのは旧い書き方です**（モーダルが N 回出ます）。
+`amount` は文字列で変数を参照できるので、数字を1回選ばせる上の形に統一します。
+単発の「カードを1枚引いてもよい」は、そのまま `drawCards {amount:1, optional:true}` で書きます。
 
 ### `ignoreAbilities`（そのエレメントの能力を無視する）
 
@@ -2281,7 +2473,8 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
   W/Tブレイカーと併用した場合は**大きい方**が採用される
 - `condition` の共通語彙: `{type:"civicCount",civ,count}` / `{type:"stackCount",count}` /
   `{type:"cardCount",zone,filter?,min?,max?}` / `{type:"shieldCount",who?,min?,max?}` /
-  `{type:"oniEnd"}`（→ **§7.18**。triggers / activated でのみ使える） / `{flag:"…"}`
+  `{type:"oniEnd"}`（→ **§7.18**。triggers / activated でのみ使える） / `{flag:"…"}` /
+    `{type:"manaHas",filters:[…]}` / `{type:"isEvolution",value?}` / `{type:"graveCountAtLeast",amount}`
   - `stackCount` = そのカード自身＋下に敷かれたカードの枚数（進化元を含むスタックの厚み）
   - **`cardCount`** = 「あるゾーンに、ある条件のカードが N 枚以上／以下あれば」。
     `zone` は `bz` `shield` `mana` `grave` `hand` `deck`、`filter` は §2 の語彙。
@@ -2292,6 +2485,9 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
     ```
     `who` は `self`(既定) / `opponent` / `any`。**相手を見るのは triggers / activated だけ**です
     （継続能力の評価経路は相手の盤面を受け取らないため）
+    - `zone:"evolutionBase"` =「**今回の召喚で実際に重ねる進化元の枚数**」。盤面のゾーンではなく
+      プレイ時の文脈から取るので、**`costReduce.condition` の中でしか書けません**（→ **§7.26**）。
+      盤面を見ないので `who` も書けません。validator がどちらも弾きます
 - `costReduce`: `{amount | amountPer, min, zones?, filter?, condition?}` — 自分がカードをプレイする際のコスト軽減
   - `zones`: **軽減元（このカード）がどのゾーンにいれば有効か**。`bz` `shield`(表向きのみ) `mana` `grave` `hand`
     既定は `["bz","shield"]`（バトルゾーン＋表向きシールド＝継続能力が働く場所）
@@ -2314,6 +2510,9 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
   // このクリーチャー自身の召喚コストを、進化元クリーチャー1体につき1軽減（超無限進化など）
   "costReduce": { "amountPer":{"zone":"evolutionBase"},
                   "filter":{"self":true}, "zones":["hand"], "min":1 }
+  // NEO進化クリーチャーとして召喚するなら、このクリーチャーの召喚コストを3少なくする（→ §7.26）
+  "costReduce": { "amount":3, "min":1, "zones":["hand"], "filter":{"self":true},
+                  "condition":{ "type":"cardCount", "zone":"evolutionBase", "min":1 } }
   // 自分のマナゾーンにドラゴン・カードが4枚以上あれば、このクリーチャーの召喚コストを3少なくする
   "costReduce": { "amount":3, "min":1, "zones":["hand"], "filter":{"self":true},
                   "condition":{ "type":"cardCount", "zone":"mana",
@@ -2321,6 +2520,10 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
   ```
   > **階段状の軽減は `condition`、比例した軽減は `amountPer`** です。
   > 「4枚以上あれば一律3」は `condition`、「1枚につき1」は `amountPer` で書きます。
+  > `evolutionBase` は両方に書けますが意味が違います。
+  > 「**NEO進化クリーチャーとして召喚するなら一律3**」は
+  > `condition:{type:"cardCount",zone:"evolutionBase",min:1}` ＋ `amount:3`（→ **§7.26**）、
+  > 「**進化元1枚につき1**」は `amountPer:{zone:"evolutionBase"}` です。
   > ツインパクトで「**召喚**コスト」に限りたい時は `filter` に `"side":"creature"` も足します。
   > `zone:"evolutionBase"` は**進化元を選んだ後**でないと確定しません。UI は
   > 「PLAYできるか」の判定を**重ねられる最大枚数**（＝最も軽くなるケース）で行い、
@@ -2329,7 +2532,18 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
   > 「**1以下**にならない」なら `min:2` です。実際の下限はさらに文明数で抑えられます
   > （2色カードは最低2）。
 - `revolutionChangeCond`: `{civs?,race?/races?,minCost?,minPower?,multiColor?,nameContains?}`
-- `finalRevolution`: `{effects:[…]}` ／ `alternateCost`: `{cost,civs,condition}` ／ `gZero`: `{nameContains,raceContains}`
+- `finalRevolution`: `{effects:[…]}` ／ `gZero`: `{nameContains,raceContains}`
+- `alternateCost`: `{cost,civs,condition}` — 「〜であれば、このカードを[X]支払って召喚／唱えてもよい」
+  - `civs` は**それぞれ1枚以上必要な文明**。`["colorless"]` と書けば**文明を問わない枚数だけ**の支払い（[無色(2)] など）
+  - `condition` は上の**共通語彙**（`checkGrantCondition`）。マナゾーンの文明を見る
+    **`{type:"manaHas",filters:[…]}`**（鬼エンドの `manaHas` と同じ読み方＝各条件を1枚以上満たす）と、
+    墓地の枚数を見る `{type:"graveCountAtLeast",amount:N}` が使えます
+  ```jsonc
+  // 自分のマナゾーンに光、水、自然の各文明があれば、[無色(2)]支払って召喚してもよい
+  "alternateCost": { "cost":2, "civs":["colorless"],
+    "condition":{ "type":"manaHas",
+      "filters":[{"civ":"light"},{"civ":"water"},{"civ":"nature"}] } }
+  ```
 - `evolution`: 進化元のゾーンと枚数 → **§7.8**
 - `replaceLeave`: 離れる時の置換 → **§7.16**
 - `replaceEnter`: 出る時の置換（超次元ゾーン／マナ／墓地／手札へ送る） → **§7.29**
@@ -2344,6 +2558,7 @@ DMの「数字を1つ選ぶ」は好きな数字を宣言できるので、**`ma
 - `spellAfterCast`: 唱えた後の行き先の置換 → **§7.22**
 - `staticDeny`: 相手のプレイを止める常在型（`cantCastSpell` 等） → **§7.23**
 - `grantSelfSTrigger`: 革命n（自分に S・トリガーを与える） → **§7.25**
+- `grantShieldSTrigger`: `[{filter}]` — シールドゾーンの**他の**カードに S・トリガーを与える（配列＝OR） → **§7.25**
 - `powerPlus`: 「5000+」の表示（数値は変えない） → **§7.25**
 - ハイパー: `hyperPower` `hyperKeywords` `hyperOnAttack` `hyperOnTargeted` `hyperUnlock:{type:"tapOwnCreature",count}`
   > `hyperOnTargeted`（相手がこのクリーチャーを選んだ時）は、**攻撃で選ばれた時だけでなく

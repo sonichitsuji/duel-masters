@@ -208,25 +208,24 @@ export function matchCardFilter(card, filter) {
   if (filter.psychic != null && !!card.psychic !== !!filter.psychic) return false;
   // evolution: いま進化クリーチャーか。matchFilter と同じ語彙（→ isEvolutionNow）
   if (filter.evolution != null && isEvolutionNow(card) !== !!filter.evolution) return false;
+  // neo: NEO進化能力を**持つ**カードか（NEOクリーチャー）。evolution は「いま進化クリーチャーか」
+  // なので手札のカードには効かない。コスト軽減のように手札を見る用途はこちらを使う
+  if (filter.neo != null && !!evolutionSpec(card)?.neo !== !!filter.neo) return false;
   // not: 「〜ではない」。1つでも一致したら弾く（配列なら「そのどれにも当てはまらない」）
   if (filter.not && anyOf(filter.not, sub => matchCardFilter(card, sub))) return false;
   return true;
 }
 const costReduceMatches = matchCardFilter;
 
-// ゾーン内の該当カード枚数（costReduce.amountPer 等、「〜1枚につき」の分母）
-export function countCardsInZone(state, spec) {
+// ゾーン内の該当カード枚数（costReduce.amountPer や condition の cardCount の「〜枚」）。
+// zone:"evolutionBase" は「今回の召喚で実際に重ねる進化元の数」で、盤面のゾーンではなく
+// opts から取る（プレイ時にしか決まらない値なので、渡されなければ 0）。
+export function countCardsInZone(state, spec, opts) {
+  if (spec?.zone === "evolutionBase") return opts?.evolutionBaseCount || 0;
   if (!state || !spec) return 0;
   const list = { grave: state.grave, mana: state.mana, hand: state.hand,
                  bz: state.battle, shield: state.shields, deck: state.deck }[spec.zone] || [];
   return list.filter(c => matchCardFilter(c, spec.filter)).length;
-}
-
-// amountPer の分母。zone:"evolutionBase" は「今回の召喚で実際に重ねる進化元の数」を参照するので、
-// ゾーンではなく opts から取る（プレイ時にしか決まらない値）。
-function amountPerCount(ownerState, spec, opts) {
-  if (spec?.zone === "evolutionBase") return opts?.evolutionBaseCount || 0;
-  return countCardsInZone(ownerState, spec);
 }
 
 // card をプレイする際の実効コスト。
@@ -244,10 +243,11 @@ export function getEffectiveCost(card, source, opts = {}) {
     // filter.self: 「このクリーチャーの召喚コストを〜」= 軽減元自身にだけ効く
     if (filter?.self && c.uid !== card.uid) continue;
     if (!costReduceMatches(card, filter)) continue;
-    // condition:「〜であれば」。継続能力なので相手の盤面は見られない（who:"self" 相当）
-    if (condition && !checkGrantCondition(condition, ownerState, c)) continue;
+    // condition:「〜であれば」。継続能力なので相手の盤面は見られない（who:"self" 相当）。
+    // opts を渡すのはここだけ（「NEO進化として召喚するなら」が今回重ねる枚数を見るため）
+    if (condition && !checkGrantCondition(condition, ownerState, c, null, opts)) continue;
     // amountPer: 「〜1枚につき1少なくする」のような可変軽減
-    const n = amountPer ? amountPerCount(ownerState, amountPer, opts) : (amount || 0);
+    const n = amountPer ? countCardsInZone(ownerState, amountPer, opts) : (amount || 0);
     cost = Math.max(min ?? 0, cost - n);
   }
   // 下限は文明数（2色カードは各文明のマナを最低1つずつ支払う必要があるため）。
@@ -335,7 +335,8 @@ export function extractCardsFromBattle(battle, uids) {
 // シールドの枚数を見る条件なので、判定は「手札に加わった後」の状態で行うこと。
 export function sTriggerSide(card, ownerState) {
   if (!card) return null;
-  if (hasKeyword(card, "sTrigger") || selfSTriggerGranted(card, ownerState)) return card;
+  if (hasKeyword(card, "sTrigger") || selfSTriggerGranted(card, ownerState)
+    || shieldSTriggerGranted(card, ownerState)) return card;
   if (card.spellSide?.keywords?.includes("sTrigger")) return { ...card, ...card.spellSide, uid: card.uid, side: "spell" };
   return null;
 }
@@ -347,6 +348,32 @@ export function selfSTriggerGranted(card, ownerState) {
   const rule = effectiveCard(card)?.grantSelfSTrigger;
   if (!rule || !ownerState) return false;
   return checkGrantCondition(rule.condition, ownerState, card);
+}
+
+// 「自分のシールドゾーンにあるNEOクリーチャーと進化クリーチャーすべてに『S・トリガー』を与える」。
+// grantKeywords は受け手がバトルゾーンのカードに限られるので、シールドには届かない（→ computeGranted）。
+// grantSelfSTrigger が「自分1枚だけ」なのに対し、こちらは**他のカード**に配る。
+//   grantShieldSTrigger: [{ filter }]  … 配列は OR（どれか1つに当てはまれば与える）
+// 付与元はバトルゾーン＋表向きシールド（継続能力が働く場所。grantKeywords の granter と同じ）。
+export function shieldSTriggerGranted(card, ownerState) {
+  if (!card || !ownerState) return false;
+  const granters = [...(ownerState.battle || []), ...((ownerState.shields || []).filter(s => s.faceUp))];
+  for (const g of granters) {
+    for (const rule of effectiveCard(g)?.grantShieldSTrigger || []) {
+      if (matchCardFilter(card, rule.filter)) return true;
+    }
+  }
+  return false;
+}
+
+// 代替コスト:「〜であれば、このカードを[無色(2)]支払って召喚してもよい」。
+//   alternateCost: { cost, civs, condition }
+// condition は継続能力と同じ共通語彙（checkGrantCondition）で見る。
+// civs は「それぞれ1枚以上必要な文明」。["colorless"] と書けば文明を問わない枚数だけの支払いになる。
+export function alternateCostAvailable(card, ownerState) {
+  const alt = effectiveCard(card)?.alternateCost;
+  if (!alt) return null;
+  return checkGrantCondition(alt.condition, ownerState, card) ? alt : null;
 }
 
 // 革命チェンジ:「自分の指定のクリーチャーが攻撃する時、そのクリーチャーと
@@ -442,7 +469,7 @@ const IDENTITY_KEYS = new Set(["id","uid","name","cost","power","civ","type","ra
 // 「そのエレメントが持つ能力」なので一緒に消える。
 // evolutionBase は能力ではなくカードの構成なので残す（進化クリーチャーであることは変わらない）。
 const ABILITY_FIELDS = ["keywords","triggers","activated","ssx","tempBuff",
-  "summonFrom","freeCast","replaceLose","replaceLeave","spellAfterCast","staticDeny",
+  "summonFrom","freeCast","replaceLose","replaceLeave","spellAfterCast","staticDeny","grantShieldSTrigger",
   "costReduce","condPower","grantKeywords","grantRace","grantPowerBoost","grantPowerBoostGrave",
   "selfPowerBoostGrave","powerAttacker","poweredBreaker","hyperKeywords","hyperPower",
   "hyperOnAttack","hyperOnTargeted","hyperUnlock","grantSelfSTrigger","oniEnd","ddd","gZero",
@@ -522,6 +549,13 @@ export function spellMainEffect(card){
 // 「このカードが場に出た／置かれた時」の本体。cip は誘発型能力なので
 // 通常は fireTrigger("creaturePutBz") が拾うが、クリーチャー以外（城など）は
 // その経路を通らないので、自分自身のぶんだけ直接取り出せるようにしてある。
+// 「このクリーチャーが出た時」で**始まる**能力。つまり出方の条件が付いていないもの。
+// 「召喚によって出た時」「コストを支払って出た時」のように条件で絞った能力は含まない
+// （文面が「バトルゾーンに出た時」でも、条件が無ければ含む）。
+const PUT_CONDITION_KEYS = ["method", "paid", "manaTapped", "fromZone"];
+export function plainPutTriggers(card){
+  return selfPutTriggers(card).filter(tr => !PUT_CONDITION_KEYS.some(k => tr[k] != null));
+}
 export function selfPutTriggers(card){
   return (effectiveCard(card)?.triggers || [])
     .filter(tr => tr.on === "creaturePutBz" && (!tr.target || tr.target === "this"));
@@ -667,10 +701,45 @@ export function addRestriction(state, rule) {
 const restrictionsOf = (ownerState, kind) => (ownerState?.restrictions || []).filter(r => r.kind === kind);
 const MODE_LABEL = { attack: "攻撃", block: "ブロック", both: "攻撃もブロックも" };
 
+// ===========================
+// 常在型のプレイ制限（staticDeny）
+// ===========================
+// カード直下の staticDeny は、そのカードの持ち主から見た**相手**のプレイを止める。
+//   staticDeny: { type, filter?, label?, maxPerTurn?, condition? }   （複数なら配列）
+//     type        … cantCastSpell / cantPutCreature / cantPutCreatureFromNonHand
+//     maxPerTurn  … 書かなければ全面禁止。1 なら「各ターン1回しか〜できない」
+//     condition   … そのカード自身を見る条件（checkGrantCondition。例「これが進化クリーチャーなら」）
+// 超魂Xで与えられたぶんも拾うので、読み出しは必ず effectiveCard を通す。
+const staticDenyRules = card => {
+  const d = effectiveCard(card)?.staticDeny;
+  return !d ? [] : Array.isArray(d) ? d : [d];
+};
+// その種類の制限にかかっているか。かかっていれば {card, rule} を返す。
+//   state  … 制限をかける側（staticDeny を持つカードの持ち主）の状態
+//   done   … 縛られる側がこのターンすでに行った回数（maxPerTurn の判定に使う）
+//   accept … 回数以外の個別条件（出所を見る cantPutCreatureFromNonHand 用）
+function staticDenyHit(state, type, done, accept, matchCard) {
+  const sources = [...(state?.battle || []), ...((state?.shields || []).filter(s => s.faceUp))];
+  for (const c of sources) {
+    for (const d of staticDenyRules(c)) {
+      if (d.type !== type) continue;
+      if (accept && !accept(d)) continue;
+      if (d.condition && !checkGrantCondition(d.condition, state, c)) continue;
+      if (matchCard && d.filter && !matchCard(d.filter)) continue;
+      // maxPerTurn があれば「その回数までは通す」。無ければ全面禁止
+      if (d.maxPerTurn != null && done < d.maxPerTurn) continue;
+      return { card: c, rule: d };
+    }
+  }
+  return null;
+}
+const denyLabel = (hit, fallback) => hit.rule.label
+  || (hit.rule.maxPerTurn != null ? `「${hit.card.name}」により各ターン${hit.rule.maxPerTurn}回しか${fallback}` : `「${hit.card.name}」により${fallback}`);
+
 // 呪文を唱えられない（ラフルル・ラブ等）。
 // 2通りある。どちらも「唱えようとする側」から見て理由を1つ返す（唱えられるなら null）。
 //   - 期限付き: restrictions の kind:"spell"（効果 denySpell が積む）
-//   - 常在型  : 相手のバトルゾーン／表向きシールドの staticDeny:{ type:"cantCastSpell", filter? }
+//   - 常在型  : 相手のバトルゾーン／表向きシールドの staticDeny:{ type:"cantCastSpell", … }
 // ツインパクトは面が確定して初めて呪文になるので、判定は side:"spell" か type:"spell" の時だけ。
 export function spellDenyReason(card, ownerState, otherState) {
   if (!card) return null;
@@ -679,15 +748,22 @@ export function spellDenyReason(card, ownerState, otherState) {
     if (d.filter && !matchCardFilter(card, d.filter)) continue;
     return d.label || "相手の効果により呪文を唱えられない";
   }
-  const sources = [...(otherState?.battle || []), ...((otherState?.shields || []).filter(s => s.faceUp))];
-  for (const c of sources) {
-    const d = effectiveCard(c).staticDeny;
-    if (d?.type !== "cantCastSpell") continue;
-    if (d.filter && !matchCardFilter(card, d.filter)) continue;
-    return d.label || `「${c.name}」により呪文を唱えられない`;
-  }
-  return null;
+  const hit = staticDenyHit(otherState, "cantCastSpell", ownerState?.spellsCastThisTurn || 0,
+    null, f => matchCardFilter(card, f));
+  return hit ? denyLabel(hit, "呪文を唱えられない") : null;
 }
+
+// クリーチャーをバトルゾーンに出せない理由（出せるなら null）。
+// 判定対象は「出るクリーチャー自身の出所(fromZone)」だけ。進化元のゾーンは一切見ない
+// （進化元はバトルゾーンに出たことにならないため）。
+export function creaturePutDenyReason(ownerState, otherState, fromZone = "hand", card = null) {
+  const done = ownerState?.creaturesPutThisTurn || 0;
+  const m = card ? f => matchCardFilter(card, f) : null;
+  return (staticDenyHit(otherState, "cantPutCreature", done, null, m)
+    // 「手札以外からバトルゾーンに出せない」は手札から出す場合には効かない
+    || staticDenyHit(otherState, "cantPutCreatureFromNonHand", done, () => fromZone !== "hand", m));
+}
+export const creaturePutDenyLabel = hit => denyLabel(hit, "クリーチャーを出せない");
 // 攻撃／ブロックができない理由（できるなら null）。mode: "attack" / "block"。
 // 「攻撃もブロックもできない」と「各ターンに一度しか〜できない」は、呼ぶ側から見れば
 // 「今このクリーチャーで攻撃（ブロック）できるか」という同じ問いなので1本にまとめてある。
@@ -837,6 +913,22 @@ export function stackEvolutionBases(state, spec, baseUids) {
   const bases = picked.flatMap(b => [b, ...(b.evolutionBase || [])])
     .map(c => { const m = { ...c, tapped: false, faceUp: false }; delete m.evolutionBase; return m; });
   return { state: { ...state, [key]: state[key].filter(c => !used.has(c.uid)) }, bases };
+}
+
+// 「このクリーチャーは離れない」のように、そのクリーチャーに付与された保護は、
+// 上にカードが重なっても同じクリーチャーのものとして続く（進化しても引き継がれる）。
+// 下に敷かれたカードの tempBuff は effectiveCard が上へ伝えない（伝わるのは ssx だけ）ので、
+// 重ねる時にここで持ち上げる。期限（expires）は一番長いもの＝ownTurnStart を優先する。
+const CARRIED_UP_KEYWORDS = ["cantLeave"];
+export function carryUpBaseBuffs(card, bases) {
+  const carried = [...new Set((bases || []).flatMap(b =>
+    (b.tempBuff?.keywords || []).filter(k => CARRIED_UP_KEYWORDS.includes(k))))];
+  if (!carried.length) return card;
+  const prev = card.tempBuff || {};
+  const expires = (bases || []).some(b => b.tempBuff?.expires === "ownTurnStart")
+    ? "ownTurnStart" : (prev.expires || "endOfTurn");
+  return { ...card, tempBuff: { ...prev, expires,
+    keywords: [...new Set([...(prev.keywords || []), ...carried])] } };
 }
 
 // 進化元が足りているか（＝そのカードを出せるか）。
@@ -1019,6 +1111,9 @@ export function findHandPlays(state, otherState, event, ev = {}, ownerPid){
       if(!spec || !handPlayMatchesEvent(spec, event, ev, ownerPid, kind)) continue;
       // 呪文を唱えられない状態なら呪文は提示しない（ラフルル・ラブ等）
       if(spellDenyReason(card, state, otherState)) continue;
+      // クリーチャーを出せない状態なら、クリーチャーも提示しない。
+      // 革命チェンジ／侵略／Jクライムも「このクリーチャーを出す」ので同じく止まる
+      if(isCreatureSide(card) && creaturePutDenyReason(state, otherState, fromZone, card)) continue;
       if(kind === "oniEnd"){
         // 鬼エンド: シールドが1つもないプレイヤーがいて、マナ条件も満たすこと
         if(!oniEndActive(state, otherState)) continue;
@@ -1075,9 +1170,9 @@ export function findOniEndPlays(state, otherState, event, ev = {}, ownerPid){
 
 // ゾーンの枚数を見る条件。「自分のマナゾーンにドラゴン・カードが4枚以上あれば」など。
 // 数えるのは countCardsInZone（amountPer と同じ関数）なので、zone / filter の語彙もそこと同じ。
-export function cardCountMatches(spec, ownerState, otherState){
+export function cardCountMatches(spec, ownerState, otherState, opts){
   const inRange = state => {
-    const n = countCardsInZone(state, spec);
+    const n = countCardsInZone(state, spec, opts);
     if(spec.min != null && n < spec.min) return false;
     if(spec.max != null && n > spec.max) return false;
     return true;
@@ -1109,12 +1204,21 @@ function shieldsBrokenMatches(spec, ownerState, otherState){
 // grant規則やパワー強化に付く condition の評価。
 // otherState は「相手の盤面も見る条件」専用。渡せる呼び出し元だけが渡す
 // （triggers / activated だけが渡している。validator が書ける場所を制限する）。
-export function checkGrantCondition(cond, ownerState, card, otherState){
+// opts は「プレイ時にしか決まらない値」専用で、いま渡しているのは getEffectiveCost だけ
+// （cardCount の zone:"evolutionBase"。validator が costReduce.condition の中だけに制限する）。
+export function checkGrantCondition(cond, ownerState, card, otherState, opts){
   if(!cond) return true;
   if(cond.type === "civicCount") return civicCount(ownerState, cond.civ) >= cond.count;
   if(cond.type === "stackCount") return stackCount(card) >= cond.count;
+  // manaHas: 「自分のマナゾーンに光、水、自然の各文明があれば」。鬼エンドと同じ読み方
+  // （filters の各条件を1枚以上満たすこと）で、評価も同じ manaHasAll を使う
+  if(cond.type === "manaHas") return manaHasAll(ownerState, cond.filters);
+  // graveCountAtLeast: 「自分の墓地にカードがN枚以上あれば」（alternateCost が使う古い綴り）
+  if(cond.type === "graveCountAtLeast") return (ownerState?.grave?.length || 0) >= (cond.amount ?? 0);
+  // 「これが進化クリーチャーなら」。NEO進化は下にカードがある間だけ進化クリーチャー
+  if(cond.type === "isEvolution") return isEvolutionNow(card) === (cond.value !== false);
   if(cond.type === "shieldCount") return shieldCountMatches(cond, ownerState, otherState);
-  if(cond.type === "cardCount") return cardCountMatches(cond, ownerState, otherState);
+  if(cond.type === "cardCount") return cardCountMatches(cond, ownerState, otherState, opts);
   if(cond.type === "shieldsBroken") return shieldsBrokenMatches(cond, ownerState, otherState);
   // 鬼エンド: シールドが1つもないプレイヤーがいる。shieldCount の別名
   if(cond.type === "oniEnd") return shieldCountMatches({ who: "any", max: 0 }, ownerState, otherState);

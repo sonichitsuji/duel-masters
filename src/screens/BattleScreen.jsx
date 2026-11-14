@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { initPlayerState, returnPsychicsHome, invasionCanStack, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, spellMainEffect, selfPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases } from "../gameLogic";
+import { initPlayerState, returnPsychicsHome, invasionCanStack, attackBlockReason, tapManaByUids, getEffectivePower, extractFromBattle, computeGrantedKeywords, checkGrantCondition, getCardTriggers, getCardActivated, hasKeyword, getBreakCount, evolutionSpec, findLoseReplacement, findLeaveReplacement, findEnterReplacement, findShieldAddReplacement, findSpellAfterCastAll, recycleSpecFor, spellDenyReason, sTriggerSide, isCreatureSide, isUnselectableByOpponent, isUnattackable, withJustDiver, findHandPlays, handPlayLabel, effectiveCard, creaturePutDenyReason, creaturePutDenyLabel, spellMainEffect, selfPutTriggers, plainPutTriggers, isEvolutionNow, isGNeoEvolution, evolutionCandidates, stackEvolutionBases, carryUpBaseBuffs } from "../gameLogic";
 import { executeEffect, matchFilter, getEffectCandidates, stepSelectsCards, shouldStopChain, stepConditionMet, leavingBzCards, enteringBzCards, BZ_LEAVE_DEST } from "../engine/effects";
 import { CARD_TYPE_LABELS, ZONE_LABELS } from "../constants";
 import { CutIn, HyperModeCutIn } from "../components/CutIn";
@@ -36,6 +36,9 @@ const DEFAULT_TRIGGER_SCOPE = {
   castSpell:"self", draw:"self", discard:"self", shieldAdded:"self", shieldLeave:"self",
   startOfTurn:"self", endOfTurn:"self",
 };
+// このターン何回やったかを数えるイベント → プレイヤー状態のキー。
+// staticDeny の maxPerTurn（「相手は各ターン1回しか呪文を唱えられない」等）が読む
+const TURN_COUNT_KEY = { castSpell:"spellsCastThisTurn", creaturePutBz:"creaturesPutThisTurn" };
 // 主体カードがバトルゾーンに残っている時だけ、その主体自身の能力が誘発するイベント
 // （攻撃の終わり: 戦闘で破壊された攻撃クリーチャーの「攻撃の終わりに」は誘発しない）
 const SUBJECT_MUST_BE_IN_BZ = new Set(["attackEnd", "battleWin", "battle", "break"]);
@@ -84,30 +87,21 @@ function matchTrigger(tr, event, watcherPid, watcherCard, ev){
     if(tr.turnOf === "opponent" && onOwnTurn) return false;
   }
   if(tr.firstEachTurn && !ev.firstThisTurn) return false;
+  // attackTarget: 攻撃先がプレイヤーかクリーチャーか（on:"attack" 専用）。
+  // 「クリーチャーが自分を攻撃する時」= target:"opponent" ＋ attackTarget:"player"
+  if(tr.attackTarget && ev.attackTarget && tr.attackTarget !== ev.attackTarget) return false;
   // filter は「起きたカード」に掛かる。複数枚のイベントなら1枚でも一致すれば誘発する
   if(tr.filter && subjects.length && !subjects.some(c => matchFilter(c, tr.filter, {}))) return false;
   return true;
 }
 
-// #3 常在型能力の事前適用（枠組み）。例: 相手の「クリーチャーを出せない」常在型を、
-// クリーチャーを出す処理に先んじてチェックして中止する。現状は該当カードが無いため常に false。
-// データ形: カードに staticDeny:{ type:"cantPutCreature", filter? } を持たせ、その支配者の「相手」に効く。
-// 判定対象は「出るクリーチャー自身の出所(fromZone)」だけ。進化元のゾーンは一切見ない
-// （進化元はバトルゾーンに出たことにならないため）。
-function checkStaticDeny(state, targetPid, type, fromZone="hand"){
-  for(const pid of ["p1","p2"]){
-    if(pid===targetPid) continue; // 自分の常在型は自分のプレイを止めない（「相手は〜できない」想定）
-    const st=state?.[pid]; if(!st) continue;
-    const sources=[...(st.battle||[]),...((st.shields||[]).filter(s=>s.faceUp))];
-    if(sources.some(c=>{
-      const d=c.staticDeny;
-      if(d?.type!==type) return false;
-      // 「手札以外からバトルゾーンに出せない」は手札から出す場合には効かない
-      if(type==="cantPutCreatureFromNonHand") return fromZone!=="hand";
-      return true;
-    })) return true;
-  }
-  return false;
+// 常在型能力（staticDeny）で「クリーチャーを出せない」かを、出す処理に先んじて見る。
+// 中身の判定は gameLogic の creaturePutDenyReason（呪文側の spellDenyReason と対になる）。
+// 自分の常在型は自分のプレイを止めない（「相手は〜できない」想定）ので、相手側の盤面だけを見る。
+function creaturePutDeny(state, targetPid, fromZone, card){
+  const other=state?.[targetPid==="p1"?"p2":"p1"];
+  const hit=creaturePutDenyReason(state?.[targetPid], other, fromZone, card);
+  return hit ? creaturePutDenyLabel(hit) : null;
 }
 
 // ===========================
@@ -121,7 +115,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   const [chargedThisTurn,setChargedThisTurn]=useState(false);
   const [attackingUid,setAttackingUid]=useState(null);
   // 攻撃先を決めてから「攻撃する時」の誘発を解決するので、解決が終わるまで攻撃先を預かる。
-  // { intent } … intent は withBlockStep と同じ形（shield / creature+targetUid / direct）
+  // { intent } … intent は withBlockStep と同じ形（{kind:"creature",targetUid} / {kind:"player"}）
   const [pendingAttack,setPendingAttack]=useState(null);
   // 「待っている誘発を解決しきってから続きを行う」ための待ち行列。
   // ターンの終わり・バトル・ブレイクはどれも「誘発を積んでから、解決しきったところで
@@ -190,6 +184,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   const [hyperUntapModal,setHyperUntapModal]=useState(null);
   const [hyperTargetedModal,setHyperTargetedModal]=useState(null);
   const [templateChoiceModal,setTemplateChoiceModal]=useState(null);
+  // 「このクリーチャーの『出た時』能力を1つ使う」で、候補が2つ以上ある時に選ばせる
+  const [cipChoiceModal,setCipChoiceModal]=useState(null);
   const [handPlayModal,setHandPlayModal]=useState(null);
   // 手札宣言プレイのコスト支払い（D・D・D）。PlayerBoard の ManaPayModal は isActive の内側に
   // あって非ターンプレイヤーが使えないので、こちらにもう1つ置く
@@ -436,6 +432,12 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
           }
         });
       }
+      // 「このクリーチャーの『出た時』能力を1つ使う」（～歴史ある王騎士～ の超魂X）
+      if (updatedCtx.usePlayTrigger) {
+        const { ownerPid: upid, cardUid } = updatedCtx.usePlayTrigger;
+        delete updatedCtx.usePlayTrigger;
+        setTimeout(() => usePlayTriggerRef.current(upid, cardUid), 0);
+      }
       // 効果でシールドが手札に加わった時の「S・トリガー」
       if (updatedCtx.shieldTriggerCards && updatedCtx.shieldTriggerCards.length) {
         const list = updatedCtx.shieldTriggerCards;
@@ -530,6 +532,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       return { kind:"escape", title:"エスケープ（置換効果）",
         message:`${card.name} は破壊されます。\n墓地に置く代わりに、自分のシールドを1つ手札に加えてもよい（エスケープ）。`,
         applyLabel:"エスケープ（シールド→手札）", cancelLabel:"例外処理で中止（通常どおり）" };
+    }
+    // 「このクリーチャーは離れない」。置換ではなく禁止だが、他の3つと同じ窓口に並べることで
+    // §0 のとおり必ず「例外処理で中止」して通常どおり離れさせられる
+    if(!seen("cantLeave")&&hasKeyword(live,"cantLeave")){
+      return { kind:"cantLeave", title:"離れない",
+        message:`${card.name} は${ZONE_LABELS[to]||"墓地"}に置かれようとしています。\nこのクリーチャーは離れません。`,
+        applyLabel:"離れない（そのまま残る）", cancelLabel:"例外処理で中止（通常どおり離れる）" };
     }
     if(!seen("gneo")&&isGNeoEvolution(live)){
       return { kind:"gneo", title:"G-NEO進化（置換効果）",
@@ -633,7 +642,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       if(!face) continue;
       // 呪文を唱えられない状態なら、呪文の S・トリガーは使えない（ラフルル・ラブ等）。
       // sTriggerSide が呪文面を返した場合は side:"spell" が付いている（クリーチャーのSTは対象外）
-      const deny=spellDenyReason(face,st,stateRef.current[oPid]);
+      const deny=spellDenyReason(face,st,stateRef.current[oPid])
+        // クリーチャーの S・トリガーは「出す」ので、出せない状態なら使えない。
+        // 相手のターン中でも、縛られている側の「このターン出した数」で数える
+        ||(isCreatureSide(face)?creaturePutDeny(stateRef.current,ownerPid,"hand",c):null);
       if(deny){addLog(`ST 「${face.name}」は${deny}`);continue;}
       // 手札に残っていないカードは実行できない（別の効果で動いた場合）
       if(!st.hand.some(h=>h.uid===c.uid)) continue;
@@ -673,6 +685,28 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   };
   const putCreatureBzRef=useRef();
   putCreatureBzRef.current=putCreatureBz;
+
+  // 「このクリーチャーの『出た時』能力を1つ使ってもよい」（～歴史ある王騎士～ の超魂X）。
+  // 能力の持ち主は ctx.srcCardUid ＝ 超魂Xで与えられていれば**上のクリーチャー**なので、
+  // 拾うのはそのクリーチャー自身の cip。出方の条件が付いた能力は plainPutTriggers が外す。
+  const usePlayTriggerOf=(ownerPid,cardUid)=>{
+    const card=stateRef.current[ownerPid].battle.find(c=>c.uid===cardUid);
+    if(!card) return;
+    const trs=plainPutTriggers(card);
+    if(!trs.length){ addLog(`${ownerPid.toUpperCase()}: ${card.name} に使える「出た時」能力がない`); return; }
+    const run=tr=>{
+      const oPid=ownerPid==="p1"?"p2":"p1";
+      addLog(`${ownerPid.toUpperCase()}: ${card.name} の「出た時」能力をもう一度使う`);
+      triggerEffect(tr,ownerPid,stateRef.current[ownerPid],ownerPid==="p1"?setP1:setP2,
+        stateRef.current[oPid],ownerPid==="p1"?setP2:setP1,card.name,{...card},card);
+    };
+    if(trs.length===1){ run(trs[0]); return; }
+    setCipChoiceModal({ ownerPid, card, triggers:trs, run });
+  };
+  const usePlayTriggerRef=useRef();
+  usePlayTriggerRef.current=usePlayTriggerOf;
+  // 誘発能力の見出し。トリガー自身の label が無ければ、中のステップの label を連ねる
+  const triggerLabel=tr=>tr.label||(tr.effects||[]).map(e=>e.label).filter(Boolean).join(" / ")||"「出た時」の能力";
 
   // シールドゾーンにカードが置かれた時の入口。shieldAdded はここからしか発火しない。
   // 「シールドゾーンにカードを置く時、かわりに〜」の置換（replaceShieldAdd）はここで挟む。
@@ -758,6 +792,13 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   // ev: { sourcePid, subjectCard?, method?("summon"|"put"), firstThisTurn? }
   const fireTrigger=(event,evIn={})=>{
     const cur=stateRef.current;
+    // 「各ターン◯回しか〜できない」（staticDeny の maxPerTurn）が見る回数をここで数える。
+    // 唱えた／出たの入口は複数あるが、どれも最後はこの誘発を通るので、数えるのはここ1か所でよい。
+    // ターンごとに数え直す（advanceToNextTurn で両者ぶん0に戻す）
+    if(TURN_COUNT_KEY[event]&&evIn.sourcePid){
+      const key=TURN_COUNT_KEY[event];
+      (evIn.sourcePid==="p1"?setP1:setP2)(s=>({...s,[key]:(s[key]||0)+1}));
+    }
     // turnOf 判定用に「今どちらのターンか」を載せる。
     // 複数枚のイベント（subjectCards）でも subjectCard を先頭に揃えておき、
     // 「このカード自身に起きた時」の経路が単数・複数のどちらでも同じに書けるようにする
@@ -911,6 +952,18 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   // 「何を実行するか」は face、「どのカードを手札から動かすか」は card で見る。
   const playFromHandDeclared=(pid,play,srcEvent,paidManaUids)=>{
     const {card,kind}=play;
+    // 宣言した時点では使えても、解決までの間に使えなくなっていることがある。
+    // シールドを2枚ブレイクして2枚ともクリーチャーの S・トリガーを宣言した場合、
+    // 1枚目が出た時点で「各ターン1体」の枠を使い切っているので2枚目は出せない。
+    // 宣言はまとめて、解決は1枚ずつなので、ここでもう一度見る
+    {
+      const face0=play.face||card;
+      const from=play.fromZone||"hand";
+      const stop=isCreatureSide(face0)
+        ? creaturePutDeny(stateRef.current,pid,from,card)
+        : spellDenyReason(face0,stateRef.current[pid],stateRef.current[pid==="p1"?"p2":"p1"]);
+      if(stop){ addLog(`[${handPlayLabel(kind)}] ${pid}: ${stop}（中止）`); return; }
+    }
     // 革命チェンジは「出す」のではなく攻撃クリーチャーとの入れ替えなので、専用の処理へ回す。
     // 攻撃先（intent）は攻撃宣言の時に預けてあるものを使う
     if(kind==="revolutionChange"||kind==="invasion"||kind==="jCrime"){
@@ -959,7 +1012,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       setSelf(s=>{
         const {state:st,bases}=stackEvolutionBases(s,spec||{zone:"bz"},play.evolutionBaseUids);
         return {...st,hand:st.hand.filter(c=>c.uid!==card.uid),mana:payMana(st),
-          battle:[...st.battle,{...put,evolutionBase:bases}]};
+          battle:[...st.battle,carryUpBaseBuffs({...put,evolutionBase:bases},bases)]};
       });
       maybeFlagCantAttack([put.uid],setSelf,stateRef.current[pid==="p1"?"p2":"p1"].battle);
       // ニンジャ・ストライク:「そのターンの終わりに、このシノビを自分の山札の一番下に置く」。
@@ -1251,10 +1304,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       // クリーチャー or タマシード（どちらもバトルゾーンへ。タマシードは攻撃不可・パワー無し）
       // #3 常在型: 相手の「クリーチャーを出せない」常在型を解決に先んじて適用（枠組み・現状該当カード無し）
       const isCre=isCreatureSide(card);
-      if(isCre&&(checkStaticDeny(stateRef.current,active,"cantPutCreature",fromZone)
-              ||checkStaticDeny(stateRef.current,active,"cantPutCreatureFromNonHand",fromZone))){
-        addLog(`${active}: 相手の常在型能力によりクリーチャーを出せない`);setMessage("相手の常在型能力でクリーチャーを出せません");return true;
-      }
+      const putDeny=isCre?creaturePutDeny(stateRef.current,active,fromZone,card):null;
+      if(putDeny){ addLog(`${active}: ${putDeny}`);setMessage(putDeny);return true; }
       const isSpeed=effectiveSide.keywords?.includes("speedAttacker");
       // クリーチャー側でプレイされたツインパクトもクリーチャーとして扱う（召喚酔い・出た時の誘発）
       const isCreature=isCreatureSide(card);
@@ -1269,7 +1320,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       // ジャストダイバー: 出た時に「相手に選ばれず、攻撃されない」を次の自分のターンまで付ける。
       // summonedThisTurn は「このターン出た」という事実だけを記録する。進化かどうかで酔うかは
       // isSummoningSick が読み出し時に判定する（NEO は進化元が0枚になると酔いが復活するため）
-      const newCreature=withJustDiver({...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed,evolutionBase:evoBase});
+      const newCreature=carryUpBaseBuffs(withJustDiver({...card,tapped:false,enteredThisTurn:isCreature,summonedThisTurn:isCreature&&!isSpeed,evolutionBase:evoBase}),evoBase);
       const newBattle=[...battleWithoutBase,newCreature];
       setActiveState(s=>({...s,hand:newHand,grave:newGrave,mana:newMana,battle:newBattle}));
       const fromLabel=fromZone==="grave"?"（墓地から）":fromZone==="mana"?"（マナゾーンから）":"";
@@ -1437,7 +1488,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     if(!swapped) setActiveState(s=>({ ...s, attackBlockThisTurn: (s.attackBlockThisTurn || 0) + 1 }));
     setTimeout(()=>{
       fireTriggerRef.current("attack",{sourcePid:active,subjectCard:attacker,firstThisTurn,
-        noHandPlays:swapped});
+        attackTarget:intent.kind,noHandPlays:swapped});
       pendingAttackRef.current={intent};
       setPendingAttack({intent});
     },0);
@@ -1556,7 +1607,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
         cancelLabel:rep.cancelLabel,
         onApply:()=>{
           setReplacementModal(null);
-          if(rep.kind==="escape")            escapeShieldToHand(v.card,v.ownerPid);
+          if(rep.kind==="cantLeave")         addLog(`[離れない] ${v.card.name} はバトルゾーンを離れない`);
+          else if(rep.kind==="escape")       escapeShieldToHand(v.card,v.ownerPid);
           else if(rep.kind==="gneo")         sacrificeGNeoBases(v.card,v.ownerPid,"grave");
           else if(rep.kind==="replaceLeave"){ if(rep.to==="effect") applyLeaveEffect(v.card,v.ownerPid,rep); else moveLeavingCard(v.card,v.ownerPid,rep.to); }
           processVictims(victims,idx+1,onDone,asked);
@@ -1576,6 +1628,10 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
   // leave（バトルゾーンを離れた）だけ誘発する。下に敷かれたカードも一緒に離れる。
   const moveLeavingCard=(card,ownerPid,to)=>{
     const setSt=ownerPid==="p1"?setP1:setP2;
+    // 実際に移るのは本体＋下に敷かれたカード全部。シールド化の置換（replaceShieldAdd）は
+    // 置かれた枚数ぶん見なければならないので、setSt の前にスタックを読む（sacrificeGNeoBases と同じ）
+    const stack=stateRef.current[ownerPid].battle.find(c=>c.uid===card.uid);
+    const placed=stack?[stack,...(stack.evolutionBase||[])]:[card];
     setSt(s=>{
       const {newBattle,extracted}=extractFromBattle(s.battle,card.uid);
       if(!extracted.length) return s;
@@ -1587,7 +1643,7 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
     });
     addLog(`[置換] ${card.name} は破壊されるかわりに${LEAVE_TO_LABELS[to]||"マナゾーン"}へ`);
     setTimeout(()=>fireTrigger("leave",{sourcePid:ownerPid,subjectCard:card}),0);
-    if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,[card]),0);
+    if(to==="shield") setTimeout(()=>putShieldsRef.current(ownerPid,placed),0);
   };
 
   // 「このクリーチャーがバトルする時」。バトルの勝敗を決める**前**に誘発させ、
@@ -1896,9 +1952,11 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       addLog(`${active}: 能力を無視する効果が切れた`);
     }
     setAttackingUid(null);setUsedFinalRevThisTurn(false);setUsedThisTurn(new Set());
-    // 攻撃／ブロックの行動回数は各ターンで数え直す。相手のターン中もブロックで増えるので両者ぶん戻す
-    setP1(s=>s.attackBlockThisTurn?{ ...s, attackBlockThisTurn: 0 }:s);
-    setP2(s=>s.attackBlockThisTurn?{ ...s, attackBlockThisTurn: 0 }:s);
+    // 行動回数は各ターンで数え直す。相手のターン中もブロックやS・トリガーで増えるので両者ぶん戻す
+    //（攻撃／ブロック＝limitAttackBlock、唱えた／出た＝staticDeny の maxPerTurn が読む）
+    const clearCounts=s=>(s.attackBlockThisTurn||s.spellsCastThisTurn||s.creaturesPutThisTurn)
+      ? { ...s, attackBlockThisTurn:0, spellsCastThisTurn:0, creaturesPutThisTurn:0 } : s;
+    setP1(clearCounts);setP2(clearCounts);
     // 「そのターン限り」の召喚許可と使用回数をリセット
     setSummonUsed({});setP1(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);setP2(s=>s.turnSummonFrom?.length?{...s,turnSummonFrom:[]}:s);
     const next=otherPid;const newTurn=active==="p2"?turn+1:turn;
@@ -1968,9 +2026,15 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       )}
       {handoff&&<HandoffScreen from={handoff.from} to={handoff.to} onReady={()=>{setHandoff(null);setMessage(`${active.toUpperCase()}: ドローしてください`);}}/>}
       {activeSteps&&(activeSteps.steps[activeSteps.stepIdx]?.type==="chooseMode"
-        ?<TemplateChoiceModal modal={{templates:activeSteps.steps[activeSteps.stepIdx].templates||[],srcCard:activeSteps.srcCard}}
+        ?<TemplateChoiceModal modal={{templates:activeSteps.steps[activeSteps.stepIdx].templates||[],srcCard:activeSteps.srcCard,
+             revealed:activeSteps.context?.revealed}}
            onChoose={handleModeChoose} onAbandon={handleModeAbandon}/>
         :<EffectStepModal activeSteps={activeSteps} p1={p1} setP1={setP1} p2={p2} setP2={setP2} addLog={addLog} onAdvance={advanceStep} onException={()=>{addLog("[例外処理] ステップをスキップ");setActiveSteps(null);}}/>)}
+      {cipChoiceModal&&<TemplateChoiceModal
+        modal={{srcCard:cipChoiceModal.card,
+          templates:cipChoiceModal.triggers.map(tr=>({label:triggerLabel(tr)}))}}
+        onChoose={i=>{const{run,triggers}=cipChoiceModal;setCipChoiceModal(null);run(triggers[i]);}}
+        onAbandon={()=>{addLog("[例外処理] 「出た時」能力を使わない");setCipChoiceModal(null);}}/>}
       {templateChoiceModal&&templateChoiceModal.count>0&&!activeSteps&&<TemplateChoiceModal modal={templateChoiceModal} onChoose={handleTemplateChoose} onAbandon={()=>{addLog("[例外処理] 残りの選択を放棄");setTemplateChoiceModal(null);}}/>}
       {triggerOrderModal&&(()=>{
         // 一覧は開いている間も pendingEffects から作り直す。解決の直後に誘発した能力が
@@ -1993,7 +2057,8 @@ export function BattleScreen({p1DeckIds,p2DeckIds,p1HyperIds,p2HyperIds,cardDb,o
       {leaveReplaceModal&&(()=>{const{victim,to,rep,selectedUids,extra}=leaveReplaceModal;
         const next=applied=>{setLeaveReplaceModal(null);
           if(applied){
-            if(rep.kind==="escape")           escapeShieldToHand(victim.card,victim.ownerPid);
+            if(rep.kind==="cantLeave")        addLog(`[離れない] ${victim.card.name} はバトルゾーンを離れない`);
+            else if(rep.kind==="escape")      escapeShieldToHand(victim.card,victim.ownerPid);
             else if(rep.kind==="gneo")        sacrificeGNeoBases(victim.card,victim.ownerPid,to);
             else if(rep.kind==="replaceLeave"){ if(rep.to==="effect") applyLeaveEffect(victim.card,victim.ownerPid,rep); else moveLeavingCard(victim.card,victim.ownerPid,rep.to); }
           }
